@@ -120,18 +120,38 @@ def create_app():
         if not context:
             return jsonify({"error": "context is required"}), 400
 
-        remediation_prompt = f"""Based on this operational analysis, generate the remediation code.
+        remediation_prompt = f"""Based on this operational analysis, generate complete remediation artifacts that an ops engineer can review and deploy through their normal CI/CD pipeline.
 
+ANALYSIS:
 {context}
 
-Generate TWO things:
-1. **Terraform code** to fix this issue following OGE standards (modular, tagged, least-privilege)
-2. **Azure CLI commands** as a quick alternative for immediate action
+Generate FOUR distinct artifacts, each in its own clearly labeled code block:
 
-Format each in a proper code block. Include comments explaining what each section does.
-Keep it production-ready — no placeholders except for subscription/resource group IDs which should use variables.
-If the analysis recommends NOT making changes (e.g., The Roughneck defended the current config), say so and explain why no remediation is needed.
-Be concise — working code, not an essay."""
+1. **main.tf** — Terraform configuration to remediate the issue. Follow these OGE standards:
+   - Use variables for subscription_id, resource_group, location
+   - Include proper tags (support-owner, environment, managed-by = "ops-council")
+   - Use azurerm provider with required_version constraint
+   - Include comments explaining the remediation rationale
+
+2. **variables.tf** — All variable declarations with descriptions and sensible defaults
+
+3. **remediate.sh** — Azure CLI script for immediate remediation. Include:
+   - Pre-flight checks (az account show, confirm subscription)
+   - The actual fix commands
+   - Post-fix validation commands
+   - Comments explaining each step
+
+4. **RUNBOOK.md** — A brief runbook entry for the ops team:
+   - Issue summary (1 sentence)
+   - Risk if not addressed
+   - Remediation steps (numbered)
+   - Validation steps
+   - Rollback procedure
+   - Estimated time to complete
+
+If the analysis recommends NOT making changes, generate a RUNBOOK.md explaining why the current config is correct and what documentation should be updated to prevent this question from recurring.
+
+These artifacts should be ready for a human to review, not auto-execute. The ops team will put the Terraform through their standard PR → review → apply process."""
 
         def generate():
             try:
