@@ -6,6 +6,7 @@ import traceback
 from app.agents.runner import run_council, call_agent
 from app.agents.demos import DEMO_SCENARIOS
 from app.config import settings
+from app import azure_data
 
 
 def create_app():
@@ -32,7 +33,7 @@ def create_app():
         """Run a question through the Ops Council.
 
         Body: { "question": str, "context_data": str (optional),
-                "agents": list[str] (optional) }
+                "agents": list[str] (optional), "mode": "demo"|"live" }
         """
         body = request.get_json(force=True)
         question = body.get("question", "").strip()
@@ -41,9 +42,19 @@ def create_app():
 
         context_data = body.get("context_data", "")
         agents = body.get("agents")
+        mode = body.get("mode", "demo")
+
+        # In live mode, gather real Azure data as context
+        if mode == "live" and not context_data:
+            try:
+                context_data = _gather_live_context()
+            except Exception as e:
+                traceback.print_exc()
+                context_data = f"[Error gathering live data: {e}]"
 
         try:
             result = run_council(question, context_data, agents)
+            result["mode"] = mode
             return jsonify(result)
         except Exception as e:
             traceback.print_exc()
@@ -62,7 +73,52 @@ def create_app():
                 scenario["data"],
                 scenario["agents"],
             )
+            result["mode"] = "demo"
             return jsonify(result)
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    # ─── Live Azure Data ────────────────────────────────────
+
+    @app.route("/api/scan", methods=["GET"])
+    def scan_subscription():
+        """Scan the real Azure subscription and return environment data."""
+        try:
+            data = _gather_live_scan()
+            return jsonify(data)
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/scan/overview", methods=["GET"])
+    def scan_overview():
+        """Lightweight scan for dashboard KPI cards."""
+        try:
+            resources = azure_data.get_all_resources()
+            tagging = azure_data.get_tagging_compliance()
+            orphaned = azure_data.get_orphaned_disks()
+            public_ips = azure_data.get_public_endpoints()
+
+            rg_count = len(set(r.get("resourceGroup", "") for r in resources))
+            tagged = sum(1 for t in tagging if t.get("supportOwner"))
+            total_rgs = len(tagging)
+
+            return jsonify({
+                "subscription_id": settings.subscription_id,
+                "total_resources": len(resources),
+                "resource_groups": rg_count,
+                "tagging": {
+                    "total": total_rgs,
+                    "with_support_owner": tagged,
+                    "compliance_pct": round(tagged / total_rgs * 100, 1) if total_rgs else 0,
+                    "non_compliant": [t["name"] for t in tagging if not t.get("supportOwner")],
+                },
+                "orphaned_disks": len(orphaned),
+                "public_ips": len(public_ips),
+                "resources_by_type": _count_by(resources, "type"),
+                "resources_by_rg": _count_by(resources, "resourceGroup"),
+            })
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
@@ -73,6 +129,66 @@ def create_app():
             "status": "healthy",
             "agents": list(settings.agents.keys()),
             "openai_endpoint": settings.openai_endpoint,
+            "subscription_id": settings.subscription_id,
         })
+
+    # ─── Helpers ────────────────────────────────────────────
+
+    def _gather_live_context() -> str:
+        """Gather real Azure data to use as agent context."""
+        scan = _gather_live_scan()
+        return json.dumps(scan, indent=2, default=str)
+
+    def _gather_live_scan() -> dict:
+        """Full scan of the Azure subscription."""
+        resources = azure_data.get_all_resources()
+        tagging = azure_data.get_tagging_compliance()
+        orphaned = azure_data.get_orphaned_disks()
+        public_ips = azure_data.get_public_endpoints()
+
+        rg_count = len(set(r.get("resourceGroup", "") for r in resources))
+        tagged = sum(1 for t in tagging if t.get("supportOwner"))
+        total_rgs = len(tagging)
+
+        health = []
+        try:
+            health = azure_data.get_resource_health()
+        except Exception:
+            pass
+
+        activity_errors = []
+        try:
+            activity_errors = azure_data.get_recent_activity_errors(hours=24)
+        except Exception:
+            pass
+
+        return {
+            "subscription_id": settings.subscription_id,
+            "scan_type": "live",
+            "resources": {
+                "total": len(resources),
+                "resource_groups": rg_count,
+                "by_type": _count_by(resources, "type"),
+                "by_rg": _count_by(resources, "resourceGroup"),
+                "details": resources[:100],  # cap to avoid token overload
+            },
+            "tagging_compliance": {
+                "total_rgs": total_rgs,
+                "with_support_owner": tagged,
+                "compliance_pct": round(tagged / total_rgs * 100, 1) if total_rgs else 0,
+                "non_compliant_rgs": [t["name"] for t in tagging if not t.get("supportOwner")],
+            },
+            "orphaned_disks": orphaned,
+            "public_endpoints": public_ips,
+            "resource_health": health[:50],
+            "recent_failures": activity_errors[:20],
+        }
+
+    def _count_by(items: list[dict], key: str) -> dict:
+        counts = {}
+        for item in items:
+            val = item.get(key, "unknown")
+            counts[val] = counts.get(val, 0) + 1
+        return dict(sorted(counts.items(), key=lambda x: -x[1]))
 
     return app

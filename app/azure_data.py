@@ -8,7 +8,7 @@ the target subscription.
 from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
 from azure.mgmt.resourcegraph import ResourceGraphClient
 from azure.mgmt.resourcegraph.models import QueryRequest
-from azure.monitor.query import LogsQueryClient, MetricsQueryClient
+from azure.monitor.query import LogsQueryClient
 from datetime import timedelta
 import os
 import json
@@ -131,18 +131,32 @@ def get_deployment_failures(hours: int = 24) -> list[dict]:
 
 def get_vm_metrics_summary(resource_id: str, metric: str = "Percentage CPU",
                            hours: int = 168) -> dict:
-    """Get avg/max/min for a VM metric over the specified window."""
+    """Get avg/max/min for a VM metric over the specified window.
+    Uses azure-mgmt-monitor since azure-monitor-query v2 removed MetricsQueryClient.
+    """
+    from azure.mgmt.monitor import MonitorManagementClient
+    from datetime import datetime, timezone
+
     cred = _credential()
-    client = MetricsQueryClient(cred)
-    response = client.query_resource(
-        resource_id,
-        metric_names=[metric],
-        timespan=timedelta(hours=hours),
-        granularity=timedelta(hours=1),
+    # Extract subscription ID from the resource ID
+    parts = resource_id.split("/")
+    sub_id = parts[2] if len(parts) > 2 else _subscription_id()
+    client = MonitorManagementClient(cred, sub_id)
+
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(hours=hours)
+    timespan = f"{start.isoformat()}/{end.isoformat()}"
+
+    response = client.metrics.list(
+        resource_uri=resource_id,
+        metricnames=metric,
+        timespan=timespan,
+        interval=timedelta(hours=1),
+        aggregation="Average",
     )
 
     values = []
-    for m in response.metrics:
+    for m in response.value:
         for ts in m.timeseries:
             for dp in ts.data:
                 if dp.average is not None:

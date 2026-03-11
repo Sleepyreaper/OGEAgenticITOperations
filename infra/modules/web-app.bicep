@@ -33,7 +33,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
     httpsOnly: true
     keyVaultReferenceIdentity: managedIdentityId
     siteConfig: {
-      linuxFxVersion: 'PYTHON|3.12'
+      linuxFxVersion: 'PYTHON|3.13'
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       vnetRouteAllEnabled: true

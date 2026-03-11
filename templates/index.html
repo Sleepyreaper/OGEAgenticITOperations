@@ -70,6 +70,12 @@
         </div>
       </div>
       <div class="flex items-center gap-3">
+        <!-- Demo/Live toggle -->
+        <div class="flex items-center bg-oge-gray-800 rounded-lg p-0.5">
+          <button onclick="setMode('demo')" id="mode-demo" class="mode-btn px-3 py-1 rounded-md text-xs font-medium bg-oge-gray-600 text-white">Demo Data</button>
+          <button onclick="setMode('live')" id="mode-live" class="mode-btn px-3 py-1 rounded-md text-xs font-medium text-oge-gray-400 hover:text-white">Live Azure</button>
+        </div>
+        <div class="h-4 w-px bg-oge-gray-700"></div>
         <div class="flex items-center gap-2 text-xs text-oge-gray-300">
           <span class="pulse-dot w-2 h-2 bg-green-400 rounded-full inline-block"></span>
           All agents online
@@ -88,9 +94,12 @@
       <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         <div>
           <h1 class="text-xl font-bold text-oge-black">Environment Overview</h1>
-          <p class="text-sm text-oge-gray-400 mt-0.5">OGE-CloudOps-Production — Real-time operational intelligence</p>
+          <p class="text-sm text-oge-gray-400 mt-0.5" id="dashboard-subtitle">OGE-CloudOps-Production — Demo data</p>
         </div>
-        <div class="text-xs text-oge-gray-400">Last updated: <span id="last-updated">just now</span></div>
+        <div class="flex items-center gap-3">
+          <span id="mode-badge" class="text-xs bg-amber-100 text-amber-700 font-medium px-2.5 py-1 rounded-full">DEMO MODE</span>
+          <span class="text-xs text-oge-gray-400">Last updated: <span id="last-updated">just now</span></span>
+        </div>
       </div>
     </div>
 
@@ -485,6 +494,79 @@
       'Orchestrator': { bg: 'bg-oge-black', text: 'OC', border: 'border-oge-black', light: 'bg-oge-gray-50' },
     };
 
+    let currentMode = 'demo';
+    let liveData = null;
+
+    // ─── Mode Toggle ────────────────────────────────
+    function setMode(mode) {
+      currentMode = mode;
+      document.querySelectorAll('.mode-btn').forEach(el => {
+        el.classList.remove('bg-oge-gray-600', 'text-white');
+        el.classList.add('text-oge-gray-400');
+      });
+      const btn = document.getElementById('mode-' + mode);
+      btn.classList.add('bg-oge-gray-600', 'text-white');
+      btn.classList.remove('text-oge-gray-400');
+
+      const badge = document.getElementById('mode-badge');
+      const subtitle = document.getElementById('dashboard-subtitle');
+      if (mode === 'live') {
+        badge.textContent = 'LIVE';
+        badge.className = 'text-xs bg-green-100 text-green-700 font-medium px-2.5 py-1 rounded-full';
+        subtitle.textContent = 'Brad NonProd — Live Azure subscription data';
+        loadLiveDashboard();
+      } else {
+        badge.textContent = 'DEMO MODE';
+        badge.className = 'text-xs bg-amber-100 text-amber-700 font-medium px-2.5 py-1 rounded-full';
+        subtitle.textContent = 'OGE-CloudOps-Production — Demo data';
+        resetDemoDashboard();
+      }
+    }
+
+    async function loadLiveDashboard() {
+      const badge = document.getElementById('mode-badge');
+      badge.textContent = 'SCANNING...';
+      badge.className = 'text-xs bg-blue-100 text-blue-700 font-medium px-2.5 py-1 rounded-full animate-pulse';
+
+      try {
+        const resp = await fetch('/api/scan/overview');
+        const data = await resp.json();
+        if (data.error) { alert('Scan error: ' + data.error); setMode('demo'); return; }
+        liveData = data;
+        updateDashboardWithLive(data);
+        badge.textContent = 'LIVE';
+        badge.className = 'text-xs bg-green-100 text-green-700 font-medium px-2.5 py-1 rounded-full';
+      } catch (e) {
+        alert('Failed to connect to Azure: ' + e.message);
+        setMode('demo');
+      }
+    }
+
+    function updateDashboardWithLive(data) {
+      // Update KPI cards with live data
+      const cards = document.querySelectorAll('#view-dashboard .grid.grid-cols-5 > div');
+      if (cards[0]) {
+        cards[0].querySelector('.text-2xl').textContent = data.total_resources;
+        cards[0].querySelector('.text-xs:last-child').textContent = `across ${data.resource_groups} resource groups`;
+      }
+      if (cards[3]) {
+        cards[3].querySelector('.text-2xl').textContent = data.tagging.compliance_pct + '%';
+        cards[3].querySelector('.text-xs:last-child').textContent = `${data.tagging.non_compliant.length} RGs missing support-owner`;
+      }
+    }
+
+    function resetDemoDashboard() {
+      const cards = document.querySelectorAll('#view-dashboard .grid.grid-cols-5 > div');
+      if (cards[0]) {
+        cards[0].querySelector('.text-2xl').textContent = '847';
+        cards[0].querySelector('.text-xs:last-child').textContent = 'across 64 resource groups';
+      }
+      if (cards[3]) {
+        cards[3].querySelector('.text-2xl').textContent = '90.6%';
+        cards[3].querySelector('.text-xs:last-child').textContent = '6 RGs missing support-owner';
+      }
+    }
+
     // ─── Navigation ─────────────────────────────────
     function showView(view) {
       document.querySelectorAll('.view-content').forEach(el => el.classList.add('hidden'));
@@ -578,7 +660,7 @@
         const resp = await fetch('/api/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question }),
+          body: JSON.stringify({ question, mode: currentMode }),
         });
         const data = await resp.json();
         removeLoadingIndicator();
@@ -586,6 +668,11 @@
         if (data.error) {
           addMessage('assistant', 'Orchestrator', '⚠️ Error: ' + data.error);
           return;
+        }
+
+        // Show mode indicator in chat
+        if (data.mode === 'live') {
+          addMessage('assistant', 'Orchestrator', '🔵 **Running in LIVE mode** — querying your Azure subscription...');
         }
 
         renderCouncilResponse(data);
