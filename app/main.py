@@ -206,6 +206,13 @@ Be concise — working code, not an essay."""
             except Exception:
                 pass
 
+            # Insecure storage — public blob access
+            insecure_storage = []
+            try:
+                insecure_storage = azure_data.detect_insecure_storage(sub_id)
+            except Exception:
+                pass
+
             advisor_by_category = {}
             for r in advisor_recs:
                 cat = r.get("category", "Unknown")
@@ -235,6 +242,7 @@ Be concise — working code, not an essay."""
                     "recommendations": advisor_recs[:20],
                 },
                 "security_drift": security_drift,
+                "insecure_storage": insecure_storage,
             })
         except Exception as e:
             traceback.print_exc()

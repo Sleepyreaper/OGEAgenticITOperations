@@ -611,6 +611,12 @@
         issuesHtml += buildIssueCard('CRITICAL', `🔴 ${data.security_drift.length} dangerous NSG rules detected`, 'Inbound rules allowing traffic from ANY source on dangerous ports: ' + driftItems, 'CRITICAL SECURITY: We found ' + data.security_drift.length + ' NSG rules that open dangerous ports to the entire internet. Details: ' + driftItems + '. Analyze the risk and provide immediate remediation steps.');
       }
 
+      // Insecure storage — public blob access
+      if (data.insecure_storage && data.insecure_storage.length > 0) {
+        const storeNames = data.insecure_storage.map(s => s.name).join(', ');
+        issuesHtml += buildIssueCard('WARNING', `🔓 ${data.insecure_storage.length} storage account(s) allow public blob access`, 'These storage accounts could expose sensitive data: ' + storeNames, 'We found ' + data.insecure_storage.length + ' storage accounts with public blob access enabled: ' + storeNames + '. Analyze the risk — should these be private? What data could be exposed?');
+      }
+
       // Azure Advisor — platform-verified evidence
       if (data.advisor && data.advisor.total > 0) {
         const highImpact = data.advisor.high_impact || [];

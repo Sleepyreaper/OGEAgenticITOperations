@@ -136,7 +136,7 @@ def get_advisor_recommendations(subscription_id: str = None) -> list[dict]:
 
 def detect_security_drift(subscription_id: str = None) -> list[dict]:
     """Find open inbound NSG rules allowing traffic from any source (*) on dangerous ports."""
-    return query_resource_graph(
+    results = query_resource_graph(
         "Resources | where type =~ 'Microsoft.Network/networkSecurityGroups' "
         "| mvexpand rules=properties.securityRules "
         "| where rules.properties.access == 'Allow' "
@@ -146,6 +146,17 @@ def detect_security_drift(subscription_id: str = None) -> list[dict]:
         "| project nsgName=name, ruleName=tostring(rules.name), "
         "port=tostring(rules.properties.destinationPortRange), "
         "priority=toint(rules.properties.priority), resourceGroup",
+        subscription_id,
+    )
+    return results
+
+
+def detect_insecure_storage(subscription_id: str = None) -> list[dict]:
+    """Find storage accounts with public blob access enabled."""
+    return query_resource_graph(
+        "Resources | where type =~ 'Microsoft.Storage/storageAccounts' "
+        "| where properties.allowBlobPublicAccess == true "
+        "| project name, resourceGroup, location, publicAccess=properties.allowBlobPublicAccess",
         subscription_id,
     )
 
