@@ -224,7 +224,7 @@ OVERVIEW_QUESTION = "Give me a full environment health overview. What's the stat
 DEMO_SCENARIOS = {
     "vm_sizing": {
         "title": "Why is this VM so big?",
-        "subtitle": "Cost vs. operational requirements — the agents debate sizing decisions",
+        "subtitle": "🛢️ Barrel Counter vs 🔧 The Roughneck — the crew debates sizing",
         "icon": "server",
         "question": VM_SIZING_QUESTION,
         "data": VM_SIZING_DATA,
@@ -232,7 +232,7 @@ DEMO_SCENARIOS = {
     },
     "deployment_failure": {
         "title": "My deployment failed",
-        "subtitle": "Diagnosing failures without elevated access",
+        "subtitle": "🔄 Turnaround diagnoses failures without elevated access",
         "icon": "alert-triangle",
         "question": DEPLOYMENT_FAILURE_QUESTION,
         "data": DEPLOYMENT_FAILURE_DATA,
@@ -240,23 +240,23 @@ DEMO_SCENARIOS = {
     },
     "waste_analysis": {
         "title": "Where are we wasting money?",
-        "subtitle": "Full subscription waste analysis with opposing perspectives",
+        "subtitle": "🛢️ Barrel Counter finds waste, 🔧 The Roughneck defends spending",
         "icon": "dollar-sign",
         "question": WASTE_QUESTION,
         "data": WASTE_ANALYSIS_DATA,
         "agents": ["cost_sentinel", "standards_architect"],
     },
     "scout_alert": {
-        "title": "Proactive environment scan",
-        "subtitle": "Scout detects issues before they become incidents",
+        "title": "🔥 Light the Flare Stack",
+        "subtitle": "Flare Stack scans for issues before they become incidents",
         "icon": "radar",
         "question": SCOUT_ALERT_QUESTION,
         "data": SCOUT_ALERT_DATA,
         "agents": ["scout"],
     },
     "environment_overview": {
-        "title": "Environment health overview",
-        "subtitle": "Full subscription status — health, cost, compliance",
+        "title": "Full environment health check",
+        "subtitle": "All crew members analyze health, cost, compliance, and risks",
         "icon": "activity",
         "question": OVERVIEW_QUESTION,
         "data": ENVIRONMENT_OVERVIEW_DATA,
