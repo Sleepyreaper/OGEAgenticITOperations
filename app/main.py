@@ -179,65 +179,24 @@ Be concise — working code, not an essay."""
 
     @app.route("/api/scan/overview", methods=["GET"])
     def scan_overview():
-        """Multi-subscription scan for dashboard KPI cards."""
+        """Scan the current subscription for dashboard KPI cards."""
         try:
-            # Discover all accessible subscriptions
-            subs = []
-            try:
-                subs = azure_data.list_subscriptions()
-            except Exception:
-                subs = [{"id": settings.subscription_id, "name": "Current", "state": "Enabled"}]
-
-            enabled_subs = [s for s in subs if s.get("state") == "Enabled"]
-            sub_ids = [s["id"] for s in enabled_subs if s.get("id")]
-
-            # Group by tenant
-            tenants = {}
-            for s in enabled_subs:
-                tid = s.get("tenant", "unknown")
-                if tid not in tenants:
-                    tenants[tid] = []
-                tenants[tid].append(s.get("name", s["id"][:8]))
-
-            # Query Resource Graph — try all subs, fall back to current sub only
-            resources = []
-            try:
-                resources = azure_data.get_all_resources(subscription_ids=sub_ids)
-            except Exception:
-                # Bulk query failed (cross-tenant access denied) — fall back to current sub
-                try:
-                    resources = azure_data.get_all_resources(subscription_id=settings.subscription_id)
-                except Exception:
-                    pass
-
-            tagging = azure_data.get_tagging_compliance()
-            orphaned = azure_data.get_orphaned_disks()
-            public_ips = azure_data.get_public_endpoints()
-            tagging = azure_data.get_tagging_compliance()
-            orphaned = azure_data.get_orphaned_disks()
-            public_ips = azure_data.get_public_endpoints()
+            sub_id = settings.subscription_id
+            resources = azure_data.get_all_resources(subscription_id=sub_id)
+            tagging = azure_data.get_tagging_compliance(subscription_id=sub_id)
+            orphaned = azure_data.get_orphaned_disks(subscription_id=sub_id)
+            public_ips = azure_data.get_public_endpoints(subscription_id=sub_id)
 
             rg_count = len(set(r.get("resourceGroup", "") for r in resources))
             tagged = sum(1 for t in tagging if t.get("supportOwner"))
             total_rgs = len(tagging)
-
-            # Resources per subscription
-            resources_by_sub = {}
-            for r in resources:
-                sub_id = r.get("subscriptionId", "unknown")
-                sub_name = next((s["name"] for s in enabled_subs if s["id"] == sub_id), sub_id[:8])
-                resources_by_sub[sub_name] = resources_by_sub.get(sub_name, 0) + 1
+            findings = len(orphaned) + len(public_ips) + len([t for t in tagging if not t.get("supportOwner")])
 
             return jsonify({
-                "subscriptions": {
-                    "total_accessible": len(enabled_subs),
-                    "with_resources": len(resources_by_sub),
-                    "tenants": len(tenants),
-                    "tenant_breakdown": {tid: len(names) for tid, names in tenants.items()},
-                    "list": [{"name": s["name"], "id": s["id"], "resources": resources_by_sub.get(s["name"], 0)} for s in enabled_subs[:30]],
-                },
+                "subscription_id": sub_id,
                 "total_resources": len(resources),
                 "resource_groups": rg_count,
+                "findings": findings,
                 "tagging": {
                     "total": total_rgs,
                     "with_support_owner": tagged,
@@ -245,10 +204,11 @@ Be concise — working code, not an essay."""
                     "non_compliant": [t["name"] for t in tagging if not t.get("supportOwner")],
                 },
                 "orphaned_disks": len(orphaned),
+                "orphaned_disk_details": orphaned,
                 "public_ips": len(public_ips),
+                "public_ip_details": public_ips,
                 "resources_by_type": _count_by(resources, "type"),
                 "resources_by_rg": _count_by(resources, "resourceGroup"),
-                "resources_by_sub": resources_by_sub,
             })
         except Exception as e:
             traceback.print_exc()

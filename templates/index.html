@@ -553,13 +553,11 @@
       document.getElementById('kpi-resources-count').textContent = data.total_resources;
       document.getElementById('kpi-resources-detail').textContent = `across ${data.resource_groups} RGs in ${data.subscriptions ? data.subscriptions.with_resources : 1} sub(s)`;
 
-      // KPI: Health — show subscription coverage
-      if (data.subscriptions) {
-        document.getElementById('kpi-health-pct').textContent = data.subscriptions.total_accessible;
-        document.getElementById('kpi-health').querySelector('.text-xs:first-child').textContent = 'SUBSCRIPTIONS';
-        const tenantCount = data.subscriptions.tenants || 1;
-        document.getElementById('kpi-health-detail').innerHTML = `<span class="text-green-600 font-medium">${data.subscriptions.with_resources} with resources</span> · ${tenantCount} tenant(s)`;
-      }
+      // KPI: Health — show findings count
+      const findings = data.findings || (data.orphaned_disks + data.public_ips + data.tagging.non_compliant.length);
+      document.getElementById('kpi-health-pct').textContent = findings;
+      document.getElementById('kpi-health').querySelector('.text-xs:first-child').textContent = 'FINDINGS';
+      document.getElementById('kpi-health-detail').innerHTML = `<span class="text-amber-500 font-medium">${data.public_ips} public IPs</span> · <span class="text-red-500 font-medium">${data.orphaned_disks} orphaned disks</span>`;
 
       // KPI: Spend — show resource types
       document.getElementById('kpi-spend-amount').textContent = Object.keys(data.resources_by_type).length;
