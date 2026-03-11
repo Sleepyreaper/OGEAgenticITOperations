@@ -132,6 +132,67 @@ def get_advisor_recommendations(subscription_id: str = None) -> list[dict]:
     return recs
 
 
+# ─── Security Drift Detection (near-real-time via Resource Graph) ─
+
+def detect_security_drift(subscription_id: str = None) -> list[dict]:
+    """Find open inbound NSG rules allowing traffic from any source (*) on dangerous ports."""
+    return query_resource_graph(
+        "Resources | where type =~ 'Microsoft.Network/networkSecurityGroups' "
+        "| mvexpand rules=properties.securityRules "
+        "| where rules.properties.access == 'Allow' "
+        "and rules.properties.direction == 'Inbound' "
+        "and rules.properties.sourceAddressPrefix == '*' "
+        "and rules.properties.destinationPortRange in ('22', '3389', '445', '1433', '3306', '5432', '*') "
+        "| project nsgName=name, ruleName=tostring(rules.name), "
+        "port=tostring(rules.properties.destinationPortRange), "
+        "priority=toint(rules.properties.priority), resourceGroup",
+        subscription_id,
+    )
+
+
+# ─── Chaos / Demo Functions ─────────────────────────────────────
+
+def create_chaos_nsg_rule(resource_group: str = "OGE_Envisioning",
+                          nsg_name: str = "ogeops-nsg-pe") -> dict:
+    """Create a deliberately bad NSG rule — SSH open to the world."""
+    from azure.mgmt.network import NetworkManagementClient
+    cred = _credential()
+    sub = _subscription_id()
+    client = NetworkManagementClient(cred, sub)
+    rule = client.security_rules.begin_create_or_update(
+        resource_group, nsg_name, "chaos-allow-ssh-from-anywhere",
+        {
+            "properties": {
+                "protocol": "Tcp",
+                "source_address_prefix": "*",
+                "source_port_range": "*",
+                "destination_address_prefix": "*",
+                "destination_port_range": "22",
+                "access": "Allow",
+                "direction": "Inbound",
+                "priority": 100,
+            }
+        }
+    ).result()
+    return {"rule_name": rule.name, "status": "created", "port": "22", "source": "*"}
+
+
+def cleanup_chaos_nsg_rule(resource_group: str = "OGE_Envisioning",
+                            nsg_name: str = "ogeops-nsg-pe") -> dict:
+    """Remove the chaos NSG rule."""
+    from azure.mgmt.network import NetworkManagementClient
+    cred = _credential()
+    sub = _subscription_id()
+    client = NetworkManagementClient(cred, sub)
+    try:
+        client.security_rules.begin_delete(
+            resource_group, nsg_name, "chaos-allow-ssh-from-anywhere"
+        ).result()
+        return {"status": "cleaned_up"}
+    except Exception:
+        return {"status": "already_clean"}
+
+
 # ─── Log Analytics ───────────────────────────────────────────────
 
 def query_logs(query: str, workspace_id: str = None, timespan: timedelta = None) -> list[dict]:

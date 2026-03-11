@@ -199,6 +199,13 @@ Be concise — working code, not an essay."""
             except Exception:
                 pass
 
+            # Security drift — dangerous open NSG rules
+            security_drift = []
+            try:
+                security_drift = azure_data.detect_security_drift(sub_id)
+            except Exception:
+                pass
+
             advisor_by_category = {}
             for r in advisor_recs:
                 cat = r.get("category", "Unknown")
@@ -227,6 +234,7 @@ Be concise — working code, not an essay."""
                     "high_impact": [r for r in advisor_recs if r.get("impact") == "High"][:10],
                     "recommendations": advisor_recs[:20],
                 },
+                "security_drift": security_drift,
             })
         except Exception as e:
             traceback.print_exc()
@@ -240,6 +248,37 @@ Be concise — working code, not an essay."""
             "openai_endpoint": settings.openai_endpoint,
             "subscription_id": settings.subscription_id,
         })
+
+    # ─── Chaos Demo ─────────────────────────────────────────
+
+    @app.route("/api/chaos/create", methods=["POST"])
+    def chaos_create():
+        """Create a security problem — opens SSH to the world on an NSG."""
+        try:
+            result = azure_data.create_chaos_nsg_rule()
+            return jsonify({"status": "chaos_created", "detail": result})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/chaos/cleanup", methods=["POST"])
+    def chaos_cleanup():
+        """Clean up the chaos rule."""
+        try:
+            result = azure_data.cleanup_chaos_nsg_rule()
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/scan/security", methods=["GET"])
+    def scan_security():
+        """Quick security drift scan — checks for open dangerous ports."""
+        try:
+            drift = azure_data.detect_security_drift(settings.subscription_id)
+            return jsonify({"drift_findings": drift, "count": len(drift)})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
 
     # ─── Helpers ────────────────────────────────────────────
 

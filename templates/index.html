@@ -229,6 +229,17 @@
 
         <!-- Right: Quick actions & demos -->
         <div class="space-y-4">
+          <!-- Chaos Demo -->
+          <h2 class="text-sm font-bold text-oge-red uppercase tracking-wider">⚡ Live Chaos Demo</h2>
+          <div class="bg-oge-black rounded-xl p-4 text-white">
+            <p class="text-xs text-oge-gray-300 mb-3">Create a real security problem in Azure and watch Flare Stack detect it in seconds.</p>
+            <div class="flex gap-2">
+              <button onclick="runChaos()" id="chaos-btn" class="flex-1 px-3 py-2 bg-oge-red text-white rounded-lg text-xs font-bold hover:bg-red-700">💥 Do Something Stupid</button>
+              <button onclick="cleanupChaos()" id="cleanup-btn" class="px-3 py-2 bg-oge-gray-700 text-oge-gray-300 rounded-lg text-xs hover:bg-oge-gray-600">🧹 Clean Up</button>
+            </div>
+            <div id="chaos-status" class="text-xs text-oge-gray-400 mt-2 hidden"></div>
+          </div>
+
           <h2 class="text-sm font-bold text-oge-gray-500 uppercase tracking-wider">Demo Scenarios</h2>
           {% for id, demo in demos.items() %}
           <button onclick="runDemo('{{ id }}')" class="scenario-btn w-full text-left bg-white rounded-xl border border-oge-gray-100 p-4 hover:border-oge-red group">
@@ -594,6 +605,12 @@
       const typeCount = Object.keys(data.resources_by_type).length;
       issuesHtml += buildIssueCard('INFO', `📊 ${data.total_resources} resources across ${typeCount} types`, data.resource_groups + ' resource groups discovered — click to have the crew analyze your environment', 'Give me a full analysis of this Azure subscription. We have ' + data.total_resources + ' resources across ' + data.resource_groups + ' resource groups. What stands out? What should we investigate?');
 
+      // Security drift — dangerous open ports
+      if (data.security_drift && data.security_drift.length > 0) {
+        const driftItems = data.security_drift.map(d => `${d.nsgName}: port ${d.port} open to *`).join(', ');
+        issuesHtml += buildIssueCard('CRITICAL', `🔴 ${data.security_drift.length} dangerous NSG rules detected`, 'Inbound rules allowing traffic from ANY source on dangerous ports: ' + driftItems, 'CRITICAL SECURITY: We found ' + data.security_drift.length + ' NSG rules that open dangerous ports to the entire internet. Details: ' + driftItems + '. Analyze the risk and provide immediate remediation steps.');
+      }
+
       // Azure Advisor — platform-verified evidence
       if (data.advisor && data.advisor.total > 0) {
         const highImpact = data.advisor.high_impact || [];
@@ -932,6 +949,58 @@
     }
 
     function investigateIssue(scenarioId) { runDemo(scenarioId); }
+
+    // ─── Chaos Demo ───────────────────────────────
+    async function runChaos() {
+      const btn = document.getElementById('chaos-btn');
+      const status = document.getElementById('chaos-status');
+      btn.disabled = true;
+      btn.textContent = '💥 Creating problem...';
+      status.classList.remove('hidden');
+      status.textContent = '⏳ Opening SSH (port 22) to the entire internet on ogeops-nsg-pe...';
+
+      try {
+        const resp = await fetch('/api/chaos/create', { method: 'POST' });
+        const data = await resp.json();
+        if (data.error) { status.textContent = '❌ ' + data.error; return; }
+
+        status.textContent = '✅ Bad NSG rule created. Waiting 10 seconds for Resource Graph...';
+        btn.textContent = '💥 Problem Created';
+
+        // Wait then scan for the drift
+        await new Promise(r => setTimeout(r, 10000));
+        status.textContent = '🔍 Scanning for security drift...';
+
+        const scanResp = await fetch('/api/scan/security');
+        const scanData = await scanResp.json();
+
+        if (scanData.count > 0) {
+          status.innerHTML = '🔴 <strong>DETECTED in ~10 seconds!</strong> Found ' + scanData.count + ' dangerous NSG rule(s). Click below to have Flare Stack analyze it.';
+          // Auto-ask the crew
+          askCouncil('URGENT: Flare Stack detected a security drift — an NSG rule was just created that opens SSH (port 22) to the entire internet (source: *) on ' + scanData.drift_findings[0].nsgName + ' in ' + scanData.drift_findings[0].resourceGroup + '. This was detected within 10 seconds of creation. Analyze the risk and recommend immediate remediation.');
+        } else {
+          status.textContent = '⏳ Not detected yet — try scanning again in a few seconds.';
+        }
+      } catch (e) {
+        status.textContent = '❌ Error: ' + e.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '💥 Do Something Stupid';
+      }
+    }
+
+    async function cleanupChaos() {
+      const status = document.getElementById('chaos-status');
+      status.classList.remove('hidden');
+      status.textContent = '🧹 Cleaning up bad NSG rule...';
+      try {
+        await fetch('/api/chaos/cleanup', { method: 'POST' });
+        status.textContent = '✅ Chaos rule removed. Environment is clean.';
+        setTimeout(() => { status.classList.add('hidden'); }, 3000);
+      } catch (e) {
+        status.textContent = '❌ ' + e.message;
+      }
+    }
 
     function addRemediationButton() {
       const chat = document.getElementById('chat-messages');
