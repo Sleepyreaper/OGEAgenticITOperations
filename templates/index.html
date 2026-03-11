@@ -556,9 +556,9 @@
       // KPI: Health — show subscription coverage
       if (data.subscriptions) {
         document.getElementById('kpi-health-pct').textContent = data.subscriptions.total_accessible;
-        document.getElementById('kpi-health-pct').previousElementSibling?.remove();
         document.getElementById('kpi-health').querySelector('.text-xs:first-child').textContent = 'SUBSCRIPTIONS';
-        document.getElementById('kpi-health-detail').innerHTML = `<span class="text-green-600 font-medium">${data.subscriptions.with_resources} with resources</span> · ${data.subscriptions.total_accessible} accessible`;
+        const tenantCount = data.subscriptions.tenants || 1;
+        document.getElementById('kpi-health-detail').innerHTML = `<span class="text-green-600 font-medium">${data.subscriptions.with_resources} with resources</span> · ${tenantCount} tenant(s)`;
       }
 
       // KPI: Spend — show resource types

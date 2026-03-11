@@ -42,6 +42,7 @@ def list_subscriptions() -> list[dict]:
             "id": sub.subscription_id,
             "name": sub.display_name,
             "state": sub.state.value if sub.state else "Unknown",
+            "tenant": sub.tenant_id,
         })
     return subs
 

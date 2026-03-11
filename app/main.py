@@ -186,14 +186,33 @@ Be concise — working code, not an essay."""
             try:
                 subs = azure_data.list_subscriptions()
             except Exception:
-                # Fallback to single sub if listing fails
                 subs = [{"id": settings.subscription_id, "name": "Current", "state": "Enabled"}]
 
             enabled_subs = [s for s in subs if s.get("state") == "Enabled"]
             sub_ids = [s["id"] for s in enabled_subs if s.get("id")]
 
-            # Query across all subs
-            resources = azure_data.get_all_resources(subscription_ids=sub_ids)
+            # Group by tenant
+            tenants = {}
+            for s in enabled_subs:
+                tid = s.get("tenant", "unknown")
+                if tid not in tenants:
+                    tenants[tid] = []
+                tenants[tid].append(s.get("name", s["id"][:8]))
+
+            # Query Resource Graph — try all subs, fall back to current sub only
+            resources = []
+            try:
+                resources = azure_data.get_all_resources(subscription_ids=sub_ids)
+            except Exception:
+                # Bulk query failed (cross-tenant access denied) — fall back to current sub
+                try:
+                    resources = azure_data.get_all_resources(subscription_id=settings.subscription_id)
+                except Exception:
+                    pass
+
+            tagging = azure_data.get_tagging_compliance()
+            orphaned = azure_data.get_orphaned_disks()
+            public_ips = azure_data.get_public_endpoints()
             tagging = azure_data.get_tagging_compliance()
             orphaned = azure_data.get_orphaned_disks()
             public_ips = azure_data.get_public_endpoints()
@@ -213,7 +232,9 @@ Be concise — working code, not an essay."""
                 "subscriptions": {
                     "total_accessible": len(enabled_subs),
                     "with_resources": len(resources_by_sub),
-                    "list": [{"name": s["name"], "id": s["id"], "resources": resources_by_sub.get(s["name"], 0)} for s in enabled_subs[:20]],
+                    "tenants": len(tenants),
+                    "tenant_breakdown": {tid: len(names) for tid, names in tenants.items()},
+                    "list": [{"name": s["name"], "id": s["id"], "resources": resources_by_sub.get(s["name"], 0)} for s in enabled_subs[:30]],
                 },
                 "total_resources": len(resources),
                 "resource_groups": rg_count,
