@@ -192,6 +192,18 @@ Be concise — working code, not an essay."""
             total_rgs = len(tagging)
             findings = len(orphaned) + len(public_ips) + len([t for t in tagging if not t.get("supportOwner")])
 
+            # Azure Advisor — platform-verified recommendations (the evidence)
+            advisor_recs = []
+            try:
+                advisor_recs = azure_data.get_advisor_recommendations(sub_id)
+            except Exception:
+                pass
+
+            advisor_by_category = {}
+            for r in advisor_recs:
+                cat = r.get("category", "Unknown")
+                advisor_by_category[cat] = advisor_by_category.get(cat, 0) + 1
+
             return jsonify({
                 "subscription_id": sub_id,
                 "total_resources": len(resources),
@@ -209,6 +221,12 @@ Be concise — working code, not an essay."""
                 "public_ip_details": public_ips,
                 "resources_by_type": _count_by(resources, "type"),
                 "resources_by_rg": _count_by(resources, "resourceGroup"),
+                "advisor": {
+                    "total": len(advisor_recs),
+                    "by_category": advisor_by_category,
+                    "high_impact": [r for r in advisor_recs if r.get("impact") == "High"][:10],
+                    "recommendations": advisor_recs[:20],
+                },
             })
         except Exception as e:
             traceback.print_exc()

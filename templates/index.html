@@ -554,10 +554,11 @@
       document.getElementById('kpi-resources-detail').textContent = `across ${data.resource_groups} RGs in ${data.subscriptions ? data.subscriptions.with_resources : 1} sub(s)`;
 
       // KPI: Health — show findings count
-      const findings = data.findings || (data.orphaned_disks + data.public_ips + data.tagging.non_compliant.length);
-      document.getElementById('kpi-health-pct').textContent = findings;
+      const advisorCount = data.advisor ? data.advisor.total : 0;
+      const totalFindings = (data.findings || 0) + advisorCount;
+      document.getElementById('kpi-health-pct').textContent = totalFindings;
       document.getElementById('kpi-health').querySelector('.text-xs:first-child').textContent = 'FINDINGS';
-      document.getElementById('kpi-health-detail').innerHTML = `<span class="text-amber-500 font-medium">${data.public_ips} public IPs</span> · <span class="text-red-500 font-medium">${data.orphaned_disks} orphaned disks</span>`;
+      document.getElementById('kpi-health-detail').innerHTML = `<span class="text-oge-red font-medium">${advisorCount} Advisor</span> · <span class="text-amber-500 font-medium">${data.public_ips} public IPs</span>`;
 
       // KPI: Spend — show resource types
       document.getElementById('kpi-spend-amount').textContent = Object.keys(data.resources_by_type).length;
@@ -592,10 +593,24 @@
       // Resource type insights
       const typeCount = Object.keys(data.resources_by_type).length;
       issuesHtml += buildIssueCard('INFO', `📊 ${data.total_resources} resources across ${typeCount} types`, data.resource_groups + ' resource groups discovered — click to have the crew analyze your environment', 'Give me a full analysis of this Azure subscription. We have ' + data.total_resources + ' resources across ' + data.resource_groups + ' resource groups. What stands out? What should we investigate?');
-      
-      if (issuesHtml.split('buildIssueCard').length <= 1) {
-        issuesHtml += '<div class="bg-white rounded-xl border-l-4 border-green-500 border border-oge-gray-100 p-4"><div class="flex items-center gap-2"><span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded">ALL CLEAR</span><span class="font-semibold text-sm">No critical issues detected</span></div></div>';
+
+      // Azure Advisor — platform-verified evidence
+      if (data.advisor && data.advisor.total > 0) {
+        const highImpact = data.advisor.high_impact || [];
+        const cats = data.advisor.by_category || {};
+        let advisorDetail = Object.entries(cats).map(([k,v]) => `${k}: ${v}`).join(' · ');
+        issuesHtml += '<div class="bg-white rounded-xl border-l-4 border-indigo-500 border border-oge-gray-100 p-4 mb-3"><div class="flex items-start justify-between"><div><div class="flex items-center gap-2"><span class="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-bold rounded">AZURE ADVISOR</span><span class="font-semibold text-sm">✅ ' + data.advisor.total + ' platform-verified recommendations</span></div><p class="text-xs text-oge-gray-400 mt-1">' + advisorDetail + '</p>';
+        if (highImpact.length > 0) {
+          issuesHtml += '<ul class="text-xs text-oge-gray-500 mt-2 space-y-0.5">';
+          for (const rec of highImpact.slice(0, 3)) {
+            issuesHtml += '<li>• <strong>' + escapeHtml(rec.impact) + '</strong>: ' + escapeHtml(rec.solution || rec.problem) + '</li>';
+          }
+          if (highImpact.length > 3) issuesHtml += '<li class="text-oge-gray-400">...and ' + (highImpact.length - 3) + ' more high-impact items</li>';
+          issuesHtml += '</ul>';
+        }
+        issuesHtml += '</div><button onclick="askCouncil(\'Azure Advisor found ' + data.advisor.total + ' recommendations including ' + highImpact.length + ' high-impact. Analyze the top findings and tell me which to act on first.\')" class="text-xs bg-oge-black text-white px-3 py-1.5 rounded-lg hover:bg-oge-gray-700 flex-shrink-0 ml-3">Analyze</button></div></div>';
       }
+
       issuesDiv.innerHTML = issuesHtml;
 
       // Cost table — show resource groups by resource count

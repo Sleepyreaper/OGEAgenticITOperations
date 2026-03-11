@@ -112,6 +112,26 @@ def get_tagging_compliance(subscription_id: str = None) -> list[dict]:
     )
 
 
+# ─── Azure Advisor (platform-verified recommendations) ──────────
+
+def get_advisor_recommendations(subscription_id: str = None) -> list[dict]:
+    """Pull Azure Advisor recommendations — these are platform-verified, not AI guesses."""
+    from azure.mgmt.advisor import AdvisorManagementClient
+    cred = _credential()
+    sub = subscription_id or _subscription_id()
+    client = AdvisorManagementClient(cred, sub)
+    recs = []
+    for r in client.recommendations.list():
+        recs.append({
+            "category": r.category,
+            "impact": r.impact,
+            "problem": r.short_description.problem if r.short_description else "",
+            "solution": r.short_description.solution if r.short_description else "",
+            "resource": r.resource_metadata.resource_id if r.resource_metadata else "",
+        })
+    return recs
+
+
 # ─── Log Analytics ───────────────────────────────────────────────
 
 def query_logs(query: str, workspace_id: str = None, timespan: timedelta = None) -> list[dict]:
