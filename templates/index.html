@@ -297,7 +297,7 @@
         <!-- Messages -->
         <div id="chat-messages" class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <!-- Welcome message -->
-          <div class="flex gap-3 fade-in">
+          <div class="flex gap-3 fade-in" id="welcome-message">
             <div class="w-8 h-8 rounded-lg bg-oge-black flex items-center justify-center flex-shrink-0">
               <span class="text-sm">⚡</span>
             </div>
@@ -306,12 +306,14 @@
               <p class="text-sm text-oge-gray-600">Welcome to the OGE Ops Council. I'm <strong>Pipeline</strong> — I route your questions through the crew and deliver a unified take. The crew's on shift and ready:</p>
               <p class="text-sm text-oge-gray-500 mt-2">🛢️ <strong>Barrel Counter</strong> counts every dollar · 🔧 <strong>The Roughneck</strong> knows why things are built this way · 🔄 <strong>Turnaround</strong> diagnoses issues · 🔥 <strong>Flare Stack</strong> watches the horizon</p>
               <p class="text-sm text-oge-gray-600 mt-2">Try asking:</p>
-              <ul class="text-sm text-oge-gray-500 mt-1 space-y-1">
-                <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Why is oge-sap-batch-vm01 running on a D16s_v5? Can we save money?')">• "Why is this VM so big? Can we save money?"</li>
-                <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Our Terraform deployment to WebApp-Test-RG failed. What happened?')">• "Our Terraform deployment failed. What happened?"</li>
-                <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Where are we wasting money in our Azure subscription?')">• "Where are we wasting money?"</li>
-                <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Run a proactive environment scan.')">• "🔥 Light the Flare Stack — run a proactive scan."</li>
-              </ul>
+              <div id="suggested-questions">
+                <ul class="text-sm text-oge-gray-500 mt-1 space-y-1">
+                  <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Why is oge-sap-batch-vm01 running on a D16s_v5? Can we save money?')">• "Why is this VM so big? Can we save money?"</li>
+                  <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Our Terraform deployment to WebApp-Test-RG failed. What happened?')">• "Our Terraform deployment failed. What happened?"</li>
+                  <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Where are we wasting money in our Azure subscription?')">• "Where are we wasting money?"</li>
+                  <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Run a proactive environment scan.')">• "🔥 Light the Flare Stack — run a proactive scan."</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
@@ -537,6 +539,7 @@
         if (data.error) { alert('Scan error: ' + data.error); setMode('demo'); return; }
         liveData = data;
         updateDashboardWithLive(data);
+        updateSuggestedQuestions(data);
         badge.textContent = 'LIVE';
         badge.className = 'text-xs bg-green-100 text-green-700 font-medium px-2.5 py-1 rounded-full';
       } catch (e) {
@@ -618,6 +621,7 @@
       // Restore demo issues
       document.getElementById('issues-container').innerHTML = DEMO_ISSUES_HTML;
       document.getElementById('cost-table-container').innerHTML = DEMO_COST_TABLE_HTML;
+      resetSuggestedQuestions();
     }
 
     function buildIssueCard(severity, title, detail, question) {
@@ -628,6 +632,46 @@
     // Stash demo HTML on page load so we can restore it
     const DEMO_ISSUES_HTML = document.getElementById('issues-container').innerHTML;
     const DEMO_COST_TABLE_HTML = document.getElementById('cost-table-container').innerHTML;
+    const DEMO_QUESTIONS_HTML = document.getElementById('suggested-questions').innerHTML;
+
+    function updateSuggestedQuestions(data) {
+      const div = document.getElementById('suggested-questions');
+      if (!div) return;
+
+      let questions = [];
+      // Build questions from real data
+      const topRgs = Object.entries(data.resources_by_rg).slice(0, 2);
+      for (const [rg, count] of topRgs) {
+        questions.push({ text: `What's in ${rg}? (${count} resources) Are any oversized?`, q: `Analyze the resource group ${rg}. It has ${count} resources. What's in it, is anything oversized, and is there waste?` });
+      }
+      if (data.public_ips > 0) {
+        questions.push({ text: `🔥 We have ${data.public_ips} public IPs — should any be private?`, q: `We have ${data.public_ips} public IP addresses. Analyze whether these should be kept public or moved behind private endpoints for security.` });
+      }
+      if (data.tagging.non_compliant.length > 0) {
+        const rgs = data.tagging.non_compliant.slice(0, 3).join(', ');
+        questions.push({ text: `${data.tagging.non_compliant.length} RGs missing support-owner tags`, q: `These resource groups are missing support-owner tags: ${data.tagging.non_compliant.join(', ')}. What's the risk and how do we fix it?` });
+      }
+      const topTypes = Object.entries(data.resources_by_type).slice(0, 1);
+      if (topTypes.length) {
+        questions.push({ text: `🔥 Run a full Flare Stack scan on my environment`, q: `Run a full proactive scan of this Azure subscription. Check for security drift, orphaned resources, tagging compliance, and anything that looks off.` });
+      }
+
+      if (questions.length === 0) {
+        questions.push({ text: `🔥 Light the Flare Stack — scan my environment`, q: `Run a proactive environment scan of this Azure subscription.` });
+      }
+
+      let html = '<ul class="text-sm text-oge-gray-500 mt-1 space-y-1">';
+      for (const q of questions) {
+        html += `<li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('${q.q.replace(/'/g, "\\'")}')">• "${escapeHtml(q.text)}"</li>`;
+      }
+      html += '</ul>';
+      div.innerHTML = html;
+    }
+
+    function resetSuggestedQuestions() {
+      const div = document.getElementById('suggested-questions');
+      if (div) div.innerHTML = DEMO_QUESTIONS_HTML;
+    }
 
     // ─── Navigation ─────────────────────────────────
     function showView(view) {
@@ -645,7 +689,7 @@
     // ─── Chat ───────────────────────────────────────
     function addMessage(role, agentName, content) {
       const chat = document.getElementById('chat-messages');
-      const colors = AGENT_COLORS[agentName] || AGENT_COLORS['Orchestrator'];
+      const colors = AGENT_COLORS[agentName] || AGENT_COLORS['Pipeline'];
       const div = document.createElement('div');
       div.className = role === 'user' ? 'flex gap-3 justify-end fade-in' : 'flex gap-3 fade-in';
 
@@ -679,12 +723,12 @@
       div.className = 'flex gap-3 fade-in';
       div.innerHTML = `
         <div class="w-8 h-8 rounded-lg bg-oge-black flex items-center justify-center flex-shrink-0">
-          <span class="text-white text-xs font-bold">OC</span>
+          <span class="text-sm">⚡</span>
         </div>
         <div class="bg-oge-gray-50 rounded-xl rounded-tl-none px-4 py-3">
-          <div class="text-xs font-bold text-oge-red mb-1">Ops Council</div>
+          <div class="text-xs font-bold text-oge-red mb-1">Pipeline</div>
           <div class="flex items-center gap-2 text-sm text-oge-gray-400">
-            <span>Agents are analyzing</span>
+            <span>The crew is analyzing — this may take 30-60 seconds</span>
             <span class="typing-indicator"><span>●</span><span>●</span><span>●</span></span>
           </div>
         </div>`;
@@ -728,19 +772,19 @@
         removeLoadingIndicator();
 
         if (data.error) {
-          addMessage('assistant', 'Orchestrator', '⚠️ Error: ' + data.error);
+          addMessage('assistant', 'Pipeline', '⚠️ Error: ' + data.error);
           return;
         }
 
         // Show mode indicator in chat
         if (data.mode === 'live') {
-          addMessage('assistant', 'Orchestrator', '🔵 **Running in LIVE mode** — querying your Azure subscription...');
+          addMessage('assistant', 'Pipeline', '🔵 **Running in LIVE mode** — querying your Azure subscription...');
         }
 
         renderCouncilResponse(data);
       } catch (e) {
         removeLoadingIndicator();
-        addMessage('assistant', 'Orchestrator', '⚠️ Connection error: ' + e.message);
+        addMessage('assistant', 'Pipeline', '⚠️ Connection error: ' + e.message);
       } finally {
         document.getElementById('send-btn').disabled = false;
       }
@@ -760,14 +804,14 @@
         removeLoadingIndicator();
 
         if (data.error) {
-          addMessage('assistant', 'Orchestrator', '⚠️ Error: ' + data.error);
+          addMessage('assistant', 'Pipeline', '⚠️ Error: ' + data.error);
           return;
         }
 
         renderCouncilResponse(data);
       } catch (e) {
         removeLoadingIndicator();
-        addMessage('assistant', 'Orchestrator', '⚠️ Connection error: ' + e.message);
+        addMessage('assistant', 'Pipeline', '⚠️ Connection error: ' + e.message);
       } finally {
         document.getElementById('send-btn').disabled = false;
       }
