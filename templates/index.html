@@ -105,33 +105,33 @@
 
     <div class="max-w-7xl mx-auto px-6 py-6 space-y-6">
       <!-- KPI Cards -->
-      <div class="grid grid-cols-5 gap-4">
-        <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
+      <div class="grid grid-cols-5 gap-4" id="kpi-cards">
+        <div class="bg-white rounded-xl border border-oge-gray-100 p-5" id="kpi-resources">
           <div class="text-xs font-medium text-oge-gray-400 uppercase tracking-wider">Resources</div>
-          <div class="mt-2 text-2xl font-bold">847</div>
-          <div class="text-xs text-oge-gray-400 mt-1">across 64 resource groups</div>
+          <div class="mt-2 text-2xl font-bold" id="kpi-resources-count">847</div>
+          <div class="text-xs text-oge-gray-400 mt-1" id="kpi-resources-detail">across 64 resource groups</div>
         </div>
-        <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
+        <div class="bg-white rounded-xl border border-oge-gray-100 p-5" id="kpi-health">
           <div class="text-xs font-medium text-oge-gray-400 uppercase tracking-wider">Health</div>
           <div class="mt-2 flex items-baseline gap-2">
-            <span class="text-2xl font-bold text-green-600">95.8%</span>
+            <span class="text-2xl font-bold text-green-600" id="kpi-health-pct">95.8%</span>
           </div>
-          <div class="text-xs mt-1"><span class="text-amber-500 font-medium">8 degraded</span> · <span class="text-red-500 font-medium">2 unavailable</span></div>
+          <div class="text-xs mt-1" id="kpi-health-detail"><span class="text-amber-500 font-medium">8 degraded</span> · <span class="text-red-500 font-medium">2 unavailable</span></div>
         </div>
-        <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
+        <div class="bg-white rounded-xl border border-oge-gray-100 p-5" id="kpi-spend">
           <div class="text-xs font-medium text-oge-gray-400 uppercase tracking-wider">Monthly Spend</div>
-          <div class="mt-2 text-2xl font-bold">$42,675</div>
-          <div class="text-xs text-amber-500 font-medium mt-1">94.8% of $45K budget</div>
+          <div class="mt-2 text-2xl font-bold" id="kpi-spend-amount">$42,675</div>
+          <div class="text-xs text-amber-500 font-medium mt-1" id="kpi-spend-detail">94.8% of $45K budget</div>
         </div>
-        <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
+        <div class="bg-white rounded-xl border border-oge-gray-100 p-5" id="kpi-tags">
           <div class="text-xs font-medium text-oge-gray-400 uppercase tracking-wider">Tag Compliance</div>
-          <div class="mt-2 text-2xl font-bold">90.6%</div>
-          <div class="text-xs text-oge-gray-400 mt-1">6 RGs missing support-owner</div>
+          <div class="mt-2 text-2xl font-bold" id="kpi-tags-pct">90.6%</div>
+          <div class="text-xs text-oge-gray-400 mt-1" id="kpi-tags-detail">6 RGs missing support-owner</div>
         </div>
-        <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
-          <div class="text-xs font-medium text-oge-gray-400 uppercase tracking-wider">Active Alerts</div>
-          <div class="mt-2 text-2xl font-bold text-oge-red">3</div>
-          <div class="text-xs text-oge-gray-400 mt-1">1 critical · 2 warnings</div>
+        <div class="bg-white rounded-xl border border-oge-gray-100 p-5" id="kpi-alerts">
+          <div class="text-xs font-medium text-oge-gray-400 uppercase tracking-wider">Findings</div>
+          <div class="mt-2 text-2xl font-bold text-oge-red" id="kpi-alerts-count">3</div>
+          <div class="text-xs text-oge-gray-400 mt-1" id="kpi-alerts-detail">1 critical · 2 warnings</div>
         </div>
       </div>
 
@@ -140,8 +140,7 @@
         <!-- Left: Issues & Alerts -->
         <div class="col-span-2 space-y-4">
           <h2 class="text-sm font-bold text-oge-gray-500 uppercase tracking-wider">Active Issues</h2>
-
-          <!-- Critical -->
+          <div id="issues-container">
           <div class="bg-white rounded-xl border-l-4 border-red-500 border border-oge-gray-100 p-4">
             <div class="flex items-start justify-between">
               <div>
@@ -184,10 +183,11 @@
               <button onclick="askCouncil('The function app func-etl-legacy has stopped because the runtime is deprecated. What is the impact and how do we fix it?')" class="text-xs bg-oge-black text-white px-3 py-1.5 rounded-lg hover:bg-oge-gray-700">Investigate</button>
             </div>
           </div>
+          </div><!-- /issues-container -->
 
           <!-- Top cost centers -->
-          <h2 class="text-sm font-bold text-oge-gray-500 uppercase tracking-wider pt-2">Top Cost Centers</h2>
-          <div class="bg-white rounded-xl border border-oge-gray-100 p-4">
+          <h2 class="text-sm font-bold text-oge-gray-500 uppercase tracking-wider pt-2">Resource Groups by Size</h2>
+          <div id="cost-table-container" class="bg-white rounded-xl border border-oge-gray-100 p-4">
             <table class="w-full text-sm">
               <thead>
                 <tr class="text-left text-xs text-oge-gray-400 uppercase tracking-wider border-b border-oge-gray-100">
@@ -546,29 +546,88 @@
     }
 
     function updateDashboardWithLive(data) {
-      // Update KPI cards with live data
-      const cards = document.querySelectorAll('#view-dashboard .grid.grid-cols-5 > div');
-      if (cards[0]) {
-        cards[0].querySelector('.text-2xl').textContent = data.total_resources;
-        cards[0].querySelector('.text-xs:last-child').textContent = `across ${data.resource_groups} resource groups`;
+      // KPI: Resources
+      document.getElementById('kpi-resources-count').textContent = data.total_resources;
+      document.getElementById('kpi-resources-detail').textContent = `across ${data.resource_groups} resource groups`;
+
+      // KPI: Health — derive from public IPs and orphaned disks as findings
+      const findings = data.orphaned_disks + data.public_ips + data.tagging.non_compliant.length;
+      const healthPct = data.total_resources > 0 ? ((data.total_resources - findings) / data.total_resources * 100).toFixed(1) : '100';
+      document.getElementById('kpi-health-pct').textContent = healthPct + '%';
+      document.getElementById('kpi-health-detail').innerHTML = `<span class="text-amber-500 font-medium">${data.public_ips} public IPs</span> · <span class="text-red-500 font-medium">${data.orphaned_disks} orphaned disks</span>`;
+
+      // KPI: Spend (we don't have cost data yet from live, show resource breakdown)
+      const topType = Object.entries(data.resources_by_type).slice(0, 1);
+      document.getElementById('kpi-spend-amount').textContent = data.total_resources;
+      document.getElementById('kpi-spend-amount').previousElementSibling.textContent = 'RESOURCE TYPES';
+      document.getElementById('kpi-spend-detail').textContent = `${Object.keys(data.resources_by_type).length} distinct types deployed`;
+      document.getElementById('kpi-spend-detail').className = 'text-xs text-oge-gray-400 mt-1';
+
+      // KPI: Tags
+      document.getElementById('kpi-tags-pct').textContent = data.tagging.compliance_pct + '%';
+      document.getElementById('kpi-tags-detail').textContent = `${data.tagging.non_compliant.length} RGs missing support-owner`;
+
+      // KPI: Findings
+      document.getElementById('kpi-alerts-count').textContent = findings;
+      document.getElementById('kpi-alerts-detail').textContent = `${data.public_ips} public IPs · ${data.orphaned_disks} orphaned disks`;
+
+      // Issues section — populate from live findings
+      const issuesDiv = document.getElementById('issues-container');
+      let issuesHtml = '';
+
+      if (data.public_ips > 0) {
+        issuesHtml += buildIssueCard('WARNING', `${data.public_ips} Public IP addresses detected`, 'Public IPs found in subscription — review if any should be private-only', 'Investigate public IPs in the subscription');
       }
-      if (cards[3]) {
-        cards[3].querySelector('.text-2xl').textContent = data.tagging.compliance_pct + '%';
-        cards[3].querySelector('.text-xs:last-child').textContent = `${data.tagging.non_compliant.length} RGs missing support-owner`;
+      if (data.tagging.non_compliant.length > 0) {
+        issuesHtml += buildIssueCard('WARNING', `${data.tagging.non_compliant.length} RGs missing support-owner tag`, data.tagging.non_compliant.join(', '), 'These resource groups have no support-owner tag: ' + data.tagging.non_compliant.join(', ') + '. Who should own them?');
       }
+      if (data.orphaned_disks > 0) {
+        issuesHtml += buildIssueCard('INFO', `${data.orphaned_disks} orphaned disks`, 'Unattached managed disks found — potential waste', 'We have orphaned disks. Should we clean them up?');
+      }
+      if (issuesHtml === '') {
+        issuesHtml = '<div class="bg-white rounded-xl border-l-4 border-green-500 border border-oge-gray-100 p-4"><div class="flex items-center gap-2"><span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded">ALL CLEAR</span><span class="font-semibold text-sm">No critical issues detected</span></div></div>';
+      }
+      issuesDiv.innerHTML = issuesHtml;
+
+      // Cost table — show resource groups by resource count
+      const tableDiv = document.getElementById('cost-table-container');
+      const rgEntries = Object.entries(data.resources_by_rg).slice(0, 8);
+      let tableHtml = '<table class="w-full text-sm"><thead><tr class="text-left text-xs text-oge-gray-400 uppercase tracking-wider border-b border-oge-gray-100"><th class="pb-2 font-medium">Resource Group</th><th class="pb-2 font-medium text-right">Resources</th><th class="pb-2 font-medium text-right">% of Total</th></tr></thead><tbody class="divide-y divide-oge-gray-50">';
+      for (const [rg, count] of rgEntries) {
+        const pct = (count / data.total_resources * 100).toFixed(1);
+        tableHtml += `<tr class="hover:bg-oge-gray-50 cursor-pointer" onclick="askCouncil('Analyze the resource group ${rg}. What\\'s in it and is anything oversized?')"><td class="py-2.5 font-medium">${escapeHtml(rg)}</td><td class="py-2.5 text-right">${count}</td><td class="py-2.5 text-right">${pct}%</td></tr>`;
+      }
+      tableHtml += '</tbody></table>';
+      tableDiv.innerHTML = tableHtml;
     }
 
     function resetDemoDashboard() {
-      const cards = document.querySelectorAll('#view-dashboard .grid.grid-cols-5 > div');
-      if (cards[0]) {
-        cards[0].querySelector('.text-2xl').textContent = '847';
-        cards[0].querySelector('.text-xs:last-child').textContent = 'across 64 resource groups';
-      }
-      if (cards[3]) {
-        cards[3].querySelector('.text-2xl').textContent = '90.6%';
-        cards[3].querySelector('.text-xs:last-child').textContent = '6 RGs missing support-owner';
-      }
+      document.getElementById('kpi-resources-count').textContent = '847';
+      document.getElementById('kpi-resources-detail').textContent = 'across 64 resource groups';
+      document.getElementById('kpi-health-pct').textContent = '95.8%';
+      document.getElementById('kpi-health-detail').innerHTML = '<span class="text-amber-500 font-medium">8 degraded</span> · <span class="text-red-500 font-medium">2 unavailable</span>';
+      document.getElementById('kpi-spend-amount').textContent = '$42,675';
+      document.getElementById('kpi-spend-amount').previousElementSibling.textContent = 'MONTHLY SPEND';
+      document.getElementById('kpi-spend-detail').textContent = '94.8% of $45K budget';
+      document.getElementById('kpi-spend-detail').className = 'text-xs text-amber-500 font-medium mt-1';
+      document.getElementById('kpi-tags-pct').textContent = '90.6%';
+      document.getElementById('kpi-tags-detail').textContent = '6 RGs missing support-owner';
+      document.getElementById('kpi-alerts-count').textContent = '3';
+      document.getElementById('kpi-alerts-detail').textContent = '1 critical · 2 warnings';
+
+      // Restore demo issues
+      document.getElementById('issues-container').innerHTML = DEMO_ISSUES_HTML;
+      document.getElementById('cost-table-container').innerHTML = DEMO_COST_TABLE_HTML;
     }
+
+    function buildIssueCard(severity, title, detail, question) {
+      const colors = severity === 'CRITICAL' ? {border:'border-red-500',bg:'bg-red-100',text:'text-red-700'} : severity === 'WARNING' ? {border:'border-amber-400',bg:'bg-amber-100',text:'text-amber-700'} : {border:'border-blue-400',bg:'bg-blue-100',text:'text-blue-700'};
+      return `<div class="bg-white rounded-xl border-l-4 ${colors.border} border border-oge-gray-100 p-4 mb-3"><div class="flex items-start justify-between"><div><div class="flex items-center gap-2"><span class="px-2 py-0.5 ${colors.bg} ${colors.text} text-xs font-bold rounded">${severity}</span><span class="font-semibold text-sm">${escapeHtml(title)}</span></div><p class="text-xs text-oge-gray-400 mt-1">${escapeHtml(detail)}</p></div><button onclick="askCouncil('${question.replace(/'/g, "\\'")}')" class="text-xs bg-oge-black text-white px-3 py-1.5 rounded-lg hover:bg-oge-gray-700 flex-shrink-0 ml-3">Investigate</button></div></div>`;
+    }
+
+    // Stash demo HTML on page load so we can restore it
+    const DEMO_ISSUES_HTML = document.getElementById('issues-container').innerHTML;
+    const DEMO_COST_TABLE_HTML = document.getElementById('cost-table-container').innerHTML;
 
     // ─── Navigation ─────────────────────────────────
     function showView(view) {
