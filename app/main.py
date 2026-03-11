@@ -199,6 +199,13 @@ Be concise — working code, not an essay."""
             except Exception:
                 pass
 
+            # Deep intelligence — cross-resource correlation (the stuff Advisor CAN'T do)
+            deep = {}
+            try:
+                deep = azure_data.get_deep_analysis(sub_id)
+            except Exception:
+                pass
+
             # Security drift — dangerous open NSG rules
             security_drift = []
             try:
@@ -271,6 +278,7 @@ Be concise — working code, not an essay."""
                     "degraded": degraded_resources,
                 },
                 "service_health": service_health,
+                "deep_analysis": deep,
             })
         except Exception as e:
             traceback.print_exc()

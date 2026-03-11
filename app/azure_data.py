@@ -112,6 +112,108 @@ def get_tagging_compliance(subscription_id: str = None) -> list[dict]:
     )
 
 
+# ─── Deep Intelligence (things Advisor can't do) ────────────────
+
+def get_deep_analysis(subscription_id: str = None) -> dict:
+    """Cross-resource correlation analysis — connects dots across the entire environment.
+    This is what makes us better than Advisor."""
+    sub = subscription_id or _subscription_id()
+
+    # Idle App Service Plans (paying for compute with no apps)
+    idle_plans = query_resource_graph(
+        "Resources | where type =~ 'Microsoft.Web/serverfarms' "
+        "| project name, resourceGroup, sku=sku.name, tier=sku.tier, "
+        "numberOfSites=properties.numberOfSites",
+        sub,
+    )
+    idle_plans = [p for p in idle_plans if p.get("numberOfSites", 0) == 0]
+
+    # Orphaned NSGs (attached to nothing)
+    all_nsgs = query_resource_graph(
+        "Resources | where type =~ 'Microsoft.Network/networkSecurityGroups' "
+        "| project name, resourceGroup, subnets=properties.subnets, nics=properties.networkInterfaces",
+        sub,
+    )
+    orphaned_nsgs = [n for n in all_nsgs if not n.get("subnets") and not n.get("nics")]
+
+    # VNets with empty subnets (allocated address space nobody's using)
+    vnets = query_resource_graph(
+        "Resources | where type =~ 'Microsoft.Network/virtualNetworks' "
+        "| mvexpand subnet=properties.subnets "
+        "| extend subnetName=tostring(subnet.name), ipConfigs=subnet.properties.ipConfigurations "
+        "| project vnetName=name, subnetName, resourceGroup, "
+        "addressPrefix=tostring(subnet.properties.addressPrefix), "
+        "connectedDevices=array_length(subnet.properties.ipConfigurations), "
+        "delegations=array_length(subnet.properties.delegations)",
+        sub,
+    )
+    empty_subnets = [v for v in vnets if (v.get("connectedDevices") or 0) == 0 and (v.get("delegations") or 0) == 0]
+
+    # Resources with no diagnostic settings (monitoring blind spots)
+    # We check by looking at resources that SHOULD have diag settings
+    monitored_types = query_resource_graph(
+        "Resources | where type in~ ('Microsoft.Compute/virtualMachines', "
+        "'Microsoft.Web/sites', 'Microsoft.Sql/servers', "
+        "'Microsoft.KeyVault/vaults', 'Microsoft.Storage/storageAccounts', "
+        "'Microsoft.Network/applicationGateways', 'Microsoft.ContainerService/managedClusters', "
+        "'Microsoft.DBforPostgreSQL/flexibleServers') "
+        "| project name, type, resourceGroup, location",
+        sub,
+    )
+
+    # Recovery Vaults with nothing protected
+    recovery_vaults = query_resource_graph(
+        "Resources | where type =~ 'Microsoft.RecoveryServices/vaults' "
+        "| project name, resourceGroup, location",
+        sub,
+    )
+
+    # Architecture ratios (smell detection)
+    type_counts = {}
+    all_resources = query_resource_graph(
+        "Resources | summarize count() by type | order by count_ desc | take 20", sub,
+    )
+    for r in all_resources:
+        type_counts[r.get("type", "")] = r.get("count_", 0)
+
+    nsg_count = type_counts.get("microsoft.network/networksecuritygroups", 0)
+    vnet_count = type_counts.get("microsoft.network/virtualnetworks", 0)
+    nic_count = type_counts.get("microsoft.network/networkinterfaces", 0)
+    vm_count = type_counts.get("microsoft.compute/virtualmachines", 0)
+    pe_count = type_counts.get("microsoft.network/privateendpoints", 0)
+    disk_count = type_counts.get("microsoft.compute/disks", 0)
+
+    architecture_smells = []
+    if vnet_count > 0 and nsg_count / vnet_count > 3:
+        architecture_smells.append(f"NSG sprawl: {nsg_count} NSGs for {vnet_count} VNets ({nsg_count/vnet_count:.1f}:1 ratio) — likely orphaned or over-segmented")
+    if vm_count > 0 and disk_count / vm_count > 3:
+        architecture_smells.append(f"Disk sprawl: {disk_count} disks for {vm_count} VMs ({disk_count/vm_count:.1f}:1 ratio) — check for orphaned data disks")
+    if vm_count > 0 and nic_count / vm_count > 2:
+        architecture_smells.append(f"NIC sprawl: {nic_count} NICs for {vm_count} VMs ({nic_count/vm_count:.1f}:1 ratio) — possible orphaned NICs from deleted VMs")
+    if pe_count > 0 and pe_count > vnet_count * 3:
+        architecture_smells.append(f"Private endpoint density: {pe_count} PEs across {vnet_count} VNets — verify subnet capacity planning")
+
+    # Blast radius — map VNet dependencies
+    vnet_resources = query_resource_graph(
+        "Resources | where type =~ 'Microsoft.Network/virtualNetworks' "
+        "| project vnetName=name, resourceGroup, "
+        "peerings=array_length(properties.virtualNetworkPeerings), "
+        "subnets=array_length(properties.subnets)",
+        sub,
+    )
+
+    return {
+        "idle_app_service_plans": idle_plans,
+        "orphaned_nsgs": orphaned_nsgs,
+        "empty_subnets": empty_subnets,
+        "monitorable_resources": len(monitored_types),
+        "recovery_vaults": recovery_vaults,
+        "architecture_smells": architecture_smells,
+        "type_counts": type_counts,
+        "vnet_topology": vnet_resources,
+    }
+
+
 # ─── Azure Advisor (platform-verified recommendations) ──────────
 
 def get_advisor_recommendations(subscription_id: str = None) -> list[dict]:

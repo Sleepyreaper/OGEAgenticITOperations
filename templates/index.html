@@ -653,6 +653,40 @@
         issuesHtml += buildIssueCard('WARNING', `🔓 ${data.insecure_storage.length} storage account(s) allow public blob access`, 'These storage accounts could expose sensitive data: ' + storeNames, 'We found ' + data.insecure_storage.length + ' storage accounts with public blob access enabled: ' + storeNames + '. Analyze the risk — should these be private? What data could be exposed?');
       }
 
+      // Deep intelligence — cross-resource correlation (what Advisor can't do)
+      if (data.deep_analysis) {
+        const deep = data.deep_analysis;
+
+        // Architecture smells
+        if (deep.architecture_smells && deep.architecture_smells.length > 0) {
+          issuesHtml += '<div class="bg-white rounded-xl border-l-4 border-violet-500 border border-oge-gray-100 p-4 mb-3"><div class="flex items-start justify-between"><div><div class="flex items-center gap-2"><span class="px-2 py-0.5 bg-violet-100 text-violet-700 text-xs font-bold rounded">ARCHITECTURE</span><span class="font-semibold text-sm">🏗️ Architecture patterns detected</span></div>';
+          issuesHtml += '<ul class="text-xs text-oge-gray-500 mt-2 space-y-1">';
+          const smellContext = [];
+          for (const smell of deep.architecture_smells) {
+            issuesHtml += '<li>• ' + escapeHtml(smell) + '</li>';
+            smellContext.push(smell);
+          }
+          issuesHtml += '</ul></div><button onclick="askCouncil(\'Architecture analysis: ' + smellContext.join('. ').replace(/'/g, "\\'") + '. What are the risks? Should we consolidate, clean up, or is this intentional?\')" class="text-xs bg-oge-black text-white px-3 py-1.5 rounded-lg hover:bg-oge-gray-700 flex-shrink-0 ml-3">Analyze</button></div></div>';
+        }
+
+        // Orphaned NSGs
+        if (deep.orphaned_nsgs && deep.orphaned_nsgs.length > 0) {
+          const nsgNames = deep.orphaned_nsgs.map(n => n.name).join(', ');
+          issuesHtml += buildIssueCard('WARNING', `🔗 ${deep.orphaned_nsgs.length} NSGs attached to nothing`, 'These NSGs have no subnets or NICs: ' + nsgNames, 'We found ' + deep.orphaned_nsgs.length + ' NSGs that are not attached to any subnet or NIC: ' + nsgNames + '. Are these orphaned from deleted resources? Should they be cleaned up? What is the governance risk of phantom NSGs?');
+        }
+
+        // Idle App Service Plans
+        if (deep.idle_app_service_plans && deep.idle_app_service_plans.length > 0) {
+          const planNames = deep.idle_app_service_plans.map(p => `${p.name} (${p.sku || 'unknown'})`).join(', ');
+          issuesHtml += buildIssueCard('WARNING', `💤 ${deep.idle_app_service_plans.length} App Service Plan(s) with zero apps`, 'You are paying for compute capacity hosting nothing: ' + planNames, 'We found App Service Plans with zero apps deployed: ' + planNames + '. Calculate the monthly waste. Should these be deleted or are they reserved for upcoming deployments?');
+        }
+
+        // Empty subnets
+        if (deep.empty_subnets && deep.empty_subnets.length > 0) {
+          issuesHtml += buildIssueCard('INFO', `📡 ${deep.empty_subnets.length} empty subnet(s) across VNets`, deep.empty_subnets.slice(0,3).map(s => s.vnetName + '/' + s.subnetName).join(', '), 'We have ' + deep.empty_subnets.length + ' subnets with no connected devices or delegations. Are these reserved for future use or wasted address space? Analyze against our VNet topology.');
+        }
+      }
+
       // Azure Advisor — platform-verified evidence
       if (data.advisor && data.advisor.total > 0) {
         const highImpact = data.advisor.high_impact || [];
