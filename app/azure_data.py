@@ -29,26 +29,49 @@ def _subscription_id():
     )
 
 
+# ─── Subscription Discovery ─────────────────────────────────────
+
+def list_subscriptions() -> list[dict]:
+    """List all Azure subscriptions accessible to the Managed Identity."""
+    from azure.mgmt.resource import SubscriptionClient
+    cred = _credential()
+    client = SubscriptionClient(cred)
+    subs = []
+    for sub in client.subscriptions.list():
+        subs.append({
+            "id": sub.subscription_id,
+            "name": sub.display_name,
+            "state": sub.state.value if sub.state else "Unknown",
+        })
+    return subs
+
+
 # ─── Resource Graph ──────────────────────────────────────────────
 
-def query_resource_graph(query: str, subscription_id: str = None) -> list[dict]:
-    """Run an ARG query and return rows as dicts."""
+def query_resource_graph(query: str, subscription_id: str = None,
+                         subscription_ids: list[str] = None) -> list[dict]:
+    """Run an ARG query and return rows as dicts.
+    Supports single sub (subscription_id) or multiple (subscription_ids)."""
     cred = _credential()
     client = ResourceGraphClient(cred)
-    sub = subscription_id or _subscription_id()
+    if subscription_ids:
+        subs = subscription_ids
+    else:
+        subs = [subscription_id or _subscription_id()]
     request = QueryRequest(
-        subscriptions=[sub],
+        subscriptions=subs,
         query=query,
     )
     response = client.resources(request)
     return response.data if isinstance(response.data, list) else []
 
 
-def get_all_resources(subscription_id: str = None) -> list[dict]:
+def get_all_resources(subscription_id: str = None,
+                      subscription_ids: list[str] = None) -> list[dict]:
     return query_resource_graph(
         "Resources | project name, type, location, resourceGroup, "
-        "tags, properties.provisioningState, sku",
-        subscription_id,
+        "tags, properties.provisioningState, sku, subscriptionId",
+        subscription_id, subscription_ids,
     )
 
 

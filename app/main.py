@@ -179,9 +179,21 @@ Be concise — working code, not an essay."""
 
     @app.route("/api/scan/overview", methods=["GET"])
     def scan_overview():
-        """Lightweight scan for dashboard KPI cards."""
+        """Multi-subscription scan for dashboard KPI cards."""
         try:
-            resources = azure_data.get_all_resources()
+            # Discover all accessible subscriptions
+            subs = []
+            try:
+                subs = azure_data.list_subscriptions()
+            except Exception:
+                # Fallback to single sub if listing fails
+                subs = [{"id": settings.subscription_id, "name": "Current", "state": "Enabled"}]
+
+            enabled_subs = [s for s in subs if s.get("state") == "Enabled"]
+            sub_ids = [s["id"] for s in enabled_subs if s.get("id")]
+
+            # Query across all subs
+            resources = azure_data.get_all_resources(subscription_ids=sub_ids)
             tagging = azure_data.get_tagging_compliance()
             orphaned = azure_data.get_orphaned_disks()
             public_ips = azure_data.get_public_endpoints()
@@ -190,8 +202,19 @@ Be concise — working code, not an essay."""
             tagged = sum(1 for t in tagging if t.get("supportOwner"))
             total_rgs = len(tagging)
 
+            # Resources per subscription
+            resources_by_sub = {}
+            for r in resources:
+                sub_id = r.get("subscriptionId", "unknown")
+                sub_name = next((s["name"] for s in enabled_subs if s["id"] == sub_id), sub_id[:8])
+                resources_by_sub[sub_name] = resources_by_sub.get(sub_name, 0) + 1
+
             return jsonify({
-                "subscription_id": settings.subscription_id,
+                "subscriptions": {
+                    "total_accessible": len(enabled_subs),
+                    "with_resources": len(resources_by_sub),
+                    "list": [{"name": s["name"], "id": s["id"], "resources": resources_by_sub.get(s["name"], 0)} for s in enabled_subs[:20]],
+                },
                 "total_resources": len(resources),
                 "resource_groups": rg_count,
                 "tagging": {
@@ -204,6 +227,7 @@ Be concise — working code, not an essay."""
                 "public_ips": len(public_ips),
                 "resources_by_type": _count_by(resources, "type"),
                 "resources_by_rg": _count_by(resources, "resourceGroup"),
+                "resources_by_sub": resources_by_sub,
             })
         except Exception as e:
             traceback.print_exc()

@@ -551,19 +551,20 @@
     function updateDashboardWithLive(data) {
       // KPI: Resources
       document.getElementById('kpi-resources-count').textContent = data.total_resources;
-      document.getElementById('kpi-resources-detail').textContent = `across ${data.resource_groups} resource groups`;
+      document.getElementById('kpi-resources-detail').textContent = `across ${data.resource_groups} RGs in ${data.subscriptions ? data.subscriptions.with_resources : 1} sub(s)`;
 
-      // KPI: Health — derive from public IPs and orphaned disks as findings
-      const findings = data.orphaned_disks + data.public_ips + data.tagging.non_compliant.length;
-      const healthPct = data.total_resources > 0 ? ((data.total_resources - findings) / data.total_resources * 100).toFixed(1) : '100';
-      document.getElementById('kpi-health-pct').textContent = healthPct + '%';
-      document.getElementById('kpi-health-detail').innerHTML = `<span class="text-amber-500 font-medium">${data.public_ips} public IPs</span> · <span class="text-red-500 font-medium">${data.orphaned_disks} orphaned disks</span>`;
+      // KPI: Health — show subscription coverage
+      if (data.subscriptions) {
+        document.getElementById('kpi-health-pct').textContent = data.subscriptions.total_accessible;
+        document.getElementById('kpi-health-pct').previousElementSibling?.remove();
+        document.getElementById('kpi-health').querySelector('.text-xs:first-child').textContent = 'SUBSCRIPTIONS';
+        document.getElementById('kpi-health-detail').innerHTML = `<span class="text-green-600 font-medium">${data.subscriptions.with_resources} with resources</span> · ${data.subscriptions.total_accessible} accessible`;
+      }
 
-      // KPI: Spend (we don't have cost data yet from live, show resource breakdown)
-      const topType = Object.entries(data.resources_by_type).slice(0, 1);
-      document.getElementById('kpi-spend-amount').textContent = data.total_resources;
+      // KPI: Spend — show resource types
+      document.getElementById('kpi-spend-amount').textContent = Object.keys(data.resources_by_type).length;
       document.getElementById('kpi-spend-amount').previousElementSibling.textContent = 'RESOURCE TYPES';
-      document.getElementById('kpi-spend-detail').textContent = `${Object.keys(data.resources_by_type).length} distinct types deployed`;
+      document.getElementById('kpi-spend-detail').textContent = `${data.total_resources} resources deployed`;
       document.getElementById('kpi-spend-detail').className = 'text-xs text-oge-gray-400 mt-1';
 
       // KPI: Tags

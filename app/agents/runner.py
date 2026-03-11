@@ -51,7 +51,16 @@ def call_agent(agent_config: AgentConfig, user_message: str,
             "content": f"Here is the current Azure environment data:\n\n{context_data}"
         })
 
-    messages.append({"role": "user", "content": user_message + "\n\nIMPORTANT: Keep your response to 3-5 sentences maximum. Be direct, lead with your key finding, include one specific data point, and state your recommendation. Save the deep analysis for follow-up questions."})
+    # Style instruction per agent personality
+    style_hints = {
+        "Barrel Counter": "Respond like a sharp cost analyst reading numbers off a control room display. Lead with the dollar figure. 3-5 sentences, all business.",
+        "The Roughneck": "Respond like a grizzled field veteran. Blunt, confident, maybe a little salty. Lead with whether this is safe to touch or not. 3-5 sentences.",
+        "Turnaround": "Respond like a calm incident commander. Timeline first, then root cause, then fix. Structured and clinical. 3-5 sentences.",
+        "Flare Stack": "Respond like an alert system — short, punchy, severity-tagged. Use 🔴🟡🔵 severity indicators. 2-4 sentences max.",
+        "Pipeline": "Respond as a crisp executive readout. No debate recap — just the bottom line recommendation with key tradeoffs in 3-5 sentences.",
+    }
+    style = style_hints.get(agent_config.name, "Keep your response to 3-5 concise sentences.")
+    messages.append({"role": "user", "content": user_message + f"\n\nSTYLE: {style}"})
 
     kwargs = {"model": deployment, "messages": messages}
 
