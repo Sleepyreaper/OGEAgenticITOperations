@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OGE Ops Council — Cloud Operations Intelligence</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: {
+            oge: {
+              black: '#101820',
+              red: '#DA291C',
+              'red-dark': '#B71C1C',
+              teal: '#CEE5E8',
+              'teal-dark': '#9BBCC2',
+              white: '#FFFFFF',
+              gray: { 50: '#F7F8F9', 100: '#EEF0F2', 200: '#D8DDE2', 300: '#B0B8C1', 400: '#8892A0', 500: '#606D7E', 600: '#475264', 700: '#2E3A4C', 800: '#1A2436', 900: '#101820' }
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .agent-card { transition: all 0.3s ease; }
+    .agent-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(16,24,32,0.15); }
+    .pulse-dot { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .scenario-btn { transition: all 0.2s ease; }
+    .scenario-btn:hover { transform: scale(1.02); }
+    .typing-indicator span { animation: blink 1.4s infinite both; }
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: 0; } 40% { opacity: 1; } }
+    .fade-in { animation: fadeIn 0.4s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    #chat-messages::-webkit-scrollbar { width: 6px; }
+    #chat-messages::-webkit-scrollbar-track { background: transparent; }
+    #chat-messages::-webkit-scrollbar-thumb { background: #B0B8C1; border-radius: 3px; }
+    .markdown-content h3 { font-weight: 700; margin-top: 1rem; margin-bottom: 0.5rem; }
+    .markdown-content p { margin-bottom: 0.5rem; }
+    .markdown-content ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.5rem; }
+    .markdown-content strong { font-weight: 600; }
+    .markdown-content code { background: rgba(16,24,32,0.08); padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875em; }
+  </style>
+</head>
+<body class="h-full bg-oge-gray-50 font-sans text-oge-black">
+
+  <!-- ═══ TOP NAV ═══ -->
+  <nav class="bg-oge-black text-white shadow-lg relative z-50">
+    <div class="max-w-full mx-auto px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-oge-red rounded-lg flex items-center justify-center font-bold text-lg">OGE</div>
+          <div>
+            <div class="text-sm font-bold tracking-wide">OPS COUNCIL</div>
+            <div class="text-xs text-oge-gray-300">Cloud Operations Intelligence</div>
+          </div>
+        </div>
+        <div class="h-8 w-px bg-oge-gray-700 mx-2"></div>
+        <div class="flex gap-1">
+          <button onclick="showView('dashboard')" id="nav-dashboard" class="nav-tab px-3 py-1.5 rounded-md text-sm font-medium bg-oge-gray-700 text-white">Dashboard</button>
+          <button onclick="showView('council')" id="nav-council" class="nav-tab px-3 py-1.5 rounded-md text-sm font-medium text-oge-gray-300 hover:text-white hover:bg-oge-gray-700">Ops Council</button>
+          <button onclick="showView('agents')" id="nav-agents" class="nav-tab px-3 py-1.5 rounded-md text-sm font-medium text-oge-gray-300 hover:text-white hover:bg-oge-gray-700">Agents</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 text-xs text-oge-gray-300">
+          <span class="pulse-dot w-2 h-2 bg-green-400 rounded-full inline-block"></span>
+          All agents online
+        </div>
+        <div class="text-xs text-oge-gray-400 bg-oge-gray-800 px-2.5 py-1 rounded">
+          Brad NonProd
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ═══ DASHBOARD VIEW ═══ -->
+  <div id="view-dashboard" class="view-content">
+    <!-- Status bar -->
+    <div class="bg-white border-b border-oge-gray-100">
+      <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div>
+          <h1 class="text-xl font-bold text-oge-black">Environment Overview</h1>
+          <p class="text-sm text-oge-gray-400 mt-0.5">OGE-CloudOps-Production — Real-time operational intelligence</p>
+        </div>
+        <div class="text-xs text-oge-gray-400">Last updated: <span id="last-updated">just now</span></div>
+      </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-6 py-6 space-y-6">
+      <!-- KPI Cards -->
+      <div class="grid grid-cols-5 gap-4">
+        <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
+          <div class="text-xs font-medium text-oge-gray-400 uppercase tracking-wider">Resources</div>
+          <div class="mt-2 text-2xl font-bold">847</div>
+          <div class="text-xs text-oge-gray-400 mt-1">across 64 resource groups</div>
+        </div>
+        <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
+          <div class="text-xs font-medium text-oge-gray-400 uppercase tracking-wider">Health</div>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="text-2xl font-bold text-green-600">95.8%</span>
+          </div>
+          <div class="text-xs mt-1"><span class="text-amber-500 font-medium">8 degraded</span> · <span class="text-red-500 font-medium">2 unavailable</span></div>
+        </div>
+        <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
+          <div class="text-xs font-medium text-oge-gray-400 uppercase tracking-wider">Monthly Spend</div>
+          <div class="mt-2 text-2xl font-bold">$42,675</div>
+          <div class="text-xs text-amber-500 font-medium mt-1">94.8% of $45K budget</div>
+        </div>
+        <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
+          <div class="text-xs font-medium text-oge-gray-400 uppercase tracking-wider">Tag Compliance</div>
+          <div class="mt-2 text-2xl font-bold">90.6%</div>
+          <div class="text-xs text-oge-gray-400 mt-1">6 RGs missing support-owner</div>
+        </div>
+        <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
+          <div class="text-xs font-medium text-oge-gray-400 uppercase tracking-wider">Active Alerts</div>
+          <div class="mt-2 text-2xl font-bold text-oge-red">3</div>
+          <div class="text-xs text-oge-gray-400 mt-1">1 critical · 2 warnings</div>
+        </div>
+      </div>
+
+      <!-- Two-column layout -->
+      <div class="grid grid-cols-3 gap-6">
+        <!-- Left: Issues & Alerts -->
+        <div class="col-span-2 space-y-4">
+          <h2 class="text-sm font-bold text-oge-gray-500 uppercase tracking-wider">Active Issues</h2>
+
+          <!-- Critical -->
+          <div class="bg-white rounded-xl border-l-4 border-red-500 border border-oge-gray-100 p-4">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded">CRITICAL</span>
+                  <span class="font-semibold text-sm">Log Analytics daily cap at 82%</span>
+                </div>
+                <p class="text-xs text-oge-gray-400 mt-1">ogeops-log (OGE_Envisioning) — Projected to hit cap in 6 hours</p>
+                <p class="text-xs text-oge-gray-300 mt-0.5">Support owner: cloud-ops@OGE.com</p>
+              </div>
+              <button onclick="investigateIssue('scout_alert')" class="text-xs bg-oge-black text-white px-3 py-1.5 rounded-lg hover:bg-oge-gray-700">Investigate</button>
+            </div>
+          </div>
+
+          <!-- Warning -->
+          <div class="bg-white rounded-xl border-l-4 border-amber-400 border border-oge-gray-100 p-4">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded">WARNING</span>
+                  <span class="font-semibold text-sm">AKS node pool at 90% utilization</span>
+                </div>
+                <p class="text-xs text-oge-gray-400 mt-1">aks-microservices-01 (Microservices-Prod-RG) — Scaling limited</p>
+                <p class="text-xs text-oge-gray-300 mt-0.5">Support owner: platform-eng@OGE.com</p>
+              </div>
+              <button onclick="askCouncil('The AKS cluster aks-microservices-01 is at 90% node utilization. What should we do?')" class="text-xs bg-oge-black text-white px-3 py-1.5 rounded-lg hover:bg-oge-gray-700">Investigate</button>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border-l-4 border-amber-400 border border-oge-gray-100 p-4">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded">WARNING</span>
+                  <span class="font-semibold text-sm">Legacy function app stopped</span>
+                </div>
+                <p class="text-xs text-oge-gray-400 mt-1">func-etl-legacy (Legacy-Migration-RG) — Runtime version deprecated</p>
+                <p class="text-xs text-oge-gray-300 mt-0.5">Support owner: cloud-ops@OGE.com</p>
+              </div>
+              <button onclick="askCouncil('The function app func-etl-legacy has stopped because the runtime is deprecated. What is the impact and how do we fix it?')" class="text-xs bg-oge-black text-white px-3 py-1.5 rounded-lg hover:bg-oge-gray-700">Investigate</button>
+            </div>
+          </div>
+
+          <!-- Top cost centers -->
+          <h2 class="text-sm font-bold text-oge-gray-500 uppercase tracking-wider pt-2">Top Cost Centers</h2>
+          <div class="bg-white rounded-xl border border-oge-gray-100 p-4">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-xs text-oge-gray-400 uppercase tracking-wider border-b border-oge-gray-100">
+                  <th class="pb-2 font-medium">Resource Group</th>
+                  <th class="pb-2 font-medium text-right">MTD Spend</th>
+                  <th class="pb-2 font-medium text-right">Projected</th>
+                  <th class="pb-2 font-medium text-right">% of Total</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-oge-gray-50">
+                <tr class="hover:bg-oge-gray-50 cursor-pointer" onclick="askCouncil('Analyze the spending for Data-Prod-RG. Is there waste?')">
+                  <td class="py-2.5 font-medium">Data-Prod-RG</td>
+                  <td class="py-2.5 text-right">$5,467</td>
+                  <td class="py-2.5 text-right font-medium">$8,200</td>
+                  <td class="py-2.5 text-right">19.2%</td>
+                </tr>
+                <tr class="hover:bg-oge-gray-50 cursor-pointer" onclick="askCouncil('Analyze the spending for Microservices-Prod-RG. Can we optimize?')">
+                  <td class="py-2.5 font-medium">Microservices-Prod-RG</td>
+                  <td class="py-2.5 text-right">$3,600</td>
+                  <td class="py-2.5 text-right font-medium">$5,400</td>
+                  <td class="py-2.5 text-right">12.7%</td>
+                </tr>
+                <tr class="hover:bg-oge-gray-50 cursor-pointer" onclick="askCouncil('Why is SAP-Production-RG costing us $4,100/month? Break down the resources.')">
+                  <td class="py-2.5 font-medium">SAP-Production-RG</td>
+                  <td class="py-2.5 text-right">$2,733</td>
+                  <td class="py-2.5 text-right font-medium">$4,100</td>
+                  <td class="py-2.5 text-right">9.6%</td>
+                </tr>
+                <tr class="hover:bg-oge-gray-50 cursor-pointer" onclick="askCouncil('DR-Infrastructure-RG costs $2,800/month. Is the DR gateway justified?')">
+                  <td class="py-2.5 font-medium">DR-Infrastructure-RG</td>
+                  <td class="py-2.5 text-right">$1,867</td>
+                  <td class="py-2.5 text-right font-medium">$2,800</td>
+                  <td class="py-2.5 text-right">6.6%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right: Quick actions & demos -->
+        <div class="space-y-4">
+          <h2 class="text-sm font-bold text-oge-gray-500 uppercase tracking-wider">Demo Scenarios</h2>
+          {% for id, demo in demos.items() %}
+          <button onclick="runDemo('{{ id }}')" class="scenario-btn w-full text-left bg-white rounded-xl border border-oge-gray-100 p-4 hover:border-oge-red group">
+            <div class="flex items-start gap-3">
+              <div class="w-8 h-8 rounded-lg bg-oge-gray-50 flex items-center justify-center text-oge-gray-400 group-hover:bg-oge-red group-hover:text-white flex-shrink-0">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {% if demo.icon == 'server' %}<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/>
+                  {% elif demo.icon == 'alert-triangle' %}<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                  {% elif demo.icon == 'dollar-sign' %}<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  {% elif demo.icon == 'radar' %}<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                  {% else %}<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                  {% endif %}
+                </svg>
+              </div>
+              <div>
+                <div class="font-semibold text-sm group-hover:text-oge-red">{{ demo.title }}</div>
+                <div class="text-xs text-oge-gray-400 mt-0.5">{{ demo.subtitle }}</div>
+              </div>
+            </div>
+          </button>
+          {% endfor %}
+
+          <!-- Agent status -->
+          <h2 class="text-sm font-bold text-oge-gray-500 uppercase tracking-wider pt-2">Agent Status</h2>
+          <div class="bg-white rounded-xl border border-oge-gray-100 p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm font-medium">Orchestrator</span></div>
+              <span class="text-xs text-oge-gray-400">gpt-4.1-mini</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm font-medium">Cost Sentinel</span></div>
+              <span class="text-xs text-oge-gray-400">o4-mini</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm font-medium">Standards Architect</span></div>
+              <span class="text-xs text-oge-gray-400">gpt-4.1</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm font-medium">Diagnostics SRE</span></div>
+              <span class="text-xs text-oge-gray-400">o4-mini</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm font-medium">Scout</span></div>
+              <span class="text-xs text-oge-gray-400">gpt-5-nano</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ OPS COUNCIL VIEW (Chat + Agent Panels) ═══ -->
+  <div id="view-council" class="view-content hidden" style="height: calc(100vh - 52px);">
+    <div class="flex h-full">
+      <!-- Chat panel -->
+      <div class="flex-1 flex flex-col bg-white border-r border-oge-gray-100">
+        <!-- Chat header -->
+        <div class="px-6 py-3 border-b border-oge-gray-100 flex items-center justify-between">
+          <div>
+            <h2 class="font-bold text-oge-black">Ops Council Chat</h2>
+            <p class="text-xs text-oge-gray-400">Ask anything about your Azure environment. Agents will debate and synthesize.</p>
+          </div>
+          <button onclick="clearChat()" class="text-xs text-oge-gray-400 hover:text-oge-red">Clear</button>
+        </div>
+
+        <!-- Messages -->
+        <div id="chat-messages" class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          <!-- Welcome message -->
+          <div class="flex gap-3 fade-in">
+            <div class="w-8 h-8 rounded-lg bg-oge-black flex items-center justify-center flex-shrink-0">
+              <span class="text-white text-xs font-bold">OC</span>
+            </div>
+            <div class="bg-oge-gray-50 rounded-xl rounded-tl-none px-4 py-3 max-w-2xl">
+              <div class="text-xs font-bold text-oge-red mb-1">Orchestrator</div>
+              <p class="text-sm text-oge-gray-600">Welcome to the OGE Ops Council. I coordinate five specialist agents to give you balanced, fact-based operational intelligence.</p>
+              <p class="text-sm text-oge-gray-600 mt-2">Try asking something like:</p>
+              <ul class="text-sm text-oge-gray-500 mt-1 space-y-1">
+                <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Why is oge-sap-batch-vm01 running on a D16s_v5? Can we save money?')">• "Why is this VM so big? Can we save money?"</li>
+                <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Our Terraform deployment to WebApp-Test-RG failed. What happened?')">• "Our Terraform deployment failed. What happened?"</li>
+                <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Where are we wasting money in our Azure subscription?')">• "Where are we wasting money?"</li>
+                <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Run a proactive environment scan.')">• "Run a proactive environment scan."</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Input -->
+        <div class="px-6 py-4 border-t border-oge-gray-100">
+          <div class="flex gap-3">
+            <input id="chat-input" type="text" placeholder="Ask the Ops Council..."
+              class="flex-1 px-4 py-2.5 bg-oge-gray-50 border border-oge-gray-200 rounded-xl text-sm focus:outline-none focus:border-oge-red focus:ring-1 focus:ring-oge-red"
+              onkeydown="if(event.key==='Enter')sendMessage()">
+            <button onclick="sendMessage()" id="send-btn"
+              class="px-5 py-2.5 bg-oge-red text-white rounded-xl text-sm font-medium hover:bg-oge-red-dark disabled:opacity-50 disabled:cursor-not-allowed">
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent detail panel -->
+      <div id="agent-panel" class="w-96 bg-oge-gray-50 overflow-y-auto">
+        <div class="px-5 py-4 border-b border-oge-gray-100">
+          <h3 class="font-bold text-sm text-oge-gray-500 uppercase tracking-wider">Agent Perspectives</h3>
+          <p class="text-xs text-oge-gray-400 mt-0.5">Individual agent analyses appear here</p>
+        </div>
+        <div id="agent-perspectives" class="p-4 space-y-3">
+          <p class="text-sm text-oge-gray-400 italic">Waiting for a query...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ AGENTS VIEW ═══ -->
+  <div id="view-agents" class="view-content hidden">
+    <div class="max-w-5xl mx-auto px-6 py-8">
+      <h1 class="text-xl font-bold mb-1">The Ops Council</h1>
+      <p class="text-sm text-oge-gray-400 mb-6">Five specialized AI agents with distinct expertise areas. They debate, disagree, and synthesize to give you balanced operational intelligence.</p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <!-- Orchestrator -->
+        <div class="agent-card bg-white rounded-xl border border-oge-gray-100 p-5 md:col-span-2">
+          <div class="flex items-start gap-4">
+            <div class="w-12 h-12 rounded-xl bg-oge-black flex items-center justify-center flex-shrink-0">
+              <span class="text-white font-bold">OC</span>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold">Orchestrator</h3>
+                <span class="text-xs bg-oge-gray-100 text-oge-gray-500 px-2 py-0.5 rounded-full">gpt-4.1-mini</span>
+              </div>
+              <p class="text-sm text-oge-gray-500 mt-1">Routes requests to specialists. Synthesizes their outputs into unified recommendations. Surfaces disagreements transparently — never hides conflicting perspectives.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cost Sentinel -->
+        <div class="agent-card bg-white rounded-xl border border-oge-gray-100 p-5">
+          <div class="flex items-start gap-4">
+            <div class="w-12 h-12 rounded-xl bg-green-600 flex items-center justify-center flex-shrink-0">
+              <span class="text-white font-bold text-sm">CS</span>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold">Cost Sentinel</h3>
+                <span class="text-xs bg-oge-gray-100 text-oge-gray-500 px-2 py-0.5 rounded-full">o4-mini</span>
+              </div>
+              <p class="text-sm text-oge-gray-500 mt-1">Ultra-conservative cost analyst. Every dollar matters. Finds waste, recommends rightsizing, shows the math. Uses deep reasoning to analyze utilization patterns and pricing tiers.</p>
+              <div class="mt-2 flex flex-wrap gap-1">
+                <span class="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">Rightsizing</span>
+                <span class="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">Orphaned resources</span>
+                <span class="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">Burn rate</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Standards Architect -->
+        <div class="agent-card bg-white rounded-xl border border-oge-gray-100 p-5">
+          <div class="flex items-start gap-4">
+            <div class="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
+              <span class="text-white font-bold text-sm">SA</span>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold">Standards Architect</h3>
+                <span class="text-xs bg-oge-gray-100 text-oge-gray-500 px-2 py-0.5 rounded-full">gpt-4.1</span>
+              </div>
+              <p class="text-sm text-oge-gray-500 mt-1">The institutional memory. Knows <em>why</em> things are configured the way they are. Defends sizing decisions, balances Cost Sentinel's recommendations with operational reality.</p>
+              <div class="mt-2 flex flex-wrap gap-1">
+                <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">Sizing rationale</span>
+                <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">Best practices</span>
+                <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">Governance</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Diagnostics SRE -->
+        <div class="agent-card bg-white rounded-xl border border-oge-gray-100 p-5">
+          <div class="flex items-start gap-4">
+            <div class="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center flex-shrink-0">
+              <span class="text-white font-bold text-sm">SRE</span>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold">Diagnostics SRE</h3>
+                <span class="text-xs bg-oge-gray-100 text-oge-gray-500 px-2 py-0.5 rounded-full">o4-mini</span>
+              </div>
+              <p class="text-sm text-oge-gray-500 mt-1">Methodical troubleshooter. Gives teams the answers they'd find with admin access — without needing it. Timeline → Symptoms → Root Cause → Fix.</p>
+              <div class="mt-2 flex flex-wrap gap-1">
+                <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">Root cause</span>
+                <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">Activity logs</span>
+                <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">Remediation</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scout -->
+        <div class="agent-card bg-white rounded-xl border border-oge-gray-100 p-5">
+          <div class="flex items-start gap-4">
+            <div class="w-12 h-12 rounded-xl bg-purple-600 flex items-center justify-center flex-shrink-0">
+              <span class="text-white font-bold text-sm">SC</span>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold">Scout</h3>
+                <span class="text-xs bg-oge-gray-100 text-oge-gray-500 px-2 py-0.5 rounded-full">gpt-5-nano</span>
+              </div>
+              <p class="text-sm text-oge-gray-500 mt-1">Vigilant proactive monitor. Scans for anomalies, quota pressure, health degradation, security drift. Surfaces problems before they become incidents.</p>
+              <div class="mt-2 flex flex-wrap gap-1">
+                <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">Anomaly detection</span>
+                <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">Quota alerts</span>
+                <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">Security drift</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Architecture diagram placeholder -->
+      <div class="mt-8 bg-white rounded-xl border border-oge-gray-100 p-6">
+        <h2 class="font-bold mb-4">How the Ops Council Works</h2>
+        <div class="bg-oge-gray-50 rounded-lg p-6 font-mono text-xs text-oge-gray-500 leading-relaxed">
+<pre>User Question or Scout Alert
+         │
+         ▼
+    ┌─────────────┐
+    │ Orchestrator │ ← gpt-4.1-mini (fast routing + synthesis)
+    └──────┬──────┘
+           │ routes to relevant specialists
+     ┌─────┼──────────┬──────────┐
+     ▼     ▼          ▼          ▼
+  ┌──────┐ ┌────────┐ ┌───────┐ ┌──────┐
+  │ Cost │ │ Stds   │ │ Diag  │ │Scout │
+  │Sentnl│ │Archict │ │ SRE   │ │      │
+  │o4mini│ │gpt-4.1 │ │o4mini │ │5nano │
+  └──┬───┘ └───┬────┘ └───┬───┘ └──┬───┘
+     │         │           │        │
+     └─────────┴───────────┘        │
+               ▼                    │
+    ┌─────────────────┐             │
+    │ Orchestrator    │◄────────────┘
+    │ (synthesize)    │
+    └────────┬────────┘
+             ▼
+      Transparent response:
+      each agent's perspective +
+      unified recommendation</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ JavaScript ═══ -->
+  <script>
+    const AGENT_COLORS = {
+      'Cost Sentinel': { bg: 'bg-green-600', text: 'CS', border: 'border-green-500', light: 'bg-green-50' },
+      'Standards Architect': { bg: 'bg-blue-600', text: 'SA', border: 'border-blue-500', light: 'bg-blue-50' },
+      'Diagnostics SRE': { bg: 'bg-amber-500', text: 'SRE', border: 'border-amber-400', light: 'bg-amber-50' },
+      'Scout': { bg: 'bg-purple-600', text: 'SC', border: 'border-purple-500', light: 'bg-purple-50' },
+      'Orchestrator': { bg: 'bg-oge-black', text: 'OC', border: 'border-oge-black', light: 'bg-oge-gray-50' },
+    };
+
+    // ─── Navigation ─────────────────────────────────
+    function showView(view) {
+      document.querySelectorAll('.view-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById('view-' + view).classList.remove('hidden');
+      document.querySelectorAll('.nav-tab').forEach(el => {
+        el.classList.remove('bg-oge-gray-700', 'text-white');
+        el.classList.add('text-oge-gray-300');
+      });
+      const tab = document.getElementById('nav-' + view);
+      tab.classList.add('bg-oge-gray-700', 'text-white');
+      tab.classList.remove('text-oge-gray-300');
+    }
+
+    // ─── Chat ───────────────────────────────────────
+    function addMessage(role, agentName, content) {
+      const chat = document.getElementById('chat-messages');
+      const colors = AGENT_COLORS[agentName] || AGENT_COLORS['Orchestrator'];
+      const div = document.createElement('div');
+      div.className = role === 'user' ? 'flex gap-3 justify-end fade-in' : 'flex gap-3 fade-in';
+
+      if (role === 'user') {
+        div.innerHTML = `
+          <div class="bg-oge-red text-white rounded-xl rounded-tr-none px-4 py-3 max-w-2xl">
+            <p class="text-sm">${escapeHtml(content)}</p>
+          </div>
+          <div class="w-8 h-8 rounded-lg bg-oge-gray-200 flex items-center justify-center flex-shrink-0">
+            <span class="text-oge-gray-500 text-xs font-bold">You</span>
+          </div>`;
+      } else {
+        div.innerHTML = `
+          <div class="w-8 h-8 rounded-lg ${colors.bg} flex items-center justify-center flex-shrink-0">
+            <span class="text-white text-xs font-bold">${colors.text}</span>
+          </div>
+          <div class="${colors.light} rounded-xl rounded-tl-none px-4 py-3 max-w-2xl border ${colors.border} border-opacity-20">
+            <div class="text-xs font-bold text-oge-gray-500 mb-1">${escapeHtml(agentName)}</div>
+            <div class="text-sm text-oge-gray-700 markdown-content">${formatMarkdown(content)}</div>
+          </div>`;
+      }
+
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function addLoadingIndicator() {
+      const chat = document.getElementById('chat-messages');
+      const div = document.createElement('div');
+      div.id = 'loading-indicator';
+      div.className = 'flex gap-3 fade-in';
+      div.innerHTML = `
+        <div class="w-8 h-8 rounded-lg bg-oge-black flex items-center justify-center flex-shrink-0">
+          <span class="text-white text-xs font-bold">OC</span>
+        </div>
+        <div class="bg-oge-gray-50 rounded-xl rounded-tl-none px-4 py-3">
+          <div class="text-xs font-bold text-oge-red mb-1">Ops Council</div>
+          <div class="flex items-center gap-2 text-sm text-oge-gray-400">
+            <span>Agents are analyzing</span>
+            <span class="typing-indicator"><span>●</span><span>●</span><span>●</span></span>
+          </div>
+        </div>`;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function removeLoadingIndicator() {
+      const el = document.getElementById('loading-indicator');
+      if (el) el.remove();
+    }
+
+    function clearChat() {
+      const chat = document.getElementById('chat-messages');
+      chat.innerHTML = '';
+      document.getElementById('agent-perspectives').innerHTML = '<p class="text-sm text-oge-gray-400 italic">Waiting for a query...</p>';
+    }
+
+    // ─── API calls ──────────────────────────────────
+    async function sendMessage() {
+      const input = document.getElementById('chat-input');
+      const question = input.value.trim();
+      if (!question) return;
+      input.value = '';
+      await askCouncil(question);
+    }
+
+    async function askCouncil(question) {
+      showView('council');
+      addMessage('user', '', question);
+      addLoadingIndicator();
+      document.getElementById('send-btn').disabled = true;
+
+      try {
+        const resp = await fetch('/api/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question }),
+        });
+        const data = await resp.json();
+        removeLoadingIndicator();
+
+        if (data.error) {
+          addMessage('assistant', 'Orchestrator', '⚠️ Error: ' + data.error);
+          return;
+        }
+
+        renderCouncilResponse(data);
+      } catch (e) {
+        removeLoadingIndicator();
+        addMessage('assistant', 'Orchestrator', '⚠️ Connection error: ' + e.message);
+      } finally {
+        document.getElementById('send-btn').disabled = false;
+      }
+    }
+
+    async function runDemo(scenarioId) {
+      showView('council');
+      const demos = {{ demos | tojson }};
+      const demo = demos[scenarioId];
+      addMessage('user', '', demo.question || demo.title);
+      addLoadingIndicator();
+      document.getElementById('send-btn').disabled = true;
+
+      try {
+        const resp = await fetch('/api/demo/' + scenarioId, { method: 'POST' });
+        const data = await resp.json();
+        removeLoadingIndicator();
+
+        if (data.error) {
+          addMessage('assistant', 'Orchestrator', '⚠️ Error: ' + data.error);
+          return;
+        }
+
+        renderCouncilResponse(data);
+      } catch (e) {
+        removeLoadingIndicator();
+        addMessage('assistant', 'Orchestrator', '⚠️ Connection error: ' + e.message);
+      } finally {
+        document.getElementById('send-btn').disabled = false;
+      }
+    }
+
+    function investigateIssue(scenarioId) { runDemo(scenarioId); }
+
+    function renderCouncilResponse(data) {
+      // Show synthesis in chat
+      if (data.synthesis) {
+        addMessage('assistant', 'Orchestrator', data.synthesis.response);
+      }
+
+      // Show individual agent perspectives in side panel
+      const panel = document.getElementById('agent-perspectives');
+      panel.innerHTML = '';
+
+      if (data.specialists) {
+        for (const [key, agent] of Object.entries(data.specialists)) {
+          const colors = AGENT_COLORS[agent.agent] || AGENT_COLORS['Orchestrator'];
+          const div = document.createElement('div');
+          div.className = `${colors.light} rounded-lg p-3 border ${colors.border} border-opacity-20 fade-in`;
+          div.innerHTML = `
+            <div class="flex items-center gap-2 mb-2">
+              <div class="w-6 h-6 rounded ${colors.bg} flex items-center justify-center">
+                <span class="text-white text-xs font-bold">${colors.text}</span>
+              </div>
+              <span class="text-xs font-bold">${escapeHtml(agent.agent)}</span>
+              <span class="text-xs text-oge-gray-400 ml-auto">${agent.model}</span>
+            </div>
+            <div class="text-xs text-oge-gray-600 markdown-content max-h-48 overflow-y-auto">${formatMarkdown(agent.response)}</div>
+            <div class="text-xs text-oge-gray-300 mt-2">${agent.usage.prompt_tokens + agent.usage.completion_tokens} tokens</div>`;
+          panel.appendChild(div);
+        }
+      }
+    }
+
+    // ─── Helpers ─────────────────────────────────────
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function formatMarkdown(text) {
+      if (!text) return '';
+      return text
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`(.+?)`/g, '<code>$1</code>')
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>')
+        ;
+    }
+
+    // Update timestamp
+    setInterval(() => {
+      const el = document.getElementById('last-updated');
+      if (el) el.textContent = new Date().toLocaleTimeString();
+    }, 30000);
+  </script>
+</body>
+</html>
