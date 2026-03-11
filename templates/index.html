@@ -99,7 +99,7 @@
           </div>
           <div class="text-right">
             <div class="text-xs text-oge-gray-400">Last assessed</div>
-            <div class="text-sm font-medium" id="exec-timestamp">—</div>
+            <div class="text-sm font-medium" id="exec-timestamp">March 11, 2026</div>
           </div>
         </div>
 
@@ -108,30 +108,30 @@
           <div class="relative">
             <svg class="w-32 h-32" viewBox="0 0 120 120">
               <circle cx="60" cy="60" r="54" fill="none" stroke="#2E3A4C" stroke-width="8"/>
-              <circle id="exec-score-ring" cx="60" cy="60" r="54" fill="none" stroke="#22C55E" stroke-width="8"
-                stroke-dasharray="339.3" stroke-dashoffset="34" stroke-linecap="round"
+              <circle id="exec-score-ring" cx="60" cy="60" r="54" fill="none" stroke="#F59E0B" stroke-width="8"
+                stroke-dasharray="339.3" stroke-dashoffset="95" stroke-linecap="round"
                 transform="rotate(-90 60 60)" style="transition: stroke-dashoffset 1s ease"/>
             </svg>
             <div class="absolute inset-0 flex flex-col items-center justify-center">
-              <span id="exec-score" class="text-3xl font-bold">—</span>
+              <span id="exec-score" class="text-3xl font-bold">72</span>
               <span class="text-xs text-oge-gray-400">/ 100</span>
             </div>
           </div>
           <div class="flex-1 grid grid-cols-4 gap-4">
             <div class="bg-oge-gray-800 rounded-xl p-4 text-center">
-              <div class="text-2xl font-bold" id="exec-resources">—</div>
+              <div class="text-2xl font-bold" id="exec-resources">847</div>
               <div class="text-xs text-oge-gray-400 mt-1">Resources</div>
             </div>
             <div class="bg-oge-gray-800 rounded-xl p-4 text-center">
-              <div class="text-2xl font-bold text-green-400" id="exec-healthy">—</div>
+              <div class="text-2xl font-bold text-green-400" id="exec-healthy">812</div>
               <div class="text-xs text-oge-gray-400 mt-1">Healthy</div>
             </div>
             <div class="bg-oge-gray-800 rounded-xl p-4 text-center">
-              <div class="text-2xl font-bold text-amber-400" id="exec-findings">—</div>
+              <div class="text-2xl font-bold text-amber-400" id="exec-findings">28</div>
               <div class="text-xs text-oge-gray-400 mt-1">Findings</div>
             </div>
             <div class="bg-oge-gray-800 rounded-xl p-4 text-center">
-              <div class="text-2xl font-bold text-red-400" id="exec-critical">—</div>
+              <div class="text-2xl font-bold text-red-400" id="exec-critical">3</div>
               <div class="text-xs text-oge-gray-400 mt-1">Critical</div>
             </div>
           </div>
@@ -145,63 +145,107 @@
         <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-bold text-oge-gray-400 uppercase">Security</span>
-            <span class="text-xs" id="exec-sec-icon">🛡️</span>
+            <span class="text-xs">🛡️</span>
           </div>
-          <div class="text-xl font-bold" id="exec-sec-score">—</div>
-          <div class="w-full bg-oge-gray-100 rounded-full h-2 mt-2"><div id="exec-sec-bar" class="bg-green-500 h-2 rounded-full" style="width:0%;transition:width 1s"></div></div>
-          <div class="text-xs text-oge-gray-400 mt-2" id="exec-sec-detail">—</div>
+          <div class="text-xl font-bold" id="exec-sec-score">65/100</div>
+          <div class="w-full bg-oge-gray-100 rounded-full h-2 mt-2"><div id="exec-sec-bar" class="bg-amber-500 h-2 rounded-full" style="width:65%;transition:width 1s"></div></div>
+          <div class="text-xs text-oge-gray-400 mt-2" id="exec-sec-detail">2 NSG drift · 1 insecure storage · 4 public IPs</div>
         </div>
         <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-bold text-oge-gray-400 uppercase">Governance</span>
             <span class="text-xs">📋</span>
           </div>
-          <div class="text-xl font-bold" id="exec-gov-score">—</div>
-          <div class="w-full bg-oge-gray-100 rounded-full h-2 mt-2"><div id="exec-gov-bar" class="bg-blue-500 h-2 rounded-full" style="width:0%;transition:width 1s"></div></div>
-          <div class="text-xs text-oge-gray-400 mt-2" id="exec-gov-detail">—</div>
+          <div class="text-xl font-bold" id="exec-gov-score">71/100</div>
+          <div class="w-full bg-oge-gray-100 rounded-full h-2 mt-2"><div id="exec-gov-bar" class="bg-amber-500 h-2 rounded-full" style="width:71%;transition:width 1s"></div></div>
+          <div class="text-xs text-oge-gray-400 mt-2" id="exec-gov-detail">90.6% tag compliance · 2 architecture smells</div>
         </div>
         <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-bold text-oge-gray-400 uppercase">Resilience</span>
             <span class="text-xs">🏗️</span>
           </div>
-          <div class="text-xl font-bold" id="exec-res-score">—</div>
-          <div class="w-full bg-oge-gray-100 rounded-full h-2 mt-2"><div id="exec-res-bar" class="bg-violet-500 h-2 rounded-full" style="width:0%;transition:width 1s"></div></div>
-          <div class="text-xs text-oge-gray-400 mt-2" id="exec-res-detail">—</div>
+          <div class="text-xl font-bold" id="exec-res-score">68/100</div>
+          <div class="w-full bg-oge-gray-100 rounded-full h-2 mt-2"><div id="exec-res-bar" class="bg-amber-500 h-2 rounded-full" style="width:68%;transition:width 1s"></div></div>
+          <div class="text-xs text-oge-gray-400 mt-2" id="exec-res-detail">2 degraded · 1 active incident · 6 orphaned NSGs</div>
         </div>
         <div class="bg-white rounded-xl border border-oge-gray-100 p-5">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-bold text-oge-gray-400 uppercase">Cost Efficiency</span>
             <span class="text-xs">💰</span>
           </div>
-          <div class="text-xl font-bold" id="exec-cost-score">—</div>
-          <div class="w-full bg-oge-gray-100 rounded-full h-2 mt-2"><div id="exec-cost-bar" class="bg-green-500 h-2 rounded-full" style="width:0%;transition:width 1s"></div></div>
-          <div class="text-xs text-oge-gray-400 mt-2" id="exec-cost-detail">—</div>
+          <div class="text-xl font-bold" id="exec-cost-score">85/100</div>
+          <div class="w-full bg-oge-gray-100 rounded-full h-2 mt-2"><div id="exec-cost-bar" class="bg-green-500 h-2 rounded-full" style="width:85%;transition:width 1s"></div></div>
+          <div class="text-xs text-oge-gray-400 mt-2" id="exec-cost-detail">3 orphaned disks · 1 idle plan</div>
         </div>
       </div>
 
-      <!-- Active incidents & top actions -->
-      <div class="grid grid-cols-2 gap-6">
+      <!-- Service health + actions + crew insight -->
+      <div class="grid grid-cols-3 gap-6">
+        <!-- Service Health -->
         <div>
           <h2 class="text-sm font-bold text-oge-gray-500 uppercase tracking-wider mb-3">Azure Service Health</h2>
           <div id="exec-service-health" class="space-y-2">
-            <div class="bg-white rounded-xl border border-oge-gray-100 p-4 text-sm text-oge-gray-400 italic">Toggle to Live mode for real-time data</div>
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 cursor-pointer hover:shadow-md" onclick="askCouncil('The App Service in West US 2 had unplanned maintenance recently. Which of our resources are affected? What proactive resilience steps should we take?')">
+              <div class="font-medium text-amber-700 text-sm">⚠️ App Service — Unplanned Maintenance (West US 2)</div>
+              <div class="text-xs text-oge-gray-400 mt-1">Resolved · App Service · West US 2</div>
+            </div>
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 cursor-pointer hover:shadow-md" onclick="askCouncil('DALL-E model version 3 is being retired. Do we use this model? What is our migration plan?')">
+              <div class="font-medium text-amber-700 text-sm">⚠️ Azure OpenAI — DALL-E v3 Retirement</div>
+              <div class="text-xs text-oge-gray-400 mt-1">Active · Azure OpenAI · Global</div>
+            </div>
+            <div class="bg-oge-gray-50 border border-oge-gray-200 rounded-xl p-3 cursor-pointer hover:shadow-md" onclick="askCouncil('Key Vault access policy to RBAC transition — are our vaults affected? What do we need to do?')">
+              <div class="font-medium text-oge-gray-500 text-sm">ℹ️ Key Vault — Access Policy → RBAC Transition</div>
+              <div class="text-xs text-oge-gray-400 mt-1">Active · Key Vault · Global</div>
+            </div>
           </div>
         </div>
+
+        <!-- Top Actions -->
         <div>
           <h2 class="text-sm font-bold text-oge-gray-500 uppercase tracking-wider mb-3">Top Actions</h2>
           <div id="exec-actions" class="space-y-2">
-            <div class="bg-white rounded-xl border border-oge-gray-100 p-4 text-sm text-oge-gray-400 italic">Toggle to Live mode for recommendations</div>
+            <div class="bg-white border border-oge-gray-100 rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:shadow-md" onclick="askCouncil('Our security posture score is 65/100. What are the top 3 things we should fix to get above 80? How much would each cost to implement?')">
+              <span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded">HIGH</span>
+              <div><div class="text-sm font-medium">Security posture needs improvement</div><div class="text-xs text-oge-gray-400">2 NSG drift findings, 1 insecure storage</div></div>
+            </div>
+            <div class="bg-white border border-oge-gray-100 rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:shadow-md" onclick="askCouncil('2 resources are degraded in our environment. What is the business impact and what investments in resilience would prevent this?')">
+              <span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded">HIGH</span>
+              <div><div class="text-sm font-medium">Resilience risks detected</div><div class="text-xs text-oge-gray-400">2 degraded resources, 1 active incident</div></div>
+            </div>
+            <div class="bg-white border border-oge-gray-100 rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:shadow-md" onclick="askCouncil('Our governance score is 71/100. What are the tagging gaps and how do we get to 95%+ compliance?')">
+              <span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded">MED</span>
+              <div><div class="text-sm font-medium">Governance gaps in tagging</div><div class="text-xs text-oge-gray-400">6 RGs without support owner</div></div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Ask Pipeline for exec summary -->
-      <div class="mt-6 text-center">
-        <button onclick="askCouncil('Give me a 60-second executive briefing on our Azure reliability posture. Cover: Are we at risk of an outage? What is our biggest vulnerability? What one thing should I fund to improve resilience? Keep it executive-level — no jargon.')"
-          class="px-6 py-3 bg-oge-black text-white rounded-xl text-sm font-medium hover:bg-oge-gray-700">
-          ⚡ Ask Pipeline for Executive Summary
-        </button>
+        <!-- The Crew's Take -->
+        <div>
+          <h2 class="text-sm font-bold text-oge-gray-500 uppercase tracking-wider mb-3">Ask the Crew</h2>
+          <div class="space-y-2">
+            <button onclick="askCouncil('Give me a 60-second executive briefing on our Azure reliability. Are we at risk of an outage? What is our single biggest vulnerability? What one investment should I prioritize?')"
+              class="w-full text-left bg-oge-black text-white rounded-xl p-3 hover:bg-oge-gray-700 text-sm">
+              ⚡ "Pipeline, give me the 60-second briefing"
+            </button>
+            <button onclick="askCouncil('If West US 2 went down right now, what is our blast radius? Which teams are affected? What would it cost to add region redundancy?')"
+              class="w-full text-left bg-white border border-oge-gray-100 rounded-xl p-3 hover:border-oge-red text-sm text-oge-gray-600">
+              🏗️ "What if West US 2 goes down?"
+            </button>
+            <button onclick="askCouncil('Show me where we are wasting money. Not generic advice — specific resources, specific dollars, specific recommendations.')"
+              class="w-full text-left bg-white border border-oge-gray-100 rounded-xl p-3 hover:border-oge-red text-sm text-oge-gray-600">
+              🛢️ "Where are we wasting money?"
+            </button>
+            <button onclick="askCouncil('Are we following our own standards? Check our Terraform patterns, tagging compliance, naming conventions, and network topology against Azure Well-Architected Framework.')"
+              class="w-full text-left bg-white border border-oge-gray-100 rounded-xl p-3 hover:border-oge-red text-sm text-oge-gray-600">
+              🔧 "Are we following our own standards?"
+            </button>
+            <button onclick="runMorningBriefing()"
+              class="w-full text-left bg-white border border-oge-gray-100 rounded-xl p-3 hover:border-oge-red text-sm text-oge-gray-600">
+              ☀️ "Run the morning briefing"
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
