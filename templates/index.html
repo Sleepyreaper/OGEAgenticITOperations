@@ -135,6 +135,29 @@
         </div>
       </div>
 
+      <!-- Health Status Bar (Live mode only) -->
+      <div id="health-bar" class="hidden">
+        <div class="grid grid-cols-2 gap-4">
+          <!-- Resource Health -->
+          <div class="bg-white rounded-xl border border-oge-gray-100 p-4">
+            <h3 class="text-xs font-bold text-oge-gray-400 uppercase tracking-wider mb-3">Resource Health</h3>
+            <div id="health-bar-content" class="flex items-center gap-4">
+              <div class="flex-1 h-4 bg-oge-gray-100 rounded-full overflow-hidden flex">
+                <div id="health-green" class="bg-green-500 h-full" style="width:100%"></div>
+                <div id="health-yellow" class="bg-amber-400 h-full" style="width:0%"></div>
+                <div id="health-red" class="bg-red-500 h-full" style="width:0%"></div>
+              </div>
+              <span id="health-text" class="text-xs text-oge-gray-400 whitespace-nowrap">Loading...</span>
+            </div>
+          </div>
+          <!-- Service Health -->
+          <div class="bg-white rounded-xl border border-oge-gray-100 p-4">
+            <h3 class="text-xs font-bold text-oge-gray-400 uppercase tracking-wider mb-3">Azure Service Health</h3>
+            <div id="service-health-content" class="text-xs text-oge-gray-400">Loading...</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Two-column layout -->
       <div class="grid grid-cols-3 gap-6">
         <!-- Left: Issues & Alerts -->
@@ -231,6 +254,18 @@
         <div class="space-y-4">
           <!-- Chaos Demo -->
           <h2 class="text-sm font-bold text-oge-red uppercase tracking-wider">⚡ Live Chaos Demo</h2>
+
+          <!-- Morning Briefing -->
+          <button onclick="runMorningBriefing()" id="briefing-btn" class="w-full bg-gradient-to-r from-oge-black to-oge-gray-700 rounded-xl p-4 text-left hover:from-oge-gray-700 hover:to-oge-gray-600 group">
+            <div class="flex items-center gap-3">
+              <span class="text-2xl group-hover:animate-bounce">☀️</span>
+              <div>
+                <div class="text-white font-bold text-sm">Morning Briefing</div>
+                <div class="text-oge-gray-400 text-xs">What the crew found overnight — your daily top of mind</div>
+              </div>
+            </div>
+          </button>
+
           <div class="bg-oge-black rounded-xl p-4 text-white">
             <p class="text-xs text-oge-gray-300 mb-3">Create a real security problem in Azure and watch Flare Stack detect it in seconds.</p>
             <div class="flex gap-2">
@@ -551,6 +586,7 @@
         liveData = data;
         updateDashboardWithLive(data);
         updateSuggestedQuestions(data);
+        updateHealthBar(data);
         badge.textContent = 'LIVE';
         badge.className = 'text-xs bg-green-100 text-green-700 font-medium px-2.5 py-1 rounded-full';
       } catch (e) {
@@ -666,6 +702,7 @@
       document.getElementById('issues-container').innerHTML = DEMO_ISSUES_HTML;
       document.getElementById('cost-table-container').innerHTML = DEMO_COST_TABLE_HTML;
       resetSuggestedQuestions();
+      document.getElementById('health-bar').classList.add('hidden');
     }
 
     function buildIssueCard(severity, title, detail, question) {
@@ -677,6 +714,68 @@
     const DEMO_ISSUES_HTML = document.getElementById('issues-container').innerHTML;
     const DEMO_COST_TABLE_HTML = document.getElementById('cost-table-container').innerHTML;
     const DEMO_QUESTIONS_HTML = document.getElementById('suggested-questions').innerHTML;
+
+    function updateHealthBar(data) {
+      const bar = document.getElementById('health-bar');
+      if (!data.resource_health) { bar.classList.add('hidden'); return; }
+      bar.classList.remove('hidden');
+
+      const rh = data.resource_health.summary || {};
+      const total = data.resource_health.total_monitored || 1;
+      const avail = rh.Available || 0;
+      const degraded = rh.Degraded || 0;
+      const unavail = rh.Unavailable || 0;
+
+      document.getElementById('health-green').style.width = (avail / total * 100) + '%';
+      document.getElementById('health-yellow').style.width = (degraded / total * 100) + '%';
+      document.getElementById('health-red').style.width = (unavail / total * 100) + '%';
+      document.getElementById('health-text').textContent = `${avail} healthy · ${degraded} degraded · ${unavail} down (${total} monitored)`;
+
+      // Service Health
+      const shDiv = document.getElementById('service-health-content');
+      const events = data.service_health || [];
+      if (events.length === 0) {
+        shDiv.innerHTML = '<span class="text-green-600 font-medium">✅ No active Azure incidents affecting your resources</span>';
+      } else {
+        let html = '';
+        for (const evt of events) {
+          const color = evt.status === 'Active' ? 'text-amber-600' : 'text-oge-gray-500';
+          const icon = evt.level === 'Warning' ? '⚠️' : evt.level === 'Error' ? '🔴' : 'ℹ️';
+          html += `<div class="mb-2 cursor-pointer hover:text-oge-red" onclick="askCouncil('Azure Service Health: ${evt.title.replace(/'/g, "\\'")}. This affects ${evt.services.join(', ')} in ${evt.regions.join(', ')}. Which of our resources are impacted? What proactive steps should we take for resilience — considering capacity, redundancy, region failover, and cost?')">`;
+          html += `<span class="${color} font-medium">${icon} ${escapeHtml(evt.title.substring(0, 80))}</span>`;
+          html += `<div class="text-oge-gray-400 text-xs">${evt.status} · ${evt.services.join(', ')} · ${evt.regions.slice(0,3).join(', ')}</div>`;
+          html += '</div>';
+        }
+        shDiv.innerHTML = html;
+      }
+
+      // If degraded resources, add to issues
+      if (data.resource_health.degraded && data.resource_health.degraded.length > 0) {
+        const issuesDiv = document.getElementById('issues-container');
+        for (const d of data.resource_health.degraded) {
+          const card = buildIssueCard('CRITICAL', `🔴 ${d.name} is ${d.status}`, d.summary + ' (' + d.resourceGroup + ')', `Resource ${d.name} in ${d.resourceGroup} is ${d.status}. What is the root cause? What are our options for restoring service — considering failover, region redundancy, and the Azure Well-Architected Framework resilience principles?`);
+          issuesDiv.innerHTML = card + issuesDiv.innerHTML;
+        }
+      }
+    }
+
+    async function runMorningBriefing() {
+      showView('council');
+      const btn = document.getElementById('briefing-btn');
+      addMessage('user', '', '☀️ Run the morning briefing — what did the crew find overnight?');
+      document.getElementById('send-btn').disabled = true;
+      streamTotalTokens = 0;
+      const panel = document.getElementById('agent-perspectives');
+      panel.innerHTML = '';
+
+      try {
+        await streamCouncil('/api/digest', {});
+      } catch (e) {
+        addMessage('assistant', 'Pipeline', '⚠️ Error: ' + e.message);
+      } finally {
+        document.getElementById('send-btn').disabled = false;
+      }
+    }
 
     function updateSuggestedQuestions(data) {
       const div = document.getElementById('suggested-questions');

@@ -213,6 +213,28 @@ Be concise — working code, not an essay."""
             except Exception:
                 pass
 
+            # Resource health — per-resource availability
+            resource_health = []
+            try:
+                resource_health = azure_data.get_resource_health_statuses(sub_id)
+            except Exception:
+                pass
+
+            health_summary = {"Available": 0, "Degraded": 0, "Unavailable": 0, "Unknown": 0}
+            degraded_resources = []
+            for rh in resource_health:
+                status = rh.get("status", "Unknown")
+                health_summary[status] = health_summary.get(status, 0) + 1
+                if status in ("Degraded", "Unavailable"):
+                    degraded_resources.append(rh)
+
+            # Azure Service Health — platform incidents affecting us
+            service_health = []
+            try:
+                service_health = azure_data.get_service_health_events(sub_id, days=30)
+            except Exception:
+                pass
+
             advisor_by_category = {}
             for r in advisor_recs:
                 cat = r.get("category", "Unknown")
@@ -243,6 +265,12 @@ Be concise — working code, not an essay."""
                 },
                 "security_drift": security_drift,
                 "insecure_storage": insecure_storage,
+                "resource_health": {
+                    "summary": health_summary,
+                    "total_monitored": len(resource_health),
+                    "degraded": degraded_resources,
+                },
+                "service_health": service_health,
             })
         except Exception as e:
             traceback.print_exc()
@@ -284,6 +312,56 @@ Be concise — working code, not an essay."""
         try:
             drift = azure_data.detect_security_drift(settings.subscription_id)
             return jsonify({"drift_findings": drift, "count": len(drift)})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/digest", methods=["GET"])
+    def daily_digest():
+        """Generate a daily 'top of mind' digest — what the crew found overnight."""
+        try:
+            sub_id = settings.subscription_id
+            # Gather all signals
+            orphaned = azure_data.get_orphaned_disks(sub_id)
+            drift = azure_data.detect_security_drift(sub_id)
+            insecure = azure_data.detect_insecure_storage(sub_id)
+            health_events = azure_data.get_service_health_events(sub_id, days=7)
+            resource_health = azure_data.get_resource_health_statuses(sub_id)
+            tagging = azure_data.get_tagging_compliance(sub_id)
+
+            degraded = [r for r in resource_health if r.get("status") in ("Degraded", "Unavailable")]
+            active_incidents = [e for e in health_events if e.get("status") == "Active"]
+            untagged = [t for t in tagging if not t.get("supportOwner")]
+
+            digest_context = json.dumps({
+                "date": "today",
+                "orphaned_disks": len(orphaned),
+                "security_drift": drift,
+                "insecure_storage": insecure,
+                "degraded_resources": degraded,
+                "active_service_incidents": active_incidents,
+                "untagged_resource_groups": [t["name"] for t in untagged],
+                "tagging_compliance_pct": round(len([t for t in tagging if t.get("supportOwner")]) / len(tagging) * 100, 1) if tagging else 0,
+            }, default=str)
+
+            def generate():
+                yield f"data: {json.dumps({'phase': 'round1', 'agent_key': 'scout', 'result': {'agent': 'Flare Stack', 'role': 'Overnight scan', 'model': 'digest', 'response': '🔥 **Daily Digest — scanning overnight findings...**', 'usage': {'prompt_tokens': 0, 'completion_tokens': 0}}})}\n\n"
+
+                for agent_key in ["scout", "cost_sentinel", "standards_architect"]:
+                    agent_cfg = settings.agents.get(agent_key)
+                    if not agent_cfg:
+                        continue
+                    result = call_agent(agent_cfg, f"Generate a daily morning briefing. What should the ops team address TODAY based on this overnight scan data? Prioritize by risk and impact.\n\nOvernight scan results:\n{digest_context}")
+                    yield f"data: {json.dumps({'phase': 'round1', 'agent_key': agent_key, 'result': result}, default=str)}\n\n"
+
+                # Pipeline summary
+                orchestrator_cfg = settings.agents["orchestrator"]
+                summary = call_agent(orchestrator_cfg, f"Create a crisp morning briefing from the crew's overnight findings. Format as: TOP PRIORITY (1 item), WATCH LIST (2-3 items), ALL CLEAR (what's fine). Data:\n{digest_context}")
+                yield f"data: {json.dumps({'phase': 'synthesis', 'agent_key': 'orchestrator', 'result': summary}, default=str)}\n\n"
+                yield f"data: {json.dumps({'phase': 'done'})}\n\n"
+
+            return Response(generate(), mimetype="text/event-stream",
+                            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500

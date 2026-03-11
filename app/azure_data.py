@@ -161,6 +161,85 @@ def detect_insecure_storage(subscription_id: str = None) -> list[dict]:
     )
 
 
+# ─── Azure Service Health & Resource Health ──────────────────────
+
+def get_resource_health_statuses(subscription_id: str = None) -> list[dict]:
+    """Get health status for all resources via Resource Health API."""
+    import requests
+    cred = _credential()
+    sub = subscription_id or _subscription_id()
+    token = cred.get_token("https://management.azure.com/.default").token
+    url = f"https://management.azure.com/subscriptions/{sub}/providers/Microsoft.ResourceHealth/availabilityStatuses?api-version=2023-07-01-preview"
+    resp = requests.get(url, headers={"Authorization": f"Bearer {token}"})
+    if resp.status_code != 200:
+        return []
+    data = resp.json().get("value", [])
+    results = []
+    for item in data:
+        rid = item.get("id", "")
+        props = item.get("properties", {})
+        # Extract resource name from the ID
+        parts = rid.split("/providers/")[0].split("/") if "/providers/" in rid else []
+        rg = ""
+        rname = ""
+        rtype = ""
+        if "/providers/" in rid:
+            before_health = rid.split("/providers/Microsoft.ResourceHealth")[0]
+            segments = before_health.split("/")
+            for i, s in enumerate(segments):
+                if s.lower() == "resourcegroups" and i + 1 < len(segments):
+                    rg = segments[i + 1]
+                if s.lower() == "providers" and i + 2 < len(segments):
+                    rtype = f"{segments[i+1]}/{segments[i+2]}"
+                    if i + 3 < len(segments):
+                        rname = segments[i + 3]
+
+        results.append({
+            "name": rname,
+            "resourceGroup": rg,
+            "type": rtype,
+            "status": props.get("availabilityState", "Unknown"),
+            "summary": props.get("summary", ""),
+            "title": props.get("title", ""),
+            "location": item.get("location", ""),
+        })
+    return results
+
+
+def get_service_health_events(subscription_id: str = None, days: int = 30) -> list[dict]:
+    """Get Azure Service Health events affecting this subscription."""
+    import requests
+    from datetime import datetime, timezone, timedelta
+    cred = _credential()
+    sub = subscription_id or _subscription_id()
+    token = cred.get_token("https://management.azure.com/.default").token
+    start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00Z")
+    url = f"https://management.azure.com/subscriptions/{sub}/providers/Microsoft.ResourceHealth/events?api-version=2024-02-01&queryStartTime={start}"
+    resp = requests.get(url, headers={"Authorization": f"Bearer {token}"})
+    if resp.status_code != 200:
+        return []
+    events = []
+    for item in resp.json().get("value", []):
+        props = item.get("properties", {})
+        impacted_services = []
+        impacted_regions = []
+        for impact in props.get("impact", []):
+            impacted_services.append(impact.get("impactedService", ""))
+            for region in impact.get("impactedRegions", []):
+                impacted_regions.append(region.get("impactedRegion", ""))
+        events.append({
+            "title": props.get("title", ""),
+            "status": props.get("status", ""),
+            "level": props.get("level", ""),
+            "eventType": props.get("eventType", ""),
+            "impactStart": props.get("impactStartTime", ""),
+            "services": list(set(impacted_services)),
+            "regions": list(set(impacted_regions)),
+            "summary": props.get("summary", "")[:300],
+        })
+    return events
+
+
 # ─── Chaos / Demo Functions ─────────────────────────────────────
 
 def create_chaos_nsg_rule(resource_group: str = "OGE_Envisioning",
