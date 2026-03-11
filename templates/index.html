@@ -912,7 +912,7 @@
     function updateDashboardWithLive(data) {
       // KPI: Resources
       document.getElementById('kpi-resources-count').textContent = data.total_resources;
-      document.getElementById('kpi-resources-detail').textContent = `across ${data.resource_groups} RGs in ${data.subscriptions ? data.subscriptions.with_resources : 1} sub(s)`;
+      document.getElementById('kpi-resources-detail').textContent = `across ${data.resource_groups} resource groups`;
 
       // KPI: Health — show findings count
       const advisorCount = data.advisor ? data.advisor.total : 0;
@@ -932,7 +932,7 @@
       document.getElementById('kpi-tags-detail').textContent = `${data.tagging.non_compliant.length} RGs missing support-owner`;
 
       // KPI: Findings
-      document.getElementById('kpi-alerts-count').textContent = findings;
+      document.getElementById('kpi-alerts-count').textContent = totalFindings;
       document.getElementById('kpi-alerts-detail').textContent = `${data.public_ips} public IPs · ${data.orphaned_disks} orphaned disks`;
 
       // Issues section — populate from live findings
