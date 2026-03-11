@@ -109,6 +109,43 @@ def create_app():
         return Response(generate(), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
+    @app.route("/api/remediate", methods=["POST"])
+    def generate_remediation():
+        """Generate Terraform/CLI remediation code based on a crew analysis.
+
+        Body: { "context": str (the crew's analysis to remediate) }
+        """
+        body = request.get_json(force=True)
+        context = body.get("context", "").strip()
+        if not context:
+            return jsonify({"error": "context is required"}), 400
+
+        remediation_prompt = f"""Based on this operational analysis, generate the remediation code.
+
+{context}
+
+Generate TWO things:
+1. **Terraform code** to fix this issue following OGE standards (modular, tagged, least-privilege)
+2. **Azure CLI commands** as a quick alternative for immediate action
+
+Format each in a proper code block. Include comments explaining what each section does.
+Keep it production-ready — no placeholders except for subscription/resource group IDs which should use variables.
+If the analysis recommends NOT making changes (e.g., The Roughneck defended the current config), say so and explain why no remediation is needed.
+Be concise — working code, not an essay."""
+
+        def generate():
+            try:
+                # Use The Roughneck (gpt-4.1) for remediation — he knows the standards
+                roughneck_cfg = settings.agents["standards_architect"]
+                result = call_agent(roughneck_cfg, remediation_prompt)
+                yield f"data: {json.dumps({'phase': 'remediation', 'result': result}, default=str)}\n\n"
+                yield f"data: {json.dumps({'phase': 'done'})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'phase': 'error', 'error': str(e)})}\n\n"
+
+        return Response(generate(), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
     @app.route("/api/demo/<scenario_id>", methods=["POST"])
     def run_demo(scenario_id):
         """Run a pre-built demo scenario."""

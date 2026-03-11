@@ -578,17 +578,24 @@
       const issuesDiv = document.getElementById('issues-container');
       let issuesHtml = '';
 
+      // Build header showing this is live discovery
+      issuesHtml += '<div class="bg-oge-black text-white rounded-xl p-3 mb-3 text-center"><span class="text-xs font-bold uppercase tracking-wider">🔥 Flare Stack Live Scan — Things You May Not Have Known</span></div>';
+
       if (data.public_ips > 0) {
-        issuesHtml += buildIssueCard('WARNING', `${data.public_ips} Public IP addresses detected`, 'Public IPs found in subscription — review if any should be private-only', 'Investigate public IPs in the subscription');
+        issuesHtml += buildIssueCard('WARNING', `🔥 ${data.public_ips} Public IP addresses exposed`, 'These IPs are publicly routable from the internet. Should they be behind private endpoints?', 'We found ' + data.public_ips + ' public IP addresses in our subscription. Analyze each one — should any be moved behind private endpoints for security? What is the risk of leaving them public?');
       }
       if (data.tagging.non_compliant.length > 0) {
-        issuesHtml += buildIssueCard('WARNING', `${data.tagging.non_compliant.length} RGs missing support-owner tag`, data.tagging.non_compliant.join(', '), 'These resource groups have no support-owner tag: ' + data.tagging.non_compliant.join(', ') + '. Who should own them?');
+        issuesHtml += buildIssueCard('WARNING', `🏷️ ${data.tagging.non_compliant.length} resource groups have no support owner`, 'If these resources have an incident, nobody gets paged. ' + data.tagging.non_compliant.slice(0,3).join(', ') + (data.tagging.non_compliant.length > 3 ? '...' : ''), 'These resource groups have no support-owner tag: ' + data.tagging.non_compliant.join(', ') + '. What is the operational risk? Generate a remediation plan to tag them.');
       }
       if (data.orphaned_disks > 0) {
-        issuesHtml += buildIssueCard('INFO', `${data.orphaned_disks} orphaned disks`, 'Unattached managed disks found — potential waste', 'We have orphaned disks. Should we clean them up?');
+        issuesHtml += buildIssueCard('INFO', `💰 ${data.orphaned_disks} orphaned disks burning money`, 'Unattached managed disks with no VM — you are paying for storage nobody is using', 'We have ' + data.orphaned_disks + ' orphaned disks. Calculate the monthly waste and recommend whether to snapshot and delete or keep.');
       }
-      if (issuesHtml === '') {
-        issuesHtml = '<div class="bg-white rounded-xl border-l-4 border-green-500 border border-oge-gray-100 p-4"><div class="flex items-center gap-2"><span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded">ALL CLEAR</span><span class="font-semibold text-sm">No critical issues detected</span></div></div>';
+      // Resource type insights
+      const typeCount = Object.keys(data.resources_by_type).length;
+      issuesHtml += buildIssueCard('INFO', `📊 ${data.total_resources} resources across ${typeCount} types`, data.resource_groups + ' resource groups discovered — click to have the crew analyze your environment', 'Give me a full analysis of this Azure subscription. We have ' + data.total_resources + ' resources across ' + data.resource_groups + ' resource groups. What stands out? What should we investigate?');
+      
+      if (issuesHtml.split('buildIssueCard').length <= 1) {
+        issuesHtml += '<div class="bg-white rounded-xl border-l-4 border-green-500 border border-oge-gray-100 p-4"><div class="flex items-center gap-2"><span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded">ALL CLEAR</span><span class="font-semibold text-sm">No critical issues detected</span></div></div>';
       }
       issuesDiv.innerHTML = issuesHtml;
 
@@ -757,6 +764,7 @@
     }
 
     let streamTotalTokens = 0;
+    let lastSynthesisText = '';
 
     async function askCouncil(question) {
       showView('council');
@@ -880,6 +888,9 @@
           }
           else if (event.phase === 'synthesis') {
             addMessage('assistant', 'Pipeline', agent.response);
+            // Add remediation button after synthesis
+            lastSynthesisText = agent.response;
+            addRemediationButton();
           }
         }
       }
@@ -907,6 +918,70 @@
     }
 
     function investigateIssue(scenarioId) { runDemo(scenarioId); }
+
+    function addRemediationButton() {
+      const chat = document.getElementById('chat-messages');
+      const div = document.createElement('div');
+      div.className = 'flex gap-3 fade-in';
+      div.innerHTML = `
+        <div class="w-8 h-8"></div>
+        <div class="flex gap-2 mt-1">
+          <button onclick="generateRemediation()" id="remediate-btn"
+            class="px-4 py-2 bg-oge-black text-white rounded-lg text-xs font-medium hover:bg-oge-gray-700 flex items-center gap-2 disabled:opacity-50">
+            🔧 Generate Terraform / CLI Fix
+          </button>
+          <button onclick="askCouncil('Explain this in a 3-sentence executive summary suitable for leadership.')"
+            class="px-4 py-2 bg-white border border-oge-gray-200 text-oge-gray-600 rounded-lg text-xs font-medium hover:border-oge-red hover:text-oge-red">
+            📊 Executive Summary
+          </button>
+        </div>`;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function generateRemediation() {
+      const btn = document.getElementById('remediate-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '🔧 Generating...'; }
+
+      addMessage('assistant', 'The Roughneck', '🔧 **Writing remediation code...** Stand by, I\'ll produce Terraform and CLI fixes following OGE standards.');
+
+      try {
+        const resp = await fetch('/api/remediate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ context: lastSynthesisText }),
+        });
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            let event;
+            try { event = JSON.parse(line.slice(6).trim()); } catch { continue; }
+            if (event.phase === 'remediation') {
+              addMessage('assistant', 'The Roughneck', event.result.response);
+              const colors = AGENT_COLORS['The Roughneck'];
+              const tokens = (event.result.usage.prompt_tokens || 0) + (event.result.usage.completion_tokens || 0);
+              addAgentToPanel(event.result, colors, tokens, 'round1');
+            }
+            if (event.phase === 'error') {
+              addMessage('assistant', 'Pipeline', '⚠️ Error generating remediation: ' + event.error);
+            }
+          }
+        }
+      } catch (e) {
+        addMessage('assistant', 'Pipeline', '⚠️ Connection error: ' + e.message);
+      }
+      if (btn) { btn.disabled = false; btn.textContent = '🔧 Generate Terraform / CLI Fix'; }
+    }
 
     // Legacy renderCouncilResponse kept for non-streaming fallback
     function renderCouncilResponse(data) {
