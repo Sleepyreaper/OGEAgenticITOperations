@@ -3,7 +3,7 @@
 from flask import Flask, render_template, request, jsonify, Response
 import json
 import traceback
-from app.agents.runner import run_council, call_agent
+from app.agents.runner import run_council, run_council_streaming, call_agent
 from app.agents.demos import DEMO_SCENARIOS
 from app.config import settings
 from app import azure_data
@@ -59,6 +59,55 @@ def create_app():
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/ask/stream", methods=["POST"])
+    def ask_stream():
+        """SSE endpoint — streams each agent response as it completes."""
+        body = request.get_json(force=True)
+        question = body.get("question", "").strip()
+        if not question:
+            return jsonify({"error": "question is required"}), 400
+
+        context_data = body.get("context_data", "")
+        agents = body.get("agents")
+        mode = body.get("mode", "demo")
+
+        if mode == "live" and not context_data:
+            try:
+                context_data = _gather_live_context()
+            except Exception as e:
+                context_data = f"[Error gathering live data: {e}]"
+
+        def generate():
+            try:
+                for event in run_council_streaming(question, context_data, agents):
+                    yield f"data: {json.dumps(event, default=str)}\n\n"
+                yield f"data: {json.dumps({'phase': 'done'})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'phase': 'error', 'error': str(e)})}\n\n"
+
+        return Response(generate(), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.route("/api/demo/<scenario_id>/stream", methods=["POST"])
+    def run_demo_stream(scenario_id):
+        """SSE endpoint for demo scenarios."""
+        scenario = DEMO_SCENARIOS.get(scenario_id)
+        if not scenario:
+            return jsonify({"error": f"Unknown scenario: {scenario_id}"}), 404
+
+        def generate():
+            try:
+                for event in run_council_streaming(
+                    scenario["question"], scenario["data"], scenario["agents"]
+                ):
+                    yield f"data: {json.dumps(event, default=str)}\n\n"
+                yield f"data: {json.dumps({'phase': 'done'})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'phase': 'error', 'error': str(e)})}\n\n"
+
+        return Response(generate(), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     @app.route("/api/demo/<scenario_id>", methods=["POST"])
     def run_demo(scenario_id):

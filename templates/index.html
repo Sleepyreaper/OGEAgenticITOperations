@@ -756,34 +756,27 @@
       await askCouncil(question);
     }
 
+    let streamTotalTokens = 0;
+
     async function askCouncil(question) {
       showView('council');
       addMessage('user', '', question);
-      addLoadingIndicator();
       document.getElementById('send-btn').disabled = true;
+      streamTotalTokens = 0;
+
+      // Reset agent panel
+      const panel = document.getElementById('agent-perspectives');
+      panel.innerHTML = '';
+
+      if (currentMode === 'live') {
+        addMessage('assistant', 'Pipeline', '🔵 **LIVE mode** — scanning your Azure subscription for context...');
+      }
+
+      addMessage('assistant', 'Pipeline', '⚡ Dispatching the crew... each will report as they finish.');
 
       try {
-        const resp = await fetch('/api/ask', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question, mode: currentMode }),
-        });
-        const data = await resp.json();
-        removeLoadingIndicator();
-
-        if (data.error) {
-          addMessage('assistant', 'Pipeline', '⚠️ Error: ' + data.error);
-          return;
-        }
-
-        // Show mode indicator in chat
-        if (data.mode === 'live') {
-          addMessage('assistant', 'Pipeline', '🔵 **Running in LIVE mode** — querying your Azure subscription...');
-        }
-
-        renderCouncilResponse(data);
+        await streamCouncil('/api/ask/stream', { question, mode: currentMode });
       } catch (e) {
-        removeLoadingIndicator();
         addMessage('assistant', 'Pipeline', '⚠️ Connection error: ' + e.message);
       } finally {
         document.getElementById('send-btn').disabled = false;
@@ -795,37 +788,132 @@
       const demos = {{ demos | tojson }};
       const demo = demos[scenarioId];
       addMessage('user', '', demo.question || demo.title);
-      addLoadingIndicator();
       document.getElementById('send-btn').disabled = true;
+      streamTotalTokens = 0;
+
+      const panel = document.getElementById('agent-perspectives');
+      panel.innerHTML = '';
+
+      addMessage('assistant', 'Pipeline', '⚡ Dispatching the crew... each will report as they finish.');
 
       try {
-        const resp = await fetch('/api/demo/' + scenarioId, { method: 'POST' });
-        const data = await resp.json();
-        removeLoadingIndicator();
-
-        if (data.error) {
-          addMessage('assistant', 'Pipeline', '⚠️ Error: ' + data.error);
-          return;
-        }
-
-        renderCouncilResponse(data);
+        await streamCouncil('/api/demo/' + scenarioId + '/stream', {});
       } catch (e) {
-        removeLoadingIndicator();
         addMessage('assistant', 'Pipeline', '⚠️ Connection error: ' + e.message);
       } finally {
         document.getElementById('send-btn').disabled = false;
       }
     }
 
+    async function streamCouncil(url, body) {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let round2Started = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep incomplete line
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+
+          let event;
+          try { event = JSON.parse(jsonStr); } catch { continue; }
+
+          if (event.phase === 'error') {
+            addMessage('assistant', 'Pipeline', '⚠️ Error: ' + event.error);
+            return;
+          }
+          if (event.phase === 'done') {
+            // Add cost summary to panel
+            const totalCost = (streamTotalTokens * 0.000002).toFixed(4);
+            const panel = document.getElementById('agent-perspectives');
+            const summaryDiv = document.createElement('div');
+            summaryDiv.className = 'bg-oge-gray-100 rounded-lg p-3 mt-3 fade-in';
+            summaryDiv.innerHTML = `
+              <div class="flex justify-between items-center">
+                <span class="text-xs font-bold text-oge-gray-500">Total for this query</span>
+                <span class="text-xs font-bold text-green-600">${streamTotalTokens.toLocaleString()} tokens · ~$${totalCost}</span>
+              </div>`;
+            panel.appendChild(summaryDiv);
+            return;
+          }
+
+          const agent = event.result;
+          const agentName = agent.agent;
+          const colors = AGENT_COLORS[agentName] || AGENT_COLORS['Pipeline'];
+          const agentTokens = (agent.usage.prompt_tokens || 0) + (agent.usage.completion_tokens || 0);
+          streamTotalTokens += agentTokens;
+
+          if (event.phase === 'round1') {
+            // Add to chat as a message
+            addMessage('assistant', agentName, agent.response);
+            // Add to side panel
+            addAgentToPanel(agent, colors, agentTokens, 'round1');
+          }
+          else if (event.phase === 'round2') {
+            if (!round2Started) {
+              round2Started = true;
+              addMessage('assistant', 'Pipeline', '🔥 **Round 2 — The crew has seen each other\'s takes. Now they debate.**');
+              // Panel header
+              const panel = document.getElementById('agent-perspectives');
+              const h = document.createElement('div');
+              h.className = 'text-xs font-bold text-oge-red uppercase tracking-wider mb-2 mt-4';
+              h.textContent = '🔥 ROUND 2 — DEBATE';
+              panel.appendChild(h);
+            }
+            addMessage('assistant', agentName, '**[REBUTTAL]** ' + agent.response);
+            addAgentToPanel(agent, colors, agentTokens, 'round2');
+          }
+          else if (event.phase === 'synthesis') {
+            addMessage('assistant', 'Pipeline', agent.response);
+          }
+        }
+      }
+    }
+
+    function addAgentToPanel(agent, colors, agentTokens, phase) {
+      const panel = document.getElementById('agent-perspectives');
+      const estCost = (agentTokens * 0.000002).toFixed(4);
+      const borderClass = phase === 'round2' ? `border-2 ${colors.border} border-opacity-40` : `border ${colors.border} border-opacity-20`;
+      const badge = phase === 'round2' ? '<span class="text-xs text-oge-red font-medium">REBUTTAL</span>' : '';
+      const div = document.createElement('div');
+      div.className = `${colors.light} rounded-lg p-3 ${borderClass} fade-in mb-2`;
+      div.innerHTML = `
+        <div class="flex items-center gap-2 mb-2">
+          <div class="w-6 h-6 rounded ${colors.bg} flex items-center justify-center">
+            <span class="text-sm">${colors.text}</span>
+          </div>
+          <span class="text-xs font-bold">${escapeHtml(agent.agent)}</span>
+          ${badge}
+          <span class="text-xs text-oge-gray-400 ml-auto">${agent.model}</span>
+        </div>
+        <div class="text-xs text-oge-gray-600 markdown-content max-h-48 overflow-y-auto">${formatMarkdown(agent.response)}</div>
+        <div class="text-xs text-oge-gray-300 mt-2 flex justify-between"><span>${agentTokens.toLocaleString()} tokens</span><span>~$${estCost}</span></div>`;
+      panel.appendChild(div);
+    }
+
     function investigateIssue(scenarioId) { runDemo(scenarioId); }
 
+    // Legacy renderCouncilResponse kept for non-streaming fallback
     function renderCouncilResponse(data) {
-      // Show synthesis in chat
       if (data.synthesis) {
         addMessage('assistant', 'Pipeline', data.synthesis.response);
       }
 
-      // Show individual agent perspectives in side panel
       const panel = document.getElementById('agent-perspectives');
       panel.innerHTML = '';
 

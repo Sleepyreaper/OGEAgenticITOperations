@@ -150,3 +150,76 @@ Azure environment data:
         "rebuttals": rebuttal_outputs if rebuttal_outputs else None,
         "synthesis": orchestrator_result,
     }
+
+
+def run_council_streaming(user_message: str, context_data: str = "",
+                          agents_to_consult: list[str] = None):
+    """Generator that yields each agent result as it completes.
+
+    Yields dicts with: {phase, agent_key, result}
+    Phases: "round1", "round2", "synthesis"
+    """
+    if agents_to_consult is None:
+        agents_to_consult = ["cost_sentinel", "standards_architect",
+                             "diagnostics_sre", "scout"]
+
+    # ── Round 1: Independent analysis ──
+    specialist_outputs = {}
+    for agent_key in agents_to_consult:
+        agent_cfg = settings.agents.get(agent_key)
+        if not agent_cfg:
+            continue
+        result = call_agent(agent_cfg, user_message, context_data)
+        specialist_outputs[agent_key] = result
+        yield {"phase": "round1", "agent_key": agent_key, "result": result}
+
+    # ── Round 2: Rebuttals (if 2+ specialists) ──
+    rebuttal_outputs = {}
+    if len(specialist_outputs) >= 2:
+        round1_summary = ""
+        for key, output in specialist_outputs.items():
+            round1_summary += f"\n--- {output['agent']} said ---\n"
+            round1_summary += output["response"]
+            round1_summary += "\n"
+
+        for agent_key in agents_to_consult:
+            agent_cfg = settings.agents.get(agent_key)
+            if not agent_cfg:
+                continue
+
+            rebuttal_prompt = f"""You just gave your initial analysis. Now you've seen what the rest of the crew said.
+
+Here's what everyone said in Round 1:
+{round1_summary}
+
+Your job now: React honestly. If someone's wrong, call it out — respectfully but directly. If someone made a point you missed, acknowledge it. If you disagree, explain WHY with evidence. If you agree, say so and move on. Don't repeat your original analysis — just respond to the others.
+
+Keep it concise — this is a crew huddle, not an essay. Talk to them by name."""
+
+            rebuttal = call_agent(agent_cfg, rebuttal_prompt, context_data)
+            rebuttal_outputs[agent_key] = rebuttal
+            yield {"phase": "round2", "agent_key": agent_key, "result": rebuttal}
+
+    # ── Round 3: Pipeline synthesizes ──
+    synthesis_input = f"""User question: {user_message}
+
+Azure environment data:
+{context_data}
+
+=== ROUND 1: Initial Analysis ===
+"""
+    for key, output in specialist_outputs.items():
+        synthesis_input += f"\n--- {output['agent']} ---\n"
+        synthesis_input += output["response"]
+        synthesis_input += "\n"
+
+    if rebuttal_outputs:
+        synthesis_input += "\n=== ROUND 2: Crew Debate ===\n"
+        for key, output in rebuttal_outputs.items():
+            synthesis_input += f"\n--- {output['agent']} (rebuttal) ---\n"
+            synthesis_input += output["response"]
+            synthesis_input += "\n"
+
+    orchestrator_cfg = settings.agents["orchestrator"]
+    orchestrator_result = call_agent(orchestrator_cfg, synthesis_input)
+    yield {"phase": "synthesis", "agent_key": "orchestrator", "result": orchestrator_result}
