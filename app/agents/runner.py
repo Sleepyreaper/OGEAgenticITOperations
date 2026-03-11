@@ -51,7 +51,7 @@ def call_agent(agent_config: AgentConfig, user_message: str,
             "content": f"Here is the current Azure environment data:\n\n{context_data}"
         })
 
-    messages.append({"role": "user", "content": user_message})
+    messages.append({"role": "user", "content": user_message + "\n\nIMPORTANT: Keep your response to 3-5 sentences maximum. Be direct, lead with your key finding, include one specific data point, and state your recommendation. Save the deep analysis for follow-up questions."})
 
     kwargs = {"model": deployment, "messages": messages}
 
@@ -109,14 +109,10 @@ def run_council(user_message: str, context_data: str = "",
             if not agent_cfg:
                 continue
 
-            rebuttal_prompt = f"""You just gave your initial analysis. Now you've seen what the rest of the crew said.
-
-Here's what everyone said in Round 1:
+            rebuttal_prompt = f"""You've seen what the rest of the crew said in Round 1:
 {round1_summary}
 
-Your job now: React honestly. If someone's wrong, call it out — respectfully but directly. If someone made a point you missed, acknowledge it. If you disagree, explain WHY with evidence. If you agree, say so and move on. Don't repeat your original analysis — just respond to the others.
-
-Keep it concise — this is a crew huddle, not an essay. Talk to them by name."""
+React in 2-3 sentences MAX. Call out disagreements by name, acknowledge good points, state your position. This is a quick crew huddle, not a report."""
 
             rebuttal = call_agent(agent_cfg, rebuttal_prompt, context_data)
             rebuttal_outputs[agent_key] = rebuttal
@@ -187,14 +183,10 @@ def run_council_streaming(user_message: str, context_data: str = "",
             if not agent_cfg:
                 continue
 
-            rebuttal_prompt = f"""You just gave your initial analysis. Now you've seen what the rest of the crew said.
-
-Here's what everyone said in Round 1:
+            rebuttal_prompt = f"""You've seen what the rest of the crew said in Round 1:
 {round1_summary}
 
-Your job now: React honestly. If someone's wrong, call it out — respectfully but directly. If someone made a point you missed, acknowledge it. If you disagree, explain WHY with evidence. If you agree, say so and move on. Don't repeat your original analysis — just respond to the others.
-
-Keep it concise — this is a crew huddle, not an essay. Talk to them by name."""
+React in 2-3 sentences MAX. Call out disagreements by name, acknowledge good points, state your position. This is a quick crew huddle, not a report."""
 
             rebuttal = call_agent(agent_cfg, rebuttal_prompt, context_data)
             rebuttal_outputs[agent_key] = rebuttal
