@@ -574,6 +574,8 @@
       }
     }
 
+    let liveRefreshInterval = null;
+
     async function loadLiveDashboard() {
       const badge = document.getElementById('mode-badge');
       badge.textContent = 'SCANNING...';
@@ -587,12 +589,59 @@
         updateDashboardWithLive(data);
         updateSuggestedQuestions(data);
         updateHealthBar(data);
+        updateLastScanned();
         badge.textContent = 'LIVE';
         badge.className = 'text-xs bg-green-100 text-green-700 font-medium px-2.5 py-1 rounded-full';
+
+        // Start auto-refresh every 60 seconds
+        if (liveRefreshInterval) clearInterval(liveRefreshInterval);
+        liveRefreshInterval = setInterval(autoRefreshLive, 60000);
       } catch (e) {
         alert('Failed to connect to Azure: ' + e.message);
         setMode('demo');
       }
+    }
+
+    async function autoRefreshLive() {
+      if (currentMode !== 'live') { clearInterval(liveRefreshInterval); return; }
+      try {
+        const resp = await fetch('/api/scan/overview');
+        const data = await resp.json();
+        if (data.error) return;
+
+        // Detect changes — compare key metrics
+        const changed = !liveData ||
+          data.total_resources !== liveData.total_resources ||
+          data.findings !== liveData.findings ||
+          data.orphaned_disks !== liveData.orphaned_disks ||
+          data.public_ips !== liveData.public_ips ||
+          JSON.stringify(data.security_drift) !== JSON.stringify(liveData.security_drift || []);
+
+        liveData = data;
+        updateDashboardWithLive(data);
+        updateHealthBar(data);
+        updateLastScanned();
+
+        if (changed) {
+          // Flash the badge to indicate something changed
+          const badge = document.getElementById('mode-badge');
+          badge.textContent = '⚡ CHANGE DETECTED';
+          badge.className = 'text-xs bg-amber-100 text-amber-700 font-medium px-2.5 py-1 rounded-full animate-pulse';
+          setTimeout(() => {
+            badge.textContent = 'LIVE';
+            badge.className = 'text-xs bg-green-100 text-green-700 font-medium px-2.5 py-1 rounded-full';
+          }, 3000);
+        }
+      } catch (e) { /* silent retry next cycle */ }
+    }
+
+    function updateLastScanned() {
+      const el = document.getElementById('last-updated');
+      if (el) el.textContent = new Date().toLocaleTimeString();
+    }
+
+    function stopLiveRefresh() {
+      if (liveRefreshInterval) { clearInterval(liveRefreshInterval); liveRefreshInterval = null; }
     }
 
     function updateDashboardWithLive(data) {
@@ -737,6 +786,7 @@
       document.getElementById('cost-table-container').innerHTML = DEMO_COST_TABLE_HTML;
       resetSuggestedQuestions();
       document.getElementById('health-bar').classList.add('hidden');
+      stopLiveRefresh();
     }
 
     function buildIssueCard(severity, title, detail, question) {
