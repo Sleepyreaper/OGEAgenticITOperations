@@ -2,113 +2,110 @@
 
 > **Audience**: Rick + OGE leadership
 > **Duration**: ~15 minutes
-> **Presenter**: Christopher Smith
-> **Goal**: Show that Azure AI delivers immediate, visible operational value that ServiceNow and Kiro can't match for their Cloud Ops use case.
+> **Presenter**: Christopher Smith / Brad Allen
+> **Goal**: Show Azure AI delivers immediate, visible operational value that ServiceNow and Kiro can't match
 
 ---
 
 ## Opening (1 minute)
 
-**Say**: "What you're about to see was purpose-built for OGE Cloud Operations. It addresses a specific challenge your teams face every day: getting operational answers without needing elevated access. We call it the Ops Council — five AI specialists, each named after OGE operations concepts, that debate each other and deliver balanced recommendations."
-
-**Do**: Open the dashboard at the live URL. Show the environment overview.
+**Say**: "What you're about to see was purpose-built for OGE Cloud Operations in a day. Five AI specialists — each named after OGE operations concepts — that debate each other and deliver balanced recommendations. Two views: one for leadership, one for engineering."
 
 ---
 
-## Act 1: Meet the Crew (2 minutes)
+## Act 1: Executive Reliability (2 minutes)
 
-**Do**: Click the **"The Crew"** tab.
+**Do**: Open the **Reliability** tab. Toggle to **Live Azure**.
 
-**Say**: "Each agent has a specific role and personality — and they're built to disagree with each other productively."
+The reliability score animates. Four pillars populate: Security, Governance, Resilience, Cost Efficiency.
 
-Walk through quickly:
-- ⚡ **Pipeline** — coordinates everything, synthesizes the crew's takes
-- 🛢️ **Barrel Counter** — every dollar is a barrel. Finds waste.
-- 🔧 **The Roughneck** — the veteran who built this place. Knows *why* things are sized the way they are.
-- 🔄 **Turnaround** — named after the most critical refinery event. Diagnoses issues.
-- 🔥 **Flare Stack** — early warning system. When it lights up, something needs attention.
+**Say**: "This is the leadership view. One number tells you if your Azure estate is healthy. Four pillars break it down. The scores are calculated from real data — not surveys, not estimates. Resource Graph, Resource Health, Service Health, Azure Advisor — all feeding this in real time."
+
+**Point out**: Azure Service Health panel showing real incidents. Click one — "This App Service incident in West US 2 — which of OUR resources are at risk? What should we fund to improve resilience?"
+
+---
+
+## Act 2: Ops Center (2 minutes)
+
+**Do**: Click **Ops Center** tab.
+
+**Say**: "Same data, different lens. This is what Christopher's team uses day-to-day."
+
+**Point out**:
+- Flare Stack Live Scan findings (orphaned disks, public IPs, insecure storage, architecture smells)
+- Each finding has an "Investigate" button
+- Auto-refresh timestamp updating every 60 seconds
+
+---
+
+## Act 3: Meet the Crew (2 minutes)
+
+**Do**: Click **The Crew** tab. Walk through quickly.
+
+- ⚡ **Pipeline** — coordinates everything
+- 🛢️ **Barrel Counter** — every dollar is a barrel
+- 🔧 **The Roughneck** — knows why things are built this way
+- 🔄 **Turnaround** — diagnoses issues at 3 AM without anyone needing admin access
+- 🔥 **Flare Stack** — early warning system
 
 **Say**: "The tension between Barrel Counter and The Roughneck is the whole point. One wants to save money. The other knows why you spent it. Pipeline makes sure you see both sides."
 
 ---
 
-## Act 2: The Money Demo — VM Sizing Debate (4 minutes)
+## Act 4: The Debate (4 minutes)
 
-**Do**: Click the **"Why is this VM so big?"** demo scenario.
+**Do**: Click **"Why is this VM so big?"** demo scenario. Watch the crew debate in real-time.
 
-**Say**: "A DevOps team member asks: 'Why is our SAP batch VM running on a D16s_v5? Can we save money?' Watch what happens."
+**Point out as messages stream in**:
+1. Barrel Counter leads with the dollar figure
+2. The Roughneck pushes back — "this VM peaks at 94% for SAP batch"
+3. Round 2 rebuttals fly back and forth
+4. Pipeline synthesizes with tradeoffs
 
-**Wait for agents to respond.** Point out:
-1. **Barrel Counter** identifies the VM averages 11.8% CPU. Recommends downsizing. Shows the exact math and SKU alternatives.
-2. **The Roughneck** pushes back: "This VM peaks at 94% CPU on the last Friday of every month for SAP batch processing. Touch it and you break month-end close."
-3. **Pipeline** synthesizes: "Here are three options with tradeoffs — including a B-series burstable compromise."
+**After synthesis**: Click **"🔧 Generate Terraform / CLI Fix"**
 
-**Say**: "That right there is something a single AI can't do. Cost optimization *without* context causes outages. The Roughneck provides the context that keeps the lights on. And the user sees both perspectives transparently."
-
----
-
-## Act 3: The Killer Use Case — Troubleshooting Without Access (3 minutes)
-
-**Do**: Click the **"My deployment failed"** demo scenario.
-
-**Say**: "This is the use case Christopher described as 'a massive win.' A team's Terraform deployment failed. They have Reader access in Test — they can't see the detailed activity logs. Today, they open a ticket and wait. With the Ops Council..."
-
-**Wait for Turnaround to respond.** Point out:
-1. **Timeline** of exactly what happened — timestamps, operations, status
-2. **Root cause**: subnet modification blocked by VNet peering
-3. **Remediation**: specific steps the team can take, and what needs Cloud Ops intervention
-
-**Say**: "The team got a full incident write-up in seconds. No access escalation. No ticket queue. No waiting. Turnaround *is* their elevated access."
+**Say**: "That's not just a recommendation — that's production-ready Terraform following OGE standards. From 'why is this big?' to 'here's the code to fix it' in under a minute."
 
 ---
 
-## Act 4: Real Data (2 minutes)
+## Act 5: Chaos Demo (3 minutes) — THE SHOWSTOPPER
 
-**Do**: Toggle **"Live Azure"** in the top nav.
+**Do**: Go back to **Ops Center**. Click **"💥 Do Something Stupid"**.
 
-**Say**: "Everything you've seen so far uses demo data that represents OGE's environment. But watch this."
+**Say**: "I'm about to open SSH to the entire internet on a real NSG. This is the kind of mistake that happens with a fat-fingered Terraform apply or a compromised service principal. Watch how fast the Ops Council catches it."
 
-**Wait for the scan.** The dashboard updates with real subscription data.
+**Wait 10 seconds.** Badge flashes "⚡ CHANGE DETECTED". Crew auto-dispatches with security analysis.
 
-**Do**: Click one of the live findings (e.g., non-compliant resource groups or public IPs). Let the crew analyze it.
+**Do**: Click **"🧹 Clean Up"** to restore.
 
-**Say**: "That's not canned. The agents just queried your Azure subscription through Resource Graph, analyzed what they found, and gave you a recommendation — all through a Managed Identity with Reader access only."
-
----
-
-## Act 5: Governance & Security (2 minutes)
-
-**Say**: "Let me address the elephant in the room — what access does this need?"
-
-Reference the key points:
-- **5 roles on 1 Managed Identity**
-- 3 read-only at subscription scope (Reader, Log Analytics Reader, Monitoring Reader)
-- 2 resource-scoped (Key Vault Secrets User, OpenAI User)
-- **Zero write permissions anywhere**
-- **Zero changes to any team's existing access**
-- No passwords — Managed Identity with Entra ID tokens
-- Key Vault behind private endpoint, no public access
-
-**Say**: "This solution *reinforces* your governance model. It doesn't bypass it. Teams get insight without access. That's the design principle."
+**Say**: "10 seconds. That's how fast this detects a security breach. Resource Graph is free. The AI analysis cost 3 cents. Try doing that with ServiceNow."
 
 ---
 
-## Closing (1 minute)
+## Act 6: Morning Briefing (1 minute)
 
-**Say**: "ServiceNow automates your help desk. Kiro writes your code. This gives your Cloud Ops team a crew of AI specialists who know your environment, respect your standards, and debate each other so you get balanced recommendations — all without anyone needing more access than they have today."
+**Do**: Click **"☀️ Morning Briefing"**.
 
-**Say**: "And we built this in a day because when you combine Azure's AI platform with an understanding of your actual operational challenges, you get purpose-built solutions, not generic products."
+**Say**: "Every morning, the crew scans overnight and delivers a briefing: what's the top priority, what's on the watch list, what's clear. No dashboards to check. No tickets to review. The crew already did it."
+
+---
+
+## Closing (30 seconds)
+
+**Say**: "ServiceNow automates your help desk. Kiro writes your code. This gives your Cloud Ops team a crew of AI specialists that know your environment, respect your standards, debate each other, and produce remediation code — all without anyone needing more access than they have today. And we built it in a day."
 
 ---
 
 ## Q&A Prep
 
-| Likely Question | Answer |
-|----------------|--------|
-| "Can this work across our production subscriptions?" | Yes — add the 3 Reader roles per subscription to the Managed Identity. The architecture scales horizontally. |
-| "What models does it use?" | o4-mini for deep reasoning (cost analysis, diagnostics), gpt-4.1 for broad knowledge (standards), gpt-4.1-mini for fast coordination, gpt-5-nano for lightweight monitoring. All on your existing Azure OpenAI deployment. |
-| "Can we feed it our Terraform standards?" | Absolutely — The Roughneck's system prompt is where organizational knowledge lives. We'd ground it with your actual standards docs, module library, and naming conventions. |
-| "What about cost data?" | We can add Cost Management Reader role and wire in Azure Cost Management APIs. Barrel Counter is already designed for it — we just need the RBAC assignment. |
-| "How does this compare to Azure Copilot Agents?" | Azure Copilot Agents require the preview to be enabled at tenant scope (Mandy's team). This runs today, no preview needed, no tenant-scope changes. If the preview gets enabled later, this is complementary. |
-| "Can it take action, not just recommend?" | By design, it recommends but doesn't act — that's governance-first. Phase 2 could add approval workflows where a recommendation triggers a Terraform PR that goes through your normal change process. |
-| "What does this cost to run?" | The Web App runs on your existing P0v3 plan. OpenAI costs are per-token — a typical agent council call uses ~4K-8K tokens total across all agents. At Azure OpenAI pricing, that's pennies per interaction. |
+| Question | Answer |
+|----------|--------|
+| "What does this cost?" | ~$0.10-0.50/day. Scanning is free (Resource Graph). AI tokens are pennies per interaction. The token cost is visible on every query. |
+| "What access does it need?" | 5 read-only roles on 1 Managed Identity. Zero write permissions. Zero changes to anyone's existing access. See the RBAC guide. |
+| "Can this scale to all our subscriptions?" | Yes — grant the 3 Reader roles per subscription. Resource Graph queries across all subs natively. |
+| "Can we feed it our Terraform standards?" | Yes — The Roughneck's system prompt is where org knowledge lives. Ground it with your naming conventions, module library, tagging standards. |
+| "How does this compare to Azure Copilot Agents?" | Copilot Agents require tenant-scope preview enablement (Mandy's team). This runs today, no preview needed. Complementary if the preview becomes available. |
+| "Can it take action?" | By design, it recommends but never acts — governance first. Phase 2 could add approval workflows (Terraform PR → normal change process). |
+| "What about the RBAC role classification Christopher mentioned?" | Great Phase 2 candidate. The architecture supports it — add a new crew member that specializes in RBAC analysis. |
+| "How fast does it detect changes?" | Resource Graph: 5-15 seconds. Activity Log: 1-2 minutes. Advisor: ~24 hours. Our chaos demo proves the speed live. |
+| "Is the executive score real?" | Yes — calculated from Resource Health, Service Health, security drift, tagging compliance, architecture analysis. All sourced from Azure APIs, not AI opinions. |

@@ -1,56 +1,79 @@
-# OGE Envisioning — Requirements
+# OGE Ops Council — Requirements
 
 ## Org Context
 
 - **Scope**: Cloud Ops/Engineering — Digital Foundations organization
-- **Goal**: PoC with positive, visible organizational impact
+- **Goal**: PoC with positive, visible organizational impact — demo to Rick on 3/19
 - **Guiding Principle**: AI that enhances productivity while *reinforcing* standards and governance — not enabling runaway tech debt or security holes at scale
+- **Competition**: Also demoing ServiceNow Agentic AI and AWS Kiro — need a strong Azure showing
 
 ## Current State
 
-- Customer already uses **Azure MCP server + GitHub Copilot** for admin tasks (recon, one-time scripts, mass updates)
-- That workflow requires **individual licensing + admin permissions** across the tenant
-- Other teams have **least-privilege permissions** to specific scopes, read-only in Test/Prod
-- Resource groups are close to being fully tagged with **support owner** metadata
-- **Azure Copilot Agents preview is NOT enabled** — would need Mandy's team to enable at tenant scope (timing risk)
+- Customer uses **Azure MCP server + GitHub Copilot** for admin tasks (requires individual licensing + admin permissions)
+- Teams have **least-privilege permissions** — read-only in Test/Prod
+- Resource groups are close to being fully tagged with **support-owner** metadata
+- **Azure Copilot Agents preview NOT enabled** — would need Mandy's team at tenant scope
+- Christopher playing with **Azure SRE Agent** in sandbox — specifically RBAC role classification
+- Shane identified value in Kiro finding WAF rules and cost items they didn't see before
+- ServiceNow doing predictive failure + outage cost analysis
 
-## Three Candidate Scenarios (Ranked by Customer Interest)
+## What We Built
 
-### 1. Troubleshooting Agent (Highest Impact)
-- Diagnose issues in Test/Prod **without giving users elevated access**
-- Core problem: DevOps teams spend too much time lobbying for more access instead of learning to work within governance guardrails
-- AI performs targeted analysis and recommendations on behalf of teams
-- **Win-win**: better adherence to standards + smoother operations
+### Executive Reliability View (Rick's view)
+- Reliability score 0-100 with four pillar assessments
+- Azure Service Health integration — which of MY resources are affected
+- Prioritized action cards
 
-### 2. Observability Agent
-- Investigations, initial analysis summaries, and routing notifications to responsible parties
-- Aligns with SRE Agent concept — scheduled/continuous monitoring + alerting
-- Leverages resource group support-owner tags for notification routing
-- Produce write-ups for appropriate teams
+### Ops Center (Christopher/Shane's view)
+- Real-time environment scanning with auto-refresh
+- Deep intelligence beyond Azure Advisor (architecture smells, cross-resource correlation)
+- Chaos demo — create a real security problem, detect in 10 seconds
+- Morning Briefing — overnight digest from the crew
+- Generate Remediation — Terraform/CLI code following OGE standards
 
-### 3. Deployment Agent
-- Speed up teams' ability to deploy following **OGE standards with Terraform**
-- Off-load common issues from Cloud Ops team
-- Free up Cloud Ops for higher-value work
+### Ops Council (Chat)
+- 5 AI agents with OGE-themed personalities that debate and argue
+- Streaming responses via SSE — watch the debate live
+- Transparent disagreement between Cost Sentinel and Standards Architect
+- Token cost ticker for full transparency
 
-## Key Challenges
+## Customer-Requested Use Cases
 
-- Azure Copilot Agents preview not enabled — tenant-scope change needed (Mandy's team), timing uncertain
-- Least-privilege model means most teams can't self-serve diagnostics today
-- No standardized operational processes across DevOps teams
-- Teams default to requesting more access rather than improving their workflows
+### 1. Troubleshooting Without Elevated Access (Highest Impact)
+- **Status**: ✅ Built — Turnaround agent diagnoses from Activity Logs, Resource Health
+- **Demo**: "My deployment failed" scenario
 
-## Success Criteria
+### 2. Observability / Proactive Monitoring
+- **Status**: ✅ Built — Flare Stack + auto-refresh + Morning Briefing + Service Health
+- **Demo**: Morning Briefing, chaos detection, service health events
 
-- Demonstrate a PoC that visibly reduces time-to-resolution for a common operational scenario
-- Show that AI can operate within governance guardrails (no privilege escalation needed)
-- Prove that teams can get actionable answers without elevated access
-- Maintain (or improve) adherence to OGE standards and governance policy
+### 3. Cost Optimization with Standards Balance
+- **Status**: ✅ Built — Barrel Counter vs The Roughneck debate system
+- **Demo**: VM sizing scenario, waste analysis scenario
 
-## Dependencies & Blockers
+### 4. RBAC Role Classification (Christopher's personal interest)
+- **Status**: 🔲 Planned for Phase 2
+- **Notes**: Christopher already exploring with SRE Agent; strong candidate for follow-up
 
-| Item | Owner | Status | Risk |
-|------|-------|--------|------|
-| Azure Copilot Agents preview enablement | Mandy's team | Not started | Timing — tenant-scope change |
-| Resource group support-owner tagging | Cloud Ops | Near complete | Low |
-| Azure SRE Agent evaluation | Customer | Not started | Capability fit unclear |
+### 5. Wiz Findings Validation (Christopher suggested)
+- **Status**: 🔲 Phase 2 roadmap
+- **Notes**: Feed Wiz output to crew for validation/enrichment
+
+## Success Criteria (from the call)
+
+- ✅ "Eye-catching and potentially have significant use" — OGE branding, crew personalities, chaos demo
+- ✅ "Super scalable — one person could do it, AI manages the rest" — Managed Identity scans everything automatically
+- ✅ "Spark curiosity with leadership" — Executive Reliability view with scores
+- ✅ "Art of the possible" — deep intelligence, streaming debate, remediation code
+- ✅ "Human in the loop — always validate" — crew recommends, never acts; Generate Remediation requires human approval
+
+## Dependencies
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Azure OpenAI models | ✅ Done | Reusing existing nextgenagentfoundry deployments |
+| App Service Plan | ✅ Done | Sharing existing P0v3 in West US 2 |
+| Managed Identity + RBAC | ✅ Done | Reader + Log Analytics Reader + Monitoring Reader |
+| Bicep IaC | ✅ Done | Parameterized for customer deployment |
+| OGE Branding | ✅ Done | Logo, colors (#101820, #DA291C, #CEE5E8), Inter font |
+| Copilot Agents preview | ❌ Not needed | Custom solution doesn't depend on tenant preview |

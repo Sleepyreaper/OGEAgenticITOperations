@@ -2,165 +2,108 @@
 
 **Multi-agent operational intelligence for Azure Cloud Operations**
 
-Five AI specialists — each with deep expertise in a different operations area — debate, disagree, and synthesize to deliver balanced, transparent recommendations. Built for teams that need operational answers without elevated access.
+Five AI specialists — each named after OGE operations concepts — debate, disagree, and synthesize to deliver balanced, transparent recommendations. Built for teams that need operational answers without elevated access.
+
+**Two views, one platform:**
+- **Reliability** — Executive dashboard with reliability scores, pillar assessments, and service health (Rick's view)
+- **Ops Center** — Operational findings, chaos testing, remediation code, and deep intelligence (Christopher/Shane's view)
 
 ## The Crew
 
 | | Agent | Role | Model | What They Do |
 |--|-------|------|-------|-------------|
-| ⚡ | **Pipeline** | Coordinator | gpt-4.1-mini | Routes requests, synthesizes the crew's takes, surfaces disagreements |
+| ⚡ | **Pipeline** | Coordinator | gpt-4.1-mini | Routes requests, synthesizes the crew's takes, delivers exec-ready summaries |
 | 🛢️ | **Barrel Counter** | Cost | o4-mini | Finds waste, recommends rightsizing, shows the math — every dollar is a barrel |
-| 🔧 | **The Roughneck** | Standards | gpt-4.1 | Knows *why* things are built the way they are. Defends engineering decisions. |
+| 🔧 | **The Roughneck** | Standards | gpt-4.1 | Knows *why* things are built the way they are. Writes Terraform remediation. |
 | 🔄 | **Turnaround** | Diagnostics | o4-mini | Root cause analysis without users needing elevated access |
 | 🔥 | **Flare Stack** | Monitoring | gpt-5-nano | Proactive scanning — surfaces problems before they become incidents |
 
 ## How It Works
 
 ```
-User Question or 🔥 Flare Stack Alert
+User Question  /  🔥 Flare Stack Alert  /  ☀️ Morning Briefing
          │
          ▼
-    ⚡ Pipeline (routes to relevant crew)
+    ⚡ Pipeline (routes to crew)
          │
-    ┌────┼────────┬──────────┐
-    ▼    ▼        ▼          ▼
-  🛢️     🔧       🔄         🔥
-Barrel  Rough-  Turn-     Flare
-Counter neck    around    Stack
-    │    │        │          │
-    └────┴────────┘          │
-         ▼  (Round 2: Debate)│
-    ⚡ Pipeline ◄────────────┘
-         │
-         ▼
-   Transparent response:
-   each crew member's perspective +
-   where they agreed / clashed +
-   unified recommendation
+   ┌─────┼──────────┬──────────┐
+   ▼     ▼          ▼          ▼
+ 🛢️      🔧         🔄         🔥
+Barrel  Rough-    Turn-     Flare
+Counter neck      around    Stack
+   │     │          │          │
+   └─────┴──────────┘          │
+        ▼  (Round 2: Debate)   │
+   ⚡ Pipeline ◄───────────────┘
+        │
+        ▼
+  Streamed live: each crew member
+  speaks → rebuttals → synthesis
+  → Generate Terraform / CLI fix
+  → Executive Summary
 ```
 
-**Round 1**: Each specialist gives their independent analysis (3-5 sentences).
+**Round 1**: Each specialist gives their styled take (3-5 sentences).
 **Round 2**: Each specialist sees the others' takes and argues back (2-3 sentences).
-**Round 3**: Pipeline synthesizes the full debate into a balanced recommendation.
+**Round 3**: Pipeline delivers a crisp executive readout.
 
-All responses stream into the chat in real-time — you watch the crew discuss as it happens.
+All responses stream via Server-Sent Events — you watch the crew debate live.
 
 ## Key Features
 
-- **Live / Demo toggle** — Switch between real Azure subscription data and pre-built demo scenarios
-- **Streaming debate** — Agent messages appear in real-time via SSE as each specialist finishes
-- **Token cost ticker** — See the exact cost of each agent call (pennies per interaction)
-- **Dynamic questions** — Suggested questions update based on your actual environment when in Live mode
-- **Tag-based routing** — Flare Stack identifies support owners from resource group tags
-- **Zero write permissions** — The agent reads your environment but never changes anything
+### Executive Reliability View
+- Reliability score (0-100) with animated ring gauge
+- Four pillar assessments: Security, Governance, Resilience, Cost Efficiency — each with score bars
+- Azure Service Health events — clickable for "which of MY resources are affected?"
+- Prioritized action cards (HIGH / MED / LOW)
+- "Ask Pipeline for Executive Summary" button
+
+### Ops Center
+- Real-time findings: orphaned disks, public IPs, insecure storage, NSG drift
+- Deep intelligence: architecture smell detection, cross-resource correlation, orphaned NSGs, idle App Service Plans, empty subnets
+- Azure Advisor integration — platform-verified evidence alongside crew analysis
+- Resource Health status bar with visual progress indicator
+- Auto-refresh every 60 seconds in Live mode (Resource Graph queries are free)
+- Change detection — badge flashes "⚡ CHANGE DETECTED" when environment changes
+- 💥 "Do Something Stupid" chaos demo — creates real security problem, detected in ~10 seconds
+- ☀️ Morning Briefing — overnight digest from the crew
+
+### Ops Council Chat
+- Streaming multi-agent debate with OGE-styled personalities
+- 🔧 Generate Terraform / CLI Fix button after every analysis
+- 📊 Executive Summary button for leadership-ready output
+- Token cost ticker — transparency on every interaction (pennies per query)
+- Dynamic suggested questions that update based on real environment scan
+
+### Data Modes
+- **Demo**: Pre-built OGE scenarios (VM sizing, deployment failure, waste analysis)
+- **Live**: Scans real Azure subscription via Managed Identity — everything real
 
 ## Architecture
 
-- **Frontend**: Tailwind CSS, vanilla JS, Server-Sent Events for streaming
-- **Backend**: Python/Flask on Azure Web App (P0v3 App Service Plan)
-- **AI**: Azure OpenAI (o4-mini for reasoning, gpt-4.1 for standards, gpt-4.1-mini for routing, gpt-5-nano for monitoring)
-- **Data**: Azure Resource Graph, Log Analytics, Azure Monitor — all via Managed Identity
-- **Security**: VNet-integrated, Key Vault for secrets (private endpoint), RBAC with least-privilege
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| Frontend | Tailwind CSS (CDN), vanilla JS, SSE | Dashboard + chat UI |
+| Backend | Python 3.13 / Flask / Gunicorn | API, scan, agent orchestration |
+| Hosting | Azure Web App on P0v3 plan | Shared existing plan |
+| AI | Azure OpenAI (5 model deployments) | Agent reasoning and synthesis |
+| Data | Resource Graph, Resource Health, Service Health, Advisor, Monitor | Environment intelligence |
+| Deep Analysis | Cross-resource ARG queries | Architecture smells, blast radius, correlation |
+| Security | VNet, Key Vault (PE), Managed Identity, RBAC | Zero passwords, least-privilege |
 
-## Prerequisites
+**Daily cost: ~$0.10-0.50** (scanning is free, AI tokens are pennies per interaction)
 
-- Azure subscription with:
-  - Azure OpenAI account with deployed models (o4-mini, gpt-4.1, gpt-4.1-mini, gpt-5-nano)
-  - App Service Plan (P0v3 or higher recommended)
-- Azure CLI installed and authenticated
-- Python 3.12+
+## Quick Start
 
-## Deployment
-
-### 1. Configure Parameters
-
-Edit `infra/main.bicepparam` with your environment values:
-- Existing App Service Plan resource ID
-- Existing Azure OpenAI account name and resource group
-- OpenAI endpoint URL
-- Model deployment name
-
-### 2. Deploy Infrastructure
-
-```bash
-cd infra
-bash deploy.sh
-```
-
-This creates:
-- Resource group with VNet, subnets, NSGs
-- Key Vault (private endpoint, RBAC-enabled)
-- Log Analytics workspace + Application Insights
-- User-Assigned Managed Identity
-- Web App (VNet-integrated, Python 3.13)
-
-### 3. Grant RBAC (per monitored subscription)
-
-```bash
-MI_PRINCIPAL_ID=$(az identity show --name ogeops-id \
-  --resource-group OGE_Envisioning --query principalId -o tsv)
-
-az role assignment create --assignee-object-id $MI_PRINCIPAL_ID \
-  --assignee-principal-type ServicePrincipal \
-  --role "Reader" --scope "/subscriptions/<SUB_ID>"
-
-az role assignment create --assignee-object-id $MI_PRINCIPAL_ID \
-  --assignee-principal-type ServicePrincipal \
-  --role "Log Analytics Reader" --scope "/subscriptions/<SUB_ID>"
-
-az role assignment create --assignee-object-id $MI_PRINCIPAL_ID \
-  --assignee-principal-type ServicePrincipal \
-  --role "Monitoring Reader" --scope "/subscriptions/<SUB_ID>"
-```
-
-See [docs/rbac-implementation-guide.md](docs/rbac-implementation-guide.md) for the full least-privilege RBAC guide.
-
-### 4. Deploy Application
-
-```bash
-zip -r /tmp/deploy.zip app/ templates/ static/ requirements.txt wsgi.py startup.sh -x "*__pycache__*"
-
-TOKEN=$(az account get-access-token --resource "https://management.azure.com/" --query accessToken -o tsv)
-
-curl -X POST "https://<YOUR_APP_NAME>.scm.azurewebsites.net/api/zipdeploy" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/zip" \
-  --data-binary @/tmp/deploy.zip
-```
-
-## Project Structure
-
-```
-├── app/
-│   ├── agents/
-│   │   ├── demos.py          # Pre-built demo scenarios with realistic data
-│   │   └── runner.py         # Agent orchestration, debate system, SSE streaming
-│   ├── azure_data.py         # Azure Resource Graph, Monitor, Log Analytics queries
-│   ├── config.py             # Agent configs, system prompts, personalities
-│   └── main.py               # Flask app, API routes, SSE endpoints
-├── infra/
-│   ├── modules/              # Bicep modules (network, KV, identity, web app, RBAC)
-│   ├── main.bicep            # Main infrastructure template
-│   ├── main.bicepparam       # Parameters (edit for your environment)
-│   └── deploy.sh             # Deployment script
-├── templates/
-│   └── index.html            # OGE-branded dashboard with Tailwind CSS
-├── static/
-│   └── oge-logo.svg          # OGE logo
-├── docs/
-│   ├── rbac-implementation-guide.md  # Least-privilege RBAC guide
-│   ├── demo-script-3-19.md          # Demo walkthrough script
-│   ├── architecture.md              # Architecture notes
-│   ├── requirements.md              # Customer requirements
-│   └── decisions.md                 # Decision log
-├── requirements.txt          # Python dependencies
-├── wsgi.py                   # WSGI entry point
-└── startup.sh                # Gunicorn startup command
-```
+1. Edit `infra/main.bicepparam` with your values
+2. `cd infra && bash deploy.sh`
+3. Grant Reader + Log Analytics Reader + Monitoring Reader to the MI
+4. Zip deploy: `curl -X POST .../api/zipdeploy` with app code
+5. Open the URL and toggle to Live
 
 ## RBAC Summary
 
-**5 roles on 1 Managed Identity. Zero write permissions.**
+**5 read-only roles + 1 scoped write on 1 Managed Identity. Zero changes to user permissions.**
 
 | Role | Scope | Purpose |
 |------|-------|---------|
@@ -169,14 +112,39 @@ curl -X POST "https://<YOUR_APP_NAME>.scm.azurewebsites.net/api/zipdeploy" \
 | Monitoring Reader | Subscription | Metrics, alerts, diagnostics |
 | Key Vault Secrets User | Key Vault (resource) | Read secrets only |
 | Cognitive Services OpenAI User | OpenAI Account (resource) | Call models only |
+| Network Contributor | NSG (resource, demo only) | Chaos demo NSG rule create/delete |
 
-## Demo Scenarios
+## API Endpoints
 
-1. **"Why is this VM so big?"** — Barrel Counter vs The Roughneck debate VM sizing
-2. **"My deployment failed"** — Turnaround diagnoses without elevated access
-3. **"Where are we wasting money?"** — Full waste analysis with opposing perspectives
-4. **"Light the Flare Stack"** — Proactive environment scan
-5. **"Full environment health check"** — All crew members analyze everything
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/health` | GET | Health check with agent status |
+| `/api/scan/overview` | GET | Full scan (Resource Graph + Health + Advisor + Deep) |
+| `/api/scan/security` | GET | Quick security drift scan |
+| `/api/ask/stream` | POST | SSE streaming crew debate |
+| `/api/demo/<id>/stream` | POST | SSE streaming demo scenario |
+| `/api/remediate` | POST | Generate Terraform/CLI fix |
+| `/api/digest` | GET | Morning briefing (SSE) |
+| `/api/chaos/create` | POST | Create chaos NSG rule |
+| `/api/chaos/cleanup` | POST | Remove chaos NSG rule |
+
+## Project Structure
+
+```
+├── app/
+│   ├── agents/
+│   │   ├── demos.py          # 5 demo scenarios with realistic data
+│   │   └── runner.py         # Debate system, SSE streaming, remediation
+│   ├── azure_data.py         # Resource Graph, Health APIs, Advisor, deep analysis
+│   ├── config.py             # Agent configs, OGE-styled system prompts
+│   └── main.py               # Flask app, all API endpoints
+├── infra/                    # Bicep IaC (VNet, KV, identity, web app)
+├── templates/index.html      # Executive + Ops views
+├── docs/                     # RBAC guide, demo script, architecture, decisions
+├── requirements.txt
+├── wsgi.py
+└── startup.sh
+```
 
 ## License
 
