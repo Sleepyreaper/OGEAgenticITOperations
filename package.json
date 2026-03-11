@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "npx @tailwindcss/cli -i ./src/input.css -o ./dist/output.css",
-    "dev": "npx @tailwindcss/cli -i ./src/input.css -o ./dist/output.css --watch"
+    "build": "npx @tailwindcss/cli -i ./src/input.css -o ./dist/output.css && cp src/index.html src/staticwebapp.config.json dist/",
+    "dev": "npx @tailwindcss/cli -i ./src/input.css -o ./dist/output.css --watch",
+    "deploy:infra": "cd infra && bash deploy.sh"
   },
   "keywords": [],
   "author": "",
