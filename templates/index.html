@@ -66,7 +66,7 @@
         <div class="flex gap-1">
           <button onclick="showView('dashboard')" id="nav-dashboard" class="nav-tab px-3 py-1.5 rounded-md text-sm font-medium bg-oge-gray-700 text-white">Dashboard</button>
           <button onclick="showView('council')" id="nav-council" class="nav-tab px-3 py-1.5 rounded-md text-sm font-medium text-oge-gray-300 hover:text-white hover:bg-oge-gray-700">Ops Council</button>
-          <button onclick="showView('agents')" id="nav-agents" class="nav-tab px-3 py-1.5 rounded-md text-sm font-medium text-oge-gray-300 hover:text-white hover:bg-oge-gray-700">Agents</button>
+          <button onclick="showView('agents')" id="nav-agents" class="nav-tab px-3 py-1.5 rounded-md text-sm font-medium text-oge-gray-300 hover:text-white hover:bg-oge-gray-700">The Crew</button>
         </div>
       </div>
       <div class="flex items-center gap-3">
@@ -78,7 +78,7 @@
         <div class="h-4 w-px bg-oge-gray-700"></div>
         <div class="flex items-center gap-2 text-xs text-oge-gray-300">
           <span class="pulse-dot w-2 h-2 bg-green-400 rounded-full inline-block"></span>
-          All agents online
+          All crew online
         </div>
         <div class="text-xs text-oge-gray-400 bg-oge-gray-800 px-2.5 py-1 rounded">
           Brad NonProd
@@ -251,27 +251,27 @@
           </button>
           {% endfor %}
 
-          <!-- Agent status -->
-          <h2 class="text-sm font-bold text-oge-gray-500 uppercase tracking-wider pt-2">Agent Status</h2>
+          <!-- Crew status -->
+          <h2 class="text-sm font-bold text-oge-gray-500 uppercase tracking-wider pt-2">The Crew</h2>
           <div class="bg-white rounded-xl border border-oge-gray-100 p-4 space-y-3">
             <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm font-medium">Orchestrator</span></div>
+              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm">⚡ <strong>Pipeline</strong></span></div>
               <span class="text-xs text-oge-gray-400">gpt-4.1-mini</span>
             </div>
             <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm font-medium">Cost Sentinel</span></div>
+              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm">🛢️ <strong>Barrel Counter</strong></span></div>
               <span class="text-xs text-oge-gray-400">o4-mini</span>
             </div>
             <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm font-medium">Standards Architect</span></div>
+              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm">🔧 <strong>The Roughneck</strong></span></div>
               <span class="text-xs text-oge-gray-400">gpt-4.1</span>
             </div>
             <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm font-medium">Diagnostics SRE</span></div>
+              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm">🔄 <strong>Turnaround</strong></span></div>
               <span class="text-xs text-oge-gray-400">o4-mini</span>
             </div>
             <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm font-medium">Scout</span></div>
+              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm">🔥 <strong>Flare Stack</strong></span></div>
               <span class="text-xs text-oge-gray-400">gpt-5-nano</span>
             </div>
           </div>
@@ -299,17 +299,18 @@
           <!-- Welcome message -->
           <div class="flex gap-3 fade-in">
             <div class="w-8 h-8 rounded-lg bg-oge-black flex items-center justify-center flex-shrink-0">
-              <span class="text-white text-xs font-bold">OC</span>
+              <span class="text-sm">⚡</span>
             </div>
             <div class="bg-oge-gray-50 rounded-xl rounded-tl-none px-4 py-3 max-w-2xl">
-              <div class="text-xs font-bold text-oge-red mb-1">Orchestrator</div>
-              <p class="text-sm text-oge-gray-600">Welcome to the OGE Ops Council. I coordinate five specialist agents to give you balanced, fact-based operational intelligence.</p>
-              <p class="text-sm text-oge-gray-600 mt-2">Try asking something like:</p>
+              <div class="text-xs font-bold text-oge-red mb-1">Pipeline</div>
+              <p class="text-sm text-oge-gray-600">Welcome to the OGE Ops Council. I'm <strong>Pipeline</strong> — I route your questions through the crew and deliver a unified take. The crew's on shift and ready:</p>
+              <p class="text-sm text-oge-gray-500 mt-2">🛢️ <strong>Barrel Counter</strong> counts every dollar · 🔧 <strong>The Roughneck</strong> knows why things are built this way · 🔄 <strong>Turnaround</strong> diagnoses issues · 🔥 <strong>Flare Stack</strong> watches the horizon</p>
+              <p class="text-sm text-oge-gray-600 mt-2">Try asking:</p>
               <ul class="text-sm text-oge-gray-500 mt-1 space-y-1">
                 <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Why is oge-sap-batch-vm01 running on a D16s_v5? Can we save money?')">• "Why is this VM so big? Can we save money?"</li>
                 <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Our Terraform deployment to WebApp-Test-RG failed. What happened?')">• "Our Terraform deployment failed. What happened?"</li>
                 <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Where are we wasting money in our Azure subscription?')">• "Where are we wasting money?"</li>
-                <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Run a proactive environment scan.')">• "Run a proactive environment scan."</li>
+                <li class="cursor-pointer hover:text-oge-red" onclick="askCouncil('Run a proactive environment scan.')">• "🔥 Light the Flare Stack — run a proactive scan."</li>
               </ul>
             </div>
           </div>
@@ -318,7 +319,7 @@
         <!-- Input -->
         <div class="px-6 py-4 border-t border-oge-gray-100">
           <div class="flex gap-3">
-            <input id="chat-input" type="text" placeholder="Ask the Ops Council..."
+            <input id="chat-input" type="text" placeholder="Ask the crew..."
               class="flex-1 px-4 py-2.5 bg-oge-gray-50 border border-oge-gray-200 rounded-xl text-sm focus:outline-none focus:border-oge-red focus:ring-1 focus:ring-oge-red"
               onkeydown="if(event.key==='Enter')sendMessage()">
             <button onclick="sendMessage()" id="send-btn"
@@ -332,8 +333,8 @@
       <!-- Agent detail panel -->
       <div id="agent-panel" class="w-96 bg-oge-gray-50 overflow-y-auto">
         <div class="px-5 py-4 border-b border-oge-gray-100">
-          <h3 class="font-bold text-sm text-oge-gray-500 uppercase tracking-wider">Agent Perspectives</h3>
-          <p class="text-xs text-oge-gray-400 mt-0.5">Individual agent analyses appear here</p>
+          <h3 class="font-bold text-sm text-oge-gray-500 uppercase tracking-wider">Crew Perspectives</h3>
+          <p class="text-xs text-oge-gray-400 mt-0.5">Individual crew analyses appear here</p>
         </div>
         <div id="agent-perspectives" class="p-4 space-y-3">
           <p class="text-sm text-oge-gray-400 italic">Waiting for a query...</p>
@@ -345,139 +346,141 @@
   <!-- ═══ AGENTS VIEW ═══ -->
   <div id="view-agents" class="view-content hidden">
     <div class="max-w-5xl mx-auto px-6 py-8">
-      <h1 class="text-xl font-bold mb-1">The Ops Council</h1>
-      <p class="text-sm text-oge-gray-400 mb-6">Five specialized AI agents with distinct expertise areas. They debate, disagree, and synthesize to give you balanced operational intelligence.</p>
+      <h1 class="text-xl font-bold mb-1">The Crew</h1>
+      <p class="text-sm text-oge-gray-400 mb-6">Five AI specialists named after the backbone of OGE operations. They debate, disagree, and deliver balanced intelligence — just like a real ops crew.</p>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <!-- Orchestrator -->
+        <!-- Pipeline -->
         <div class="agent-card bg-white rounded-xl border border-oge-gray-100 p-5 md:col-span-2">
           <div class="flex items-start gap-4">
             <div class="w-12 h-12 rounded-xl bg-oge-black flex items-center justify-center flex-shrink-0">
-              <span class="text-white font-bold">OC</span>
+              <span class="text-2xl">⚡</span>
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="font-bold">Orchestrator</h3>
+                <h3 class="font-bold">Pipeline</h3>
                 <span class="text-xs bg-oge-gray-100 text-oge-gray-500 px-2 py-0.5 rounded-full">gpt-4.1-mini</span>
+                <span class="text-xs bg-oge-red text-white px-2 py-0.5 rounded-full">Coordinator</span>
               </div>
-              <p class="text-sm text-oge-gray-500 mt-1">Routes requests to specialists. Synthesizes their outputs into unified recommendations. Surfaces disagreements transparently — never hides conflicting perspectives.</p>
+              <p class="text-sm text-oge-gray-500 mt-1">The central nervous system — named after the infrastructure that connects everything at OGE. Routes requests through the crew, synthesizes perspectives, and delivers a unified stream of intelligence. The tension between Barrel Counter and The Roughneck? That's a <em>feature</em>.</p>
             </div>
           </div>
         </div>
 
-        <!-- Cost Sentinel -->
+        <!-- Barrel Counter -->
         <div class="agent-card bg-white rounded-xl border border-oge-gray-100 p-5">
           <div class="flex items-start gap-4">
             <div class="w-12 h-12 rounded-xl bg-green-600 flex items-center justify-center flex-shrink-0">
-              <span class="text-white font-bold text-sm">CS</span>
+              <span class="text-2xl">🛢️</span>
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="font-bold">Cost Sentinel</h3>
+                <h3 class="font-bold">Barrel Counter</h3>
                 <span class="text-xs bg-oge-gray-100 text-oge-gray-500 px-2 py-0.5 rounded-full">o4-mini</span>
               </div>
-              <p class="text-sm text-oge-gray-500 mt-1">Ultra-conservative cost analyst. Every dollar matters. Finds waste, recommends rightsizing, shows the math. Uses deep reasoning to analyze utilization patterns and pricing tiers.</p>
+              <p class="text-sm text-oge-gray-500 mt-1">Every barrel of crude matters. Every cloud dollar is a barrel. Tracks yield to the tenth of a percent, finds waste like a leaking valve, and always shows the math. Not mean about it — just precise.</p>
               <div class="mt-2 flex flex-wrap gap-1">
-                <span class="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">Rightsizing</span>
-                <span class="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">Orphaned resources</span>
-                <span class="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">Burn rate</span>
+                <span class="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">💰 Rightsizing</span>
+                <span class="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">🗑️ Orphaned resources</span>
+                <span class="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">📉 Burn rate</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Standards Architect -->
+        <!-- The Roughneck -->
         <div class="agent-card bg-white rounded-xl border border-oge-gray-100 p-5">
           <div class="flex items-start gap-4">
             <div class="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
-              <span class="text-white font-bold text-sm">SA</span>
+              <span class="text-2xl">🔧</span>
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="font-bold">Standards Architect</h3>
+                <h3 class="font-bold">The Roughneck</h3>
                 <span class="text-xs bg-oge-gray-100 text-oge-gray-500 px-2 py-0.5 rounded-full">gpt-4.1</span>
               </div>
-              <p class="text-sm text-oge-gray-500 mt-1">The institutional memory. Knows <em>why</em> things are configured the way they are. Defends sizing decisions, balances Cost Sentinel's recommendations with operational reality.</p>
+              <p class="text-sm text-oge-gray-500 mt-1">Named after the toughest job on the drilling floor. The grizzled veteran who <em>built</em> this place. Knows why every pipe is that diameter. Not against saving money — against saving money <strong>stupidly</strong>.</p>
               <div class="mt-2 flex flex-wrap gap-1">
-                <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">Sizing rationale</span>
-                <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">Best practices</span>
-                <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">Governance</span>
+                <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">📐 Sizing rationale</span>
+                <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">📋 Standards</span>
+                <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">🛡️ Governance</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Diagnostics SRE -->
+        <!-- Turnaround -->
         <div class="agent-card bg-white rounded-xl border border-oge-gray-100 p-5">
           <div class="flex items-start gap-4">
             <div class="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center flex-shrink-0">
-              <span class="text-white font-bold text-sm">SRE</span>
+              <span class="text-2xl">🔄</span>
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="font-bold">Diagnostics SRE</h3>
+                <h3 class="font-bold">Turnaround</h3>
                 <span class="text-xs bg-oge-gray-100 text-oge-gray-500 px-2 py-0.5 rounded-full">o4-mini</span>
               </div>
-              <p class="text-sm text-oge-gray-500 mt-1">Methodical troubleshooter. Gives teams the answers they'd find with admin access — without needing it. Timeline → Symptoms → Root Cause → Fix.</p>
+              <p class="text-sm text-oge-gray-500 mt-1">Named after the most critical event in refinery ops — shut down, inspect, diagnose, fix, restart. The person they call at 3 AM. Doesn't guess. Follows the evidence. <em>You</em> ARE their elevated access.</p>
               <div class="mt-2 flex flex-wrap gap-1">
-                <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">Root cause</span>
-                <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">Activity logs</span>
-                <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">Remediation</span>
+                <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">🔍 Root cause</span>
+                <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">📊 Activity logs</span>
+                <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">🔨 Remediation</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Scout -->
+        <!-- Flare Stack -->
         <div class="agent-card bg-white rounded-xl border border-oge-gray-100 p-5">
           <div class="flex items-start gap-4">
-            <div class="w-12 h-12 rounded-xl bg-purple-600 flex items-center justify-center flex-shrink-0">
-              <span class="text-white font-bold text-sm">SC</span>
+            <div class="w-12 h-12 rounded-xl bg-oge-red flex items-center justify-center flex-shrink-0">
+              <span class="text-2xl">🔥</span>
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="font-bold">Scout</h3>
+                <h3 class="font-bold">Flare Stack</h3>
                 <span class="text-xs bg-oge-gray-100 text-oge-gray-500 px-2 py-0.5 rounded-full">gpt-5-nano</span>
               </div>
-              <p class="text-sm text-oge-gray-500 mt-1">Vigilant proactive monitor. Scans for anomalies, quota pressure, health degradation, security drift. Surfaces problems before they become incidents.</p>
+              <p class="text-sm text-oge-gray-500 mt-1">The most visible safety system in a refinery. When Flare Stack lights up, everyone for miles knows something needs attention. Doesn't write essays — writes alerts. Fast, concise, actionable.</p>
               <div class="mt-2 flex flex-wrap gap-1">
-                <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">Anomaly detection</span>
-                <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">Quota alerts</span>
-                <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">Security drift</span>
+                <span class="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded-full">🚨 Anomaly detection</span>
+                <span class="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded-full">📊 Quota alerts</span>
+                <span class="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded-full">🔒 Security drift</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Architecture diagram placeholder -->
+      <!-- Architecture diagram -->
       <div class="mt-8 bg-white rounded-xl border border-oge-gray-100 p-6">
-        <h2 class="font-bold mb-4">How the Ops Council Works</h2>
+        <h2 class="font-bold mb-4">How the Crew Works</h2>
         <div class="bg-oge-gray-50 rounded-lg p-6 font-mono text-xs text-oge-gray-500 leading-relaxed">
-<pre>User Question or Scout Alert
+<pre>User Question or 🔥 Flare Stack Alert
          │
          ▼
     ┌─────────────┐
-    │ Orchestrator │ ← gpt-4.1-mini (fast routing + synthesis)
+    │ ⚡ Pipeline  │ ← gpt-4.1-mini (fast routing + synthesis)
     └──────┬──────┘
-           │ routes to relevant specialists
+           │ routes to the crew
      ┌─────┼──────────┬──────────┐
      ▼     ▼          ▼          ▼
-  ┌──────┐ ┌────────┐ ┌───────┐ ┌──────┐
-  │ Cost │ │ Stds   │ │ Diag  │ │Scout │
-  │Sentnl│ │Archict │ │ SRE   │ │      │
-  │o4mini│ │gpt-4.1 │ │o4mini │ │5nano │
-  └──┬───┘ └───┬────┘ └───┬───┘ └──┬───┘
-     │         │           │        │
-     └─────────┴───────────┘        │
-               ▼                    │
-    ┌─────────────────┐             │
-    │ Orchestrator    │◄────────────┘
-    │ (synthesize)    │
+  ┌──────┐ ┌────────┐ ┌───────┐ ┌──────────┐
+  │🛢️    │ │🔧      │ │🔄     │ │🔥        │
+  │Barrel│ │Rough-  │ │Turn-  │ │Flare     │
+  │Countr│ │neck    │ │around │ │Stack     │
+  │o4mini│ │gpt-4.1 │ │o4mini │ │gpt5-nano │
+  └──┬───┘ └───┬────┘ └───┬───┘ └────┬─────┘
+     │         │           │          │
+     └─────────┴───────────┘          │
+               ▼                      │
+    ┌─────────────────┐               │
+    │ ⚡ Pipeline      │◄──────────────┘
+    │  (synthesize)   │
     └────────┬────────┘
              ▼
       Transparent response:
-      each agent's perspective +
+      each crew member's take +
       unified recommendation</pre>
         </div>
       </div>
@@ -487,11 +490,11 @@
   <!-- ═══ JavaScript ═══ -->
   <script>
     const AGENT_COLORS = {
-      'Cost Sentinel': { bg: 'bg-green-600', text: 'CS', border: 'border-green-500', light: 'bg-green-50' },
-      'Standards Architect': { bg: 'bg-blue-600', text: 'SA', border: 'border-blue-500', light: 'bg-blue-50' },
-      'Diagnostics SRE': { bg: 'bg-amber-500', text: 'SRE', border: 'border-amber-400', light: 'bg-amber-50' },
-      'Scout': { bg: 'bg-purple-600', text: 'SC', border: 'border-purple-500', light: 'bg-purple-50' },
-      'Orchestrator': { bg: 'bg-oge-black', text: 'OC', border: 'border-oge-black', light: 'bg-oge-gray-50' },
+      'Barrel Counter': { bg: 'bg-green-600', text: '🛢️', border: 'border-green-500', light: 'bg-green-50' },
+      'The Roughneck': { bg: 'bg-blue-600', text: '🔧', border: 'border-blue-500', light: 'bg-blue-50' },
+      'Turnaround': { bg: 'bg-amber-500', text: '🔄', border: 'border-amber-400', light: 'bg-amber-50' },
+      'Flare Stack': { bg: 'bg-oge-red', text: '🔥', border: 'border-red-500', light: 'bg-red-50' },
+      'Pipeline': { bg: 'bg-oge-black', text: '⚡', border: 'border-oge-black', light: 'bg-oge-gray-50' },
     };
 
     let currentMode = 'demo';
