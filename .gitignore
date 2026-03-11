@@ -4,3 +4,6 @@ dist/
 .venv/
 __pycache__/
 *.pyc
+docs/competitive-analysis.md
+deploy.zip
+infra/main.json

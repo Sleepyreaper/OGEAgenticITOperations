@@ -27,7 +27,7 @@ class Settings:
     # Subscription scope (single sub for PoC)
     subscription_id: str = os.environ.get("AZURE_SUBSCRIPTION_ID", "")
 
-    # Agent model deployments (from nextgenagentfoundry)
+    # Agent model deployments (from Azure OpenAI)
     agents: dict = None
 
     def __post_init__(self):

@@ -81,7 +81,7 @@
           All crew online
         </div>
         <div class="text-xs text-oge-gray-400 bg-oge-gray-800 px-2.5 py-1 rounded">
-          Brad NonProd
+          Your Subscription
         </div>
       </div>
     </div>
@@ -149,7 +149,7 @@
                   <span class="font-semibold text-sm">Log Analytics daily cap at 82%</span>
                 </div>
                 <p class="text-xs text-oge-gray-400 mt-1">ogeops-log (OGE_Envisioning) — Projected to hit cap in 6 hours</p>
-                <p class="text-xs text-oge-gray-300 mt-0.5">Support owner: cloud-ops@OGE.com</p>
+                <p class="text-xs text-oge-gray-300 mt-0.5">Support owner: cloud-ops@contoso.com</p>
               </div>
               <button onclick="investigateIssue('scout_alert')" class="text-xs bg-oge-black text-white px-3 py-1.5 rounded-lg hover:bg-oge-gray-700">Investigate</button>
             </div>
@@ -164,7 +164,7 @@
                   <span class="font-semibold text-sm">AKS node pool at 90% utilization</span>
                 </div>
                 <p class="text-xs text-oge-gray-400 mt-1">aks-microservices-01 (Microservices-Prod-RG) — Scaling limited</p>
-                <p class="text-xs text-oge-gray-300 mt-0.5">Support owner: platform-eng@OGE.com</p>
+                <p class="text-xs text-oge-gray-300 mt-0.5">Support owner: platform-eng@contoso.com</p>
               </div>
               <button onclick="askCouncil('The AKS cluster aks-microservices-01 is at 90% node utilization. What should we do?')" class="text-xs bg-oge-black text-white px-3 py-1.5 rounded-lg hover:bg-oge-gray-700">Investigate</button>
             </div>
@@ -178,7 +178,7 @@
                   <span class="font-semibold text-sm">Legacy function app stopped</span>
                 </div>
                 <p class="text-xs text-oge-gray-400 mt-1">func-etl-legacy (Legacy-Migration-RG) — Runtime version deprecated</p>
-                <p class="text-xs text-oge-gray-300 mt-0.5">Support owner: cloud-ops@OGE.com</p>
+                <p class="text-xs text-oge-gray-300 mt-0.5">Support owner: cloud-ops@contoso.com</p>
               </div>
               <button onclick="askCouncil('The function app func-etl-legacy has stopped because the runtime is deprecated. What is the impact and how do we fix it?')" class="text-xs bg-oge-black text-white px-3 py-1.5 rounded-lg hover:bg-oge-gray-700">Investigate</button>
             </div>
@@ -518,7 +518,7 @@
       if (mode === 'live') {
         badge.textContent = 'LIVE';
         badge.className = 'text-xs bg-green-100 text-green-700 font-medium px-2.5 py-1 rounded-full';
-        subtitle.textContent = 'Brad NonProd — Live Azure subscription data';
+        subtitle.textContent = 'Your subscription — Live Azure data';
         loadLiveDashboard();
       } else {
         badge.textContent = 'DEMO MODE';

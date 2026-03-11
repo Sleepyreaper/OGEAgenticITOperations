@@ -17,7 +17,7 @@ VM_SIZING_DATA = json.dumps({
         "location": "eastus2",
         "sku": "Standard_D16s_v5",
         "tags": {
-            "support-owner": "sap-ops-team@OGE.com",
+            "support-owner": "sap-ops-team@contoso.com",
             "environment": "production",
             "application": "SAP-BatchProcessing",
             "cost-center": "CC-4820"
@@ -55,7 +55,7 @@ DEPLOYMENT_FAILURE_DATA = json.dumps({
         "resourceGroup": "WebApp-Test-RG",
         "status": "Failed",
         "timestamp": "2026-03-11T14:32:18Z",
-        "initiatedBy": "svc-terraform-pipeline@OGE.com"
+        "initiatedBy": "svc-terraform-pipeline@contoso.com"
     },
     "activity_log_entries": [
         {
@@ -119,17 +119,17 @@ WASTE_ANALYSIS_DATA = json.dumps({
         "trend": "+4.0%"
     },
     "orphaned_disks": [
-        {"name": "migration-temp-disk01", "resourceGroup": "Legacy-Migration-RG", "sizeGB": 512, "sku": "Premium_LRS", "monthly_cost": 73.22, "unattached_days": 45, "tags": {"support-owner": "cloud-ops@OGE.com"}},
-        {"name": "dev-backup-osdisk", "resourceGroup": "Dev-Sandbox-RG", "sizeGB": 256, "sku": "Premium_LRS", "monthly_cost": 38.11, "unattached_days": 90, "tags": {"support-owner": "dev-team-alpha@OGE.com"}},
-        {"name": "old-sql-data-disk", "resourceGroup": "Data-Prod-RG", "sizeGB": 1024, "sku": "Premium_LRS", "monthly_cost": 135.17, "unattached_days": 30, "tags": {"support-owner": "data-platform@OGE.com"}}
+        {"name": "migration-temp-disk01", "resourceGroup": "Legacy-Migration-RG", "sizeGB": 512, "sku": "Premium_LRS", "monthly_cost": 73.22, "unattached_days": 45, "tags": {"support-owner": "cloud-ops@contoso.com"}},
+        {"name": "dev-backup-osdisk", "resourceGroup": "Dev-Sandbox-RG", "sizeGB": 256, "sku": "Premium_LRS", "monthly_cost": 38.11, "unattached_days": 90, "tags": {"support-owner": "dev-team-alpha@contoso.com"}},
+        {"name": "old-sql-data-disk", "resourceGroup": "Data-Prod-RG", "sizeGB": 1024, "sku": "Premium_LRS", "monthly_cost": 135.17, "unattached_days": 30, "tags": {"support-owner": "data-platform@contoso.com"}}
     ],
     "underutilized_app_service_plans": [
-        {"name": "api-staging-plan", "resourceGroup": "API-Staging-RG", "sku": "P2v3", "monthly_cost": 292.00, "cpu_avg_7d": 3.2, "memory_avg_7d": 18.5, "apps_hosted": 1, "tags": {"support-owner": "api-team@OGE.com"}},
-        {"name": "internal-tools-plan", "resourceGroup": "InternalTools-RG", "sku": "P1v3", "monthly_cost": 146.00, "cpu_avg_7d": 1.1, "memory_avg_7d": 8.3, "apps_hosted": 2, "tags": {"support-owner": "platform-eng@OGE.com"}}
+        {"name": "api-staging-plan", "resourceGroup": "API-Staging-RG", "sku": "P2v3", "monthly_cost": 292.00, "cpu_avg_7d": 3.2, "memory_avg_7d": 18.5, "apps_hosted": 1, "tags": {"support-owner": "api-team@contoso.com"}},
+        {"name": "internal-tools-plan", "resourceGroup": "InternalTools-RG", "sku": "P1v3", "monthly_cost": 146.00, "cpu_avg_7d": 1.1, "memory_avg_7d": 8.3, "apps_hosted": 2, "tags": {"support-owner": "platform-eng@contoso.com"}}
     ],
     "idle_application_gateway": {
         "name": "dr-appgw-eastus2", "resourceGroup": "DR-Infrastructure-RG", "sku": "WAF_v2", "monthly_cost": 350.00, "requests_7d": 0, "backend_health": "Healthy",
-        "tags": {"support-owner": "cloud-ops@OGE.com", "purpose": "disaster-recovery", "dr-tier": "tier-1"}
+        "tags": {"support-owner": "cloud-ops@contoso.com", "purpose": "disaster-recovery", "dr-tier": "tier-1"}
     },
     "unused_public_ips": [
         {"name": "legacy-api-pip", "resourceGroup": "Legacy-Migration-RG", "allocation": "Static", "monthly_cost": 3.65, "associated": None},
@@ -163,7 +163,7 @@ SCOUT_ALERT_DATA = json.dumps({
         ]
     },
     "resource_group_tags": {
-        "support-owner": "cloud-ops@OGE.com",
+        "support-owner": "cloud-ops@contoso.com",
         "environment": "production"
     }
 }, indent=2)
@@ -176,7 +176,7 @@ SCOUT_ALERT_QUESTION = "Run a proactive environment scan. What issues should we 
 ENVIRONMENT_OVERVIEW_DATA = json.dumps({
     "subscription": {
         "name": "OGE-CloudOps-Production",
-        "id": "b1672fa6-8e52-45d0-bf79-ceccc352177d",
+        "id": "00000000-0000-0000-0000-000000000000",
         "total_resources": 847,
         "resource_groups": 64
     },

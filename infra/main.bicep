@@ -2,7 +2,7 @@
 // OGE Envisioning — Ops Agent Infrastructure
 // ═══════════════════════════════════════════════════
 // Region       : West US 2
-// OpenAI       : Reuses existing nextgenagentfoundry (West US 3)
+// OpenAI       : Reuses existing Azure OpenAI account
 // App Service  : Reuses existing nextgen-webapp-plan (P0v3)
 // Model        : o4-mini (o4MiniAgent deployment)
 // ═══════════════════════════════════════════════════
