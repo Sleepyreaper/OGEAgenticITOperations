@@ -785,24 +785,45 @@
       const panel = document.getElementById('agent-perspectives');
       panel.innerHTML = '';
 
+      let totalTokens = 0;
       if (data.specialists) {
         for (const [key, agent] of Object.entries(data.specialists)) {
-          const colors = AGENT_COLORS[agent.agent] || AGENT_COLORS['Orchestrator'];
+          const colors = AGENT_COLORS[agent.agent] || AGENT_COLORS['Pipeline'];
+          const agentTokens = (agent.usage.prompt_tokens || 0) + (agent.usage.completion_tokens || 0);
+          totalTokens += agentTokens;
+          const estCost = (agentTokens * 0.000002).toFixed(4); // rough avg $/token
           const div = document.createElement('div');
           div.className = `${colors.light} rounded-lg p-3 border ${colors.border} border-opacity-20 fade-in`;
           div.innerHTML = `
             <div class="flex items-center gap-2 mb-2">
               <div class="w-6 h-6 rounded ${colors.bg} flex items-center justify-center">
-                <span class="text-white text-xs font-bold">${colors.text}</span>
+                <span class="text-sm">${colors.text}</span>
               </div>
               <span class="text-xs font-bold">${escapeHtml(agent.agent)}</span>
               <span class="text-xs text-oge-gray-400 ml-auto">${agent.model}</span>
             </div>
             <div class="text-xs text-oge-gray-600 markdown-content max-h-48 overflow-y-auto">${formatMarkdown(agent.response)}</div>
-            <div class="text-xs text-oge-gray-300 mt-2">${agent.usage.prompt_tokens + agent.usage.completion_tokens} tokens</div>`;
+            <div class="text-xs text-oge-gray-300 mt-2 flex justify-between"><span>${agentTokens.toLocaleString()} tokens</span><span>~$${estCost}</span></div>`;
           panel.appendChild(div);
         }
       }
+
+      // Add orchestrator tokens
+      if (data.synthesis && data.synthesis.usage) {
+        totalTokens += (data.synthesis.usage.prompt_tokens || 0) + (data.synthesis.usage.completion_tokens || 0);
+      }
+
+      // Cost summary
+      const totalCost = (totalTokens * 0.000002).toFixed(4);
+      const summaryDiv = document.createElement('div');
+      summaryDiv.className = 'bg-oge-gray-100 rounded-lg p-3 mt-3 fade-in';
+      summaryDiv.innerHTML = `
+        <div class="flex justify-between items-center">
+          <span class="text-xs font-bold text-oge-gray-500">Total for this query</span>
+          <span class="text-xs font-bold text-green-600">${totalTokens.toLocaleString()} tokens · ~$${totalCost}</span>
+        </div>
+        <div class="text-xs text-oge-gray-400 mt-1">5 agent calls · pennies per interaction</div>`;
+      panel.appendChild(summaryDiv);
     }
 
     // ─── Helpers ─────────────────────────────────────
