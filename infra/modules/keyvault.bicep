@@ -23,7 +23,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableRbacAuthorization: true
     enableSoftDelete: true
     enablePurgeProtection: true
-    softDeleteRetentionInDays: 7
+    softDeleteRetentionInDays: 90
     networkAcls: {
       bypass: 'AzureServices'
       defaultAction: 'Deny'
