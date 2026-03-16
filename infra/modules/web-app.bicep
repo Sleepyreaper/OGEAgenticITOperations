@@ -30,6 +30,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   properties: {
     serverFarmId: existingAppServicePlanId
     virtualNetworkSubnetId: webAppSubnetId
+    publicNetworkAccess: 'Disabled'
     httpsOnly: true
     keyVaultReferenceIdentity: managedIdentityId
     siteConfig: {
