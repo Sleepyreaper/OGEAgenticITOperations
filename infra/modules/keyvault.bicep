@@ -3,13 +3,28 @@
 // All secrets live here. No public access.
 // ──────────────────────────────────────────────
 
+@description('Azure region for all regional resources.')
 param location string
+
+@description('Naming prefix for resources.')
 param prefix string
+
+@description('Resource ID of the virtual network for private DNS linking.')
 param vnetId string
+
+@description('Name of the virtual network for private DNS link naming.')
 param vnetName string
+
+@description('Resource ID of the subnet used for the Key Vault private endpoint.')
 param peSubnetId string
+
+@description('Resource ID of the subnet allowed in Key Vault network ACLs.')
 param webAppSubnetId string
+
+@description('Principal ID of the managed identity that needs Key Vault Secrets User access.')
 param managedIdentityPrincipalId string
+
+@description('Optional principal ID of a deployer user to grant Key Vault Administrator.')
 param deployerPrincipalId string = ''
 
 var kvName = '${prefix}-kv-${take(uniqueString(resourceGroup().id), 6)}'
@@ -25,7 +40,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enablePurgeProtection: true
     softDeleteRetentionInDays: 90
     networkAcls: {
-      bypass: 'AzureServices'
+      bypass: 'None'
       defaultAction: 'Deny'
       virtualNetworkRules: [
         { id: webAppSubnetId }
