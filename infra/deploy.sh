@@ -12,11 +12,30 @@ set -euo pipefail
 
 RESOURCE_GROUP="${RESOURCE_GROUP:-OGE_Envisioning}"
 LOCATION="${LOCATION:-westus2}"
+SENSITIVE_LOGGING="${SENSITIVE_LOGGING:-false}" # set to "true" to allow full resource name logging
+
+redact() {
+  local value="${1:-}"
+  if [[ -z "$value" ]]; then
+    echo "<none>"
+    return
+  fi
+  if [[ "$SENSITIVE_LOGGING" == "true" ]]; then
+    echo "$value"
+    return
+  fi
+  local len=${#value}
+  if (( len <= 4 )); then
+    echo "****"
+  else
+    echo "${value:0:2}***${value: -2}"
+  fi
+}
 
 echo "========================================="
 echo " OGE Envisioning — Deploy Infrastructure"
 echo "========================================="
-echo "Resource Group : $RESOURCE_GROUP"
+echo "Resource Group : $(redact "$RESOURCE_GROUP")"
 echo "Location       : $LOCATION"
 echo ""
 
@@ -30,36 +49,59 @@ az account show --query "{Subscription:name, SubscriptionId:id}" -o table 2>/dev
 }
 
 DEPLOYER_ID=$(az ad signed-in-user show --query id -o tsv 2>/dev/null || echo "")
-[ -n "$DEPLOYER_ID" ] && echo "Deployer ID    : $DEPLOYER_ID"
+[ -n "$DEPLOYER_ID" ] && echo "Deployer ID    : $(redact "$DEPLOYER_ID")"
 
 echo ""
-read -p "Continue with deployment? (y/N): " confirm
+read -r -p "Continue with deployment? (y/N): " confirm
 [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
 
 # ── Create resource group ──
 echo ""
-echo "→ Creating resource group '$RESOURCE_GROUP' in '$LOCATION'..."
+echo "→ Creating resource group in selected location..."
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
 
 # ── Deploy ──
 DEPLOYMENT_NAME="ogeops-$(date +%Y%m%d-%H%M%S)"
-echo "→ Deploying infrastructure (deployment: $DEPLOYMENT_NAME)..."
+echo "→ Deploying infrastructure (deployment id: $(redact "$DEPLOYMENT_NAME"))..."
 az deployment group create \
   --resource-group "$RESOURCE_GROUP" \
   --template-file main.bicep \
   --parameters main.bicepparam \
   --parameters deployerPrincipalId="$DEPLOYER_ID" \
   --name "$DEPLOYMENT_NAME" \
-  --output table
+  --output none
 
-# ── Show outputs ──
+# ── Show outputs (redacted) ──
 echo ""
-echo "→ Deployment outputs:"
-az deployment group show \
+echo "→ Deployment outputs (redacted):"
+WEBAPP_URL=$(az deployment group show \
   --resource-group "$RESOURCE_GROUP" \
   --name "$DEPLOYMENT_NAME" \
-  --query "properties.outputs.{WebApp_URL:webAppUrl.value, WebApp_Name:webAppName.value, KeyVault:keyVaultName.value, MI_PrincipalId:managedIdentityPrincipalId.value}" \
-  --output table
+  --query "properties.outputs.webAppUrl.value" \
+  -o tsv 2>/dev/null || true)
+
+WEBAPP_NAME=$(az deployment group show \
+  --resource-group "$RESOURCE_GROUP" \
+  --name "$DEPLOYMENT_NAME" \
+  --query "properties.outputs.webAppName.value" \
+  -o tsv 2>/dev/null || true)
+
+KEYVAULT_NAME=$(az deployment group show \
+  --resource-group "$RESOURCE_GROUP" \
+  --name "$DEPLOYMENT_NAME" \
+  --query "properties.outputs.keyVaultName.value" \
+  -o tsv 2>/dev/null || true)
+
+MI_PRINCIPAL_ID=$(az deployment group show \
+  --resource-group "$RESOURCE_GROUP" \
+  --name "$DEPLOYMENT_NAME" \
+  --query "properties.outputs.managedIdentityPrincipalId.value" \
+  -o tsv 2>/dev/null || true)
+
+echo "WebApp_URL      : $(redact "$WEBAPP_URL")"
+echo "WebApp_Name     : $(redact "$WEBAPP_NAME")"
+echo "KeyVault        : $(redact "$KEYVAULT_NAME")"
+echo "MI_PrincipalId  : $(redact "$MI_PRINCIPAL_ID")"
 
 echo ""
 echo "========================================="
