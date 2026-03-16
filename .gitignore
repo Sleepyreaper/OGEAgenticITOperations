@@ -7,3 +7,4 @@ __pycache__/
 docs/competitive-analysis.md
 deploy.zip
 infra/main.json
+*.bicepparam
