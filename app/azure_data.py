@@ -38,10 +38,13 @@ def list_subscriptions() -> list[dict]:
     client = SubscriptionClient(cred)
     subs = []
     for sub in client.subscriptions.list():
+        state = sub.state
+        if hasattr(state, 'value'):
+            state = state.value
         subs.append({
             "id": sub.subscription_id,
             "name": sub.display_name,
-            "state": sub.state.value if sub.state else "Unknown",
+            "state": str(state) if state else "Unknown",
             "tenant": sub.tenant_id,
         })
     return subs
