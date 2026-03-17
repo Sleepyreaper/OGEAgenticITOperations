@@ -4,6 +4,7 @@ azure-mgmt-resource==23.0.0
 azure-mgmt-monitor==6.0.0
 azure-mgmt-costmanagement==4.0.0
 azure-mgmt-resourcegraph==8.0.0
+six>=1.16.0
 azure-mgmt-network==26.0.0
 azure-monitor-query==1.3.0
 flask==3.0.0
