@@ -12,6 +12,9 @@
 **Say**: "Before we show anything, let's start with what you asked us to solve."
 
 **Put up the three asks** (say them, don't read a slide):
+Diagnosing without elevated access
+AI that reinforces standards and governance
+Continuous compliance with policy reasoning 
 
 1. **"Diagnosing issues without giving users elevated access to Test/Prod would be a massive win."**
 2. **"AI that enhances productivity while reinforcing standards and governance policy."**

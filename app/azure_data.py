@@ -76,55 +76,60 @@ def get_all_resources(subscription_id: str = None,
     )
 
 
-def get_resource_health(subscription_id: str = None) -> list[dict]:
+def get_resource_health(subscription_id: str = None,
+                       subscription_ids: list[str] = None) -> list[dict]:
     return query_resource_graph(
         "HealthResources | where type =~ 'microsoft.resourcehealth/availabilitystatuses' "
         "| project name=properties.targetResourceName, status=properties.availabilityState, "
         "resourceGroup, summary=properties.summary",
-        subscription_id,
+        subscription_id, subscription_ids,
     )
 
 
-def get_orphaned_disks(subscription_id: str = None) -> list[dict]:
+def get_orphaned_disks(subscription_id: str = None,
+                      subscription_ids: list[str] = None) -> list[dict]:
     return query_resource_graph(
         "Resources | where type =~ 'Microsoft.Compute/disks' "
         "| where isempty(managedBy) "
-        "| project name, resourceGroup, location, sku.name, properties.diskSizeGB, tags",
-        subscription_id,
+        "| project name, resourceGroup, location, sku.name, properties.diskSizeGB, tags, subscriptionId",
+        subscription_id, subscription_ids,
     )
 
 
-def get_public_endpoints(subscription_id: str = None) -> list[dict]:
+def get_public_endpoints(subscription_id: str = None,
+                        subscription_ids: list[str] = None) -> list[dict]:
     return query_resource_graph(
         "Resources | where type =~ 'Microsoft.Network/publicIPAddresses' "
         "| project name, resourceGroup, ipAddress=properties.ipAddress, "
-        "allocation=properties.publicIPAllocationMethod, associated=properties.ipConfiguration.id",
-        subscription_id,
+        "allocation=properties.publicIPAllocationMethod, associated=properties.ipConfiguration.id, subscriptionId",
+        subscription_id, subscription_ids,
     )
 
 
-def get_tagging_compliance(subscription_id: str = None) -> list[dict]:
+def get_tagging_compliance(subscription_id: str = None,
+                          subscription_ids: list[str] = None) -> list[dict]:
     return query_resource_graph(
         "ResourceContainers | where type =~ 'microsoft.resources/subscriptions/resourcegroups' "
         "| extend supportOwner = tags['support-owner'] "
-        "| project name, supportOwner, location, tags",
-        subscription_id,
+        "| project name, supportOwner, location, tags, subscriptionId",
+        subscription_id, subscription_ids,
     )
 
 
 # ─── Deep Intelligence (things Advisor can't do) ────────────────
 
-def get_deep_analysis(subscription_id: str = None) -> dict:
+def get_deep_analysis(subscription_id: str = None,
+                      subscription_ids: list[str] = None) -> dict:
     """Cross-resource correlation analysis — connects dots across the entire environment.
     This is what makes us better than Advisor."""
-    sub = subscription_id or _subscription_id()
+    subs = subscription_ids or [subscription_id or _subscription_id()]
 
     # Idle App Service Plans (paying for compute with no apps)
     idle_plans = query_resource_graph(
         "Resources | where type =~ 'Microsoft.Web/serverfarms' "
         "| project name, resourceGroup, sku=sku.name, tier=sku.tier, "
         "numberOfSites=properties.numberOfSites",
-        sub,
+        subscription_ids=subs,
     )
     idle_plans = [p for p in idle_plans if p.get("numberOfSites", 0) == 0]
 
@@ -132,7 +137,7 @@ def get_deep_analysis(subscription_id: str = None) -> dict:
     all_nsgs = query_resource_graph(
         "Resources | where type =~ 'Microsoft.Network/networkSecurityGroups' "
         "| project name, resourceGroup, subnets=properties.subnets, nics=properties.networkInterfaces",
-        sub,
+        subscription_ids=subs,
     )
     orphaned_nsgs = [n for n in all_nsgs if not n.get("subnets") and not n.get("nics")]
 
@@ -145,7 +150,7 @@ def get_deep_analysis(subscription_id: str = None) -> dict:
         "addressPrefix=tostring(subnet.properties.addressPrefix), "
         "connectedDevices=array_length(subnet.properties.ipConfigurations), "
         "delegations=array_length(subnet.properties.delegations)",
-        sub,
+        subscription_ids=subs,
     )
     empty_subnets = [v for v in vnets if (v.get("connectedDevices") or 0) == 0 and (v.get("delegations") or 0) == 0]
 
@@ -158,20 +163,20 @@ def get_deep_analysis(subscription_id: str = None) -> dict:
         "'Microsoft.Network/applicationGateways', 'Microsoft.ContainerService/managedClusters', "
         "'Microsoft.DBforPostgreSQL/flexibleServers') "
         "| project name, type, resourceGroup, location",
-        sub,
+        subscription_ids=subs,
     )
 
     # Recovery Vaults with nothing protected
     recovery_vaults = query_resource_graph(
         "Resources | where type =~ 'Microsoft.RecoveryServices/vaults' "
         "| project name, resourceGroup, location",
-        sub,
+        subscription_ids=subs,
     )
 
     # Architecture ratios (smell detection)
     type_counts = {}
     all_resources = query_resource_graph(
-        "Resources | summarize count() by type | order by count_ desc | take 20", sub,
+        "Resources | summarize count() by type | order by count_ desc | take 20", subscription_ids=subs,
     )
     for r in all_resources:
         type_counts[r.get("type", "")] = r.get("count_", 0)
@@ -199,7 +204,7 @@ def get_deep_analysis(subscription_id: str = None) -> dict:
         "| project vnetName=name, resourceGroup, "
         "peerings=array_length(properties.virtualNetworkPeerings), "
         "subnets=array_length(properties.subnets)",
-        sub,
+        subscription_ids=subs,
     )
 
     return {
@@ -236,7 +241,8 @@ def get_advisor_recommendations(subscription_id: str = None) -> list[dict]:
 
 # ─── Security Drift Detection (near-real-time via Resource Graph) ─
 
-def detect_security_drift(subscription_id: str = None) -> list[dict]:
+def detect_security_drift(subscription_id: str = None,
+                         subscription_ids: list[str] = None) -> list[dict]:
     """Find open inbound NSG rules allowing traffic from any source (*) on dangerous ports."""
     results = query_resource_graph(
         "Resources | where type =~ 'Microsoft.Network/networkSecurityGroups' "
@@ -247,19 +253,20 @@ def detect_security_drift(subscription_id: str = None) -> list[dict]:
         "and rules.properties.destinationPortRange in ('22', '3389', '445', '1433', '3306', '5432', '*') "
         "| project nsgName=name, ruleName=tostring(rules.name), "
         "port=tostring(rules.properties.destinationPortRange), "
-        "priority=toint(rules.properties.priority), resourceGroup",
-        subscription_id,
+        "priority=toint(rules.properties.priority), resourceGroup, subscriptionId",
+        subscription_id, subscription_ids,
     )
     return results
 
 
-def detect_insecure_storage(subscription_id: str = None) -> list[dict]:
+def detect_insecure_storage(subscription_id: str = None,
+                           subscription_ids: list[str] = None) -> list[dict]:
     """Find storage accounts with public blob access enabled."""
     return query_resource_graph(
         "Resources | where type =~ 'Microsoft.Storage/storageAccounts' "
         "| where properties.allowBlobPublicAccess == true "
-        "| project name, resourceGroup, location, publicAccess=properties.allowBlobPublicAccess",
-        subscription_id,
+        "| project name, resourceGroup, location, publicAccess=properties.allowBlobPublicAccess, subscriptionId",
+        subscription_id, subscription_ids,
     )
 
 

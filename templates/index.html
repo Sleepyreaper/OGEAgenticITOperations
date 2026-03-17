@@ -76,6 +76,22 @@
           <button onclick="setMode('demo')" id="mode-demo" class="mode-btn px-3 py-1 rounded-md text-xs font-medium bg-oge-gray-600 text-white">Demo Data</button>
           <button onclick="setMode('live')" id="mode-live" class="mode-btn px-3 py-1 rounded-md text-xs font-medium text-oge-gray-400 hover:text-white">Live Azure</button>
         </div>
+        <!-- Subscription scope selector (visible in Live mode) -->
+        <div id="sub-selector" class="hidden flex items-center gap-2">
+          <select id="sub-scope" onchange="onSubScopeChange()" class="bg-oge-gray-800 text-oge-gray-300 text-xs rounded-md border border-oge-gray-700 px-2 py-1 focus:outline-none focus:border-oge-red">
+            <option value="default">Current Subscription</option>
+            <option value="all">Full Estate (All Subs)</option>
+            <option value="pick">Select Subscriptions...</option>
+          </select>
+          <div id="sub-pick-container" class="hidden relative">
+            <button onclick="toggleSubPicker()" id="sub-pick-btn" class="bg-oge-gray-800 text-oge-gray-300 text-xs rounded-md border border-oge-gray-700 px-2 py-1 hover:border-oge-red">0 selected</button>
+            <div id="sub-picker" class="hidden absolute top-8 right-0 bg-oge-gray-800 border border-oge-gray-700 rounded-lg shadow-xl z-50 w-80 max-h-64 overflow-y-auto p-2">
+              <div class="text-xs text-oge-gray-400 px-2 py-1 border-b border-oge-gray-700 mb-1">Select subscriptions to scan</div>
+              <div id="sub-list" class="space-y-0.5"></div>
+            </div>
+          </div>
+          <span id="sub-count-badge" class="text-xs text-oge-gray-400 bg-oge-gray-800 px-2 py-0.5 rounded hidden">1 sub</span>
+        </div>
         <div class="h-4 w-px bg-oge-gray-700"></div>
         <div class="flex items-center gap-2 text-xs text-oge-gray-300">
           <span class="pulse-dot w-2 h-2 bg-green-400 rounded-full inline-block"></span>
@@ -744,6 +760,79 @@
 
     let currentMode = 'demo';
     let liveData = null;
+    let availableSubscriptions = [];
+    let selectedSubIds = [];
+    let subScope = 'default'; // 'default' | 'all' | 'pick'
+
+    // ─── Subscription Scope ─────────────────────────
+    function getSubsQueryParam() {
+      if (subScope === 'all') return 'subs=all';
+      if (subScope === 'pick' && selectedSubIds.length > 0) return 'subs=' + selectedSubIds.join(',');
+      return ''; // default = server uses configured sub
+    }
+
+    function scanUrl(base) {
+      const param = getSubsQueryParam();
+      return param ? `${base}?${param}` : base;
+    }
+
+    async function loadSubscriptions() {
+      try {
+        const resp = await fetch('/api/subscriptions');
+        const data = await resp.json();
+        availableSubscriptions = data.subscriptions || [];
+        renderSubPicker();
+      } catch(e) { console.error('Failed to load subscriptions:', e); }
+    }
+
+    function renderSubPicker() {
+      const list = document.getElementById('sub-list');
+      list.innerHTML = availableSubscriptions.map(s => `
+        <label class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-oge-gray-700 cursor-pointer">
+          <input type="checkbox" value="${s.id}" onchange="onSubCheckChange()" class="rounded border-oge-gray-600 text-oge-red focus:ring-oge-red" ${s.default ? 'checked' : ''}>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs text-white truncate">${s.name}</div>
+            <div class="text-xs text-oge-gray-500 truncate">${s.id}</div>
+          </div>
+          ${s.default ? '<span class="text-xs bg-oge-gray-700 text-oge-gray-400 px-1.5 py-0.5 rounded">default</span>' : ''}
+        </label>
+      `).join('');
+      // Initialize selectedSubIds from checked
+      onSubCheckChange();
+    }
+
+    function onSubScopeChange() {
+      subScope = document.getElementById('sub-scope').value;
+      const pickContainer = document.getElementById('sub-pick-container');
+      const badge = document.getElementById('sub-count-badge');
+      pickContainer.classList.toggle('hidden', subScope !== 'pick');
+
+      if (subScope === 'all') {
+        badge.textContent = `${availableSubscriptions.length} subs`;
+        badge.classList.remove('hidden');
+      } else if (subScope === 'pick') {
+        badge.classList.remove('hidden');
+      } else {
+        badge.textContent = '1 sub';
+        badge.classList.remove('hidden');
+      }
+
+      // Re-scan with new scope if already in live mode
+      if (currentMode === 'live') loadLiveDashboard();
+    }
+
+    function onSubCheckChange() {
+      const checkboxes = document.querySelectorAll('#sub-list input[type=checkbox]:checked');
+      selectedSubIds = Array.from(checkboxes).map(cb => cb.value);
+      const btn = document.getElementById('sub-pick-btn');
+      btn.textContent = `${selectedSubIds.length} selected`;
+      const badge = document.getElementById('sub-count-badge');
+      badge.textContent = `${selectedSubIds.length} subs`;
+    }
+
+    function toggleSubPicker() {
+      document.getElementById('sub-picker').classList.toggle('hidden');
+    }
 
     // ─── Mode Toggle ────────────────────────────────
     function setMode(mode) {
@@ -761,12 +850,15 @@
       if (mode === 'live') {
         badge.textContent = 'LIVE';
         badge.className = 'text-xs bg-green-100 text-green-700 font-medium px-2.5 py-1 rounded-full';
-        subtitle.textContent = 'Your subscription — Live Azure data';
+        subtitle.textContent = 'Live Azure data';
+        document.getElementById('sub-selector').classList.remove('hidden');
+        loadSubscriptions();
         loadLiveDashboard();
       } else {
         badge.textContent = 'DEMO MODE';
         badge.className = 'text-xs bg-amber-100 text-amber-700 font-medium px-2.5 py-1 rounded-full';
         subtitle.textContent = 'OGE-CloudOps-Production — Demo data';
+        document.getElementById('sub-selector').classList.add('hidden');
         resetDemoDashboard();
       }
     }
@@ -779,7 +871,7 @@
       badge.className = 'text-xs bg-blue-100 text-blue-700 font-medium px-2.5 py-1 rounded-full animate-pulse';
 
       try {
-        const resp = await fetch('/api/scan/overview');
+        const resp = await fetch(scanUrl('/api/scan/overview'));
         const data = await resp.json();
         if (data.error) { alert('Scan error: ' + data.error); setMode('demo'); return; }
         liveData = data;
@@ -788,6 +880,11 @@
         updateHealthBar(data);
         updateExecutiveView(data);
         updateLastScanned();
+
+        // Update subtitle with subscription count
+        const subtitle = document.getElementById('dashboard-subtitle');
+        const subCount = data.subscription_count || 1;
+        subtitle.textContent = subCount > 1 ? `${subCount} subscriptions — Live Azure data` : 'Live Azure data';
         badge.textContent = 'LIVE';
         badge.className = 'text-xs bg-green-100 text-green-700 font-medium px-2.5 py-1 rounded-full';
 
@@ -803,7 +900,7 @@
     async function autoRefreshLive() {
       if (currentMode !== 'live') { clearInterval(liveRefreshInterval); return; }
       try {
-        const resp = await fetch('/api/scan/overview');
+        const resp = await fetch(scanUrl('/api/scan/overview'));
         const data = await resp.json();
         if (data.error) return;
 
@@ -1270,13 +1367,20 @@
       panel.innerHTML = '';
 
       if (currentMode === 'live') {
-        addMessage('assistant', 'Pipeline', '🔵 **LIVE mode** — scanning your Azure subscription for context...');
+        const subCount = subScope === 'all' ? availableSubscriptions.length : (subScope === 'pick' ? selectedSubIds.length : 1);
+        addMessage('assistant', 'Pipeline', `🔵 **LIVE mode** — scanning ${subCount} subscription${subCount > 1 ? 's' : ''} for context...`);
       }
 
       addMessage('assistant', 'Pipeline', '⚡ Dispatching the crew... each will report as they finish.');
 
       try {
-        await streamCouncil('/api/ask/stream', { question, mode: currentMode });
+        const body = { question, mode: currentMode };
+        // Pass subscription scope for live mode
+        if (currentMode === 'live') {
+          if (subScope === 'all') body.subs = availableSubscriptions.map(s => s.id);
+          else if (subScope === 'pick' && selectedSubIds.length > 0) body.subs = selectedSubIds;
+        }
+        await streamCouncil('/api/ask/stream', body);
       } catch (e) {
         addMessage('assistant', 'Pipeline', '⚠️ Connection error: ' + e.message);
       } finally {

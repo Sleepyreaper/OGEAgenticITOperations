@@ -43,11 +43,14 @@ def create_app():
         context_data = body.get("context_data", "")
         agents = body.get("agents")
         mode = body.get("mode", "demo")
+        subs = body.get("subs")  # subscription IDs for live mode
 
         # In live mode, gather real Azure data as context
         if mode == "live" and not context_data:
             try:
-                context_data = _gather_live_context()
+                sub_ids = subs if subs else [settings.subscription_id]
+                scan = _gather_live_scan(sub_ids)
+                context_data = json.dumps(scan, indent=2, default=str)
             except Exception as e:
                 traceback.print_exc()
                 context_data = f"[Error gathering live data: {e}]"
@@ -71,10 +74,13 @@ def create_app():
         context_data = body.get("context_data", "")
         agents = body.get("agents")
         mode = body.get("mode", "demo")
+        subs = body.get("subs")  # subscription IDs for live mode
 
         if mode == "live" and not context_data:
             try:
-                context_data = _gather_live_context()
+                sub_ids = subs if subs else [settings.subscription_id]
+                scan = _gather_live_scan(sub_ids)
+                context_data = json.dumps(scan, indent=2, default=str)
             except Exception as e:
                 context_data = f"[Error gathering live data: {e}]"
 
@@ -197,15 +203,37 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
+    @app.route("/api/subscriptions", methods=["GET"])
+    def list_subs():
+        """Discover all subscriptions accessible to the Managed Identity."""
+        try:
+            subs = azure_data.list_subscriptions()
+            # Mark the default/configured subscription
+            default_sub = settings.subscription_id
+            for s in subs:
+                s["default"] = s["id"] == default_sub
+            return jsonify({"subscriptions": subs, "count": len(subs), "default": default_sub})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
     @app.route("/api/scan/overview", methods=["GET"])
     def scan_overview():
-        """Scan the current subscription for dashboard KPI cards."""
+        """Scan subscriptions for dashboard KPI cards.
+
+        Query params:
+          ?subs=all          — scan all accessible subscriptions
+          ?subs=id1,id2,id3  — scan specific subscriptions
+          (none)             — scan the default configured subscription
+        """
         try:
-            sub_id = settings.subscription_id
-            resources = azure_data.get_all_resources(subscription_id=sub_id)
-            tagging = azure_data.get_tagging_compliance(subscription_id=sub_id)
-            orphaned = azure_data.get_orphaned_disks(subscription_id=sub_id)
-            public_ips = azure_data.get_public_endpoints(subscription_id=sub_id)
+            sub_ids = _parse_sub_ids()
+
+            # For Resource Graph queries — pass all sub IDs at once (efficient)
+            resources = azure_data.get_all_resources(subscription_ids=sub_ids)
+            tagging = azure_data.get_tagging_compliance(subscription_ids=sub_ids)
+            orphaned = azure_data.get_orphaned_disks(subscription_ids=sub_ids)
+            public_ips = azure_data.get_public_endpoints(subscription_ids=sub_ids)
 
             rg_count = len(set(r.get("resourceGroup", "") for r in resources))
             tagged = sum(1 for t in tagging if t.get("supportOwner"))
@@ -215,42 +243,54 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
             # Azure Advisor — platform-verified recommendations (the evidence)
             advisor_recs = []
             try:
-                advisor_recs = azure_data.get_advisor_recommendations(sub_id)
+                for sid in sub_ids:
+                    advisor_recs.extend(azure_data.get_advisor_recommendations(sid))
             except Exception:
                 pass
 
             # Deep intelligence — cross-resource correlation (the stuff Advisor CAN'T do)
             deep = {}
             try:
-                deep = azure_data.get_deep_analysis(sub_id)
+                deep = azure_data.get_deep_analysis(subscription_ids=sub_ids)
             except Exception:
                 pass
 
             # Security drift — dangerous open NSG rules
             security_drift = []
             try:
-                security_drift = azure_data.detect_security_drift(sub_id)
+                security_drift = azure_data.detect_security_drift(subscription_ids=sub_ids)
             except Exception:
                 pass
 
             # Insecure storage — public blob access
             insecure_storage = []
             try:
-                insecure_storage = azure_data.detect_insecure_storage(sub_id)
+                insecure_storage = azure_data.detect_insecure_storage(subscription_ids=sub_ids)
             except Exception:
                 pass
 
-            # Policy compliance
+            # Policy compliance (per-sub, then aggregate)
             policy_compliance = {}
             try:
-                policy_compliance = azure_data.get_policy_compliance_summary(sub_id)
+                for sid in sub_ids:
+                    pc = azure_data.get_policy_compliance_summary(sid)
+                    if not policy_compliance:
+                        policy_compliance = pc
+                    else:
+                        for k in ("total_policies", "non_compliant_policies", "non_compliant_resources", "compliant_resources", "total_resources"):
+                            policy_compliance[k] = policy_compliance.get(k, 0) + pc.get(k, 0)
+                        if policy_compliance.get("total_resources", 0) > 0:
+                            policy_compliance["compliance_pct"] = round(
+                                (1 - policy_compliance["non_compliant_resources"] / policy_compliance["total_resources"]) * 100, 1)
+                        policy_compliance.setdefault("top_non_compliant_assignments", []).extend(pc.get("top_non_compliant_assignments", []))
             except Exception:
                 pass
 
             # Resource health — per-resource availability
             resource_health = []
             try:
-                resource_health = azure_data.get_resource_health_statuses(sub_id)
+                for sid in sub_ids:
+                    resource_health.extend(azure_data.get_resource_health_statuses(sid))
             except Exception:
                 pass
 
@@ -265,7 +305,8 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
             # Azure Service Health — platform incidents affecting us
             service_health = []
             try:
-                service_health = azure_data.get_service_health_events(sub_id, days=30)
+                for sid in sub_ids:
+                    service_health.extend(azure_data.get_service_health_events(sid, days=30))
             except Exception:
                 pass
 
@@ -274,8 +315,15 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                 cat = r.get("category", "Unknown")
                 advisor_by_category[cat] = advisor_by_category.get(cat, 0) + 1
 
+            # Group resources by subscription for multi-sub visibility
+            resources_by_sub = {}
+            for r in resources:
+                sid = r.get("subscriptionId", "unknown")
+                resources_by_sub.setdefault(sid, []).append(r)
+
             return jsonify({
-                "subscription_id": sub_id,
+                "subscription_ids": sub_ids,
+                "subscription_count": len(sub_ids),
                 "total_resources": len(resources),
                 "resource_groups": rg_count,
                 "findings": findings,
@@ -307,6 +355,7 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                 "service_health": service_health,
                 "deep_analysis": deep,
                 "policy_compliance": policy_compliance,
+                "resources_by_subscription": {sid: len(rs) for sid, rs in resources_by_sub.items()},
             })
         except Exception as e:
             traceback.print_exc()
@@ -346,8 +395,9 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
     def scan_security():
         """Quick security drift scan — checks for open dangerous ports."""
         try:
-            drift = azure_data.detect_security_drift(settings.subscription_id)
-            return jsonify({"drift_findings": drift, "count": len(drift)})
+            sub_ids = _parse_sub_ids()
+            drift = azure_data.detect_security_drift(subscription_ids=sub_ids)
+            return jsonify({"drift_findings": drift, "count": len(drift), "subscription_ids": sub_ids})
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
@@ -356,13 +406,26 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
     def scan_compliance():
         """Azure Policy compliance scan — summary + non-compliant resources."""
         try:
-            sub_id = settings.subscription_id
-            summary = azure_data.get_policy_compliance_summary(sub_id)
-            non_compliant = azure_data.get_non_compliant_resources(sub_id)
+            sub_ids = _parse_sub_ids()
+            summary = {}
+            non_compliant = []
+            for sid in sub_ids:
+                s = azure_data.get_policy_compliance_summary(sid)
+                nc = azure_data.get_non_compliant_resources(sid)
+                non_compliant.extend(nc)
+                if not summary:
+                    summary = s
+                else:
+                    for k in ("total_policies", "non_compliant_policies", "non_compliant_resources", "total_resources"):
+                        summary[k] = summary.get(k, 0) + s.get(k, 0)
+            if summary.get("total_resources", 0) > 0:
+                summary["compliance_pct"] = round(
+                    (1 - summary.get("non_compliant_resources", 0) / summary["total_resources"]) * 100, 1)
             return jsonify({
                 "summary": summary,
                 "non_compliant_resources": non_compliant,
                 "count": len(non_compliant),
+                "subscription_ids": sub_ids,
             })
         except Exception as e:
             traceback.print_exc()
@@ -372,14 +435,17 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
     def daily_digest():
         """Generate a daily 'top of mind' digest — what the crew found overnight."""
         try:
-            sub_id = settings.subscription_id
-            # Gather all signals
-            orphaned = azure_data.get_orphaned_disks(sub_id)
-            drift = azure_data.detect_security_drift(sub_id)
-            insecure = azure_data.detect_insecure_storage(sub_id)
-            health_events = azure_data.get_service_health_events(sub_id, days=7)
-            resource_health = azure_data.get_resource_health_statuses(sub_id)
-            tagging = azure_data.get_tagging_compliance(sub_id)
+            sub_ids = _parse_sub_ids()
+            # Gather all signals across selected subscriptions
+            orphaned = azure_data.get_orphaned_disks(subscription_ids=sub_ids)
+            drift = azure_data.detect_security_drift(subscription_ids=sub_ids)
+            insecure = azure_data.detect_insecure_storage(subscription_ids=sub_ids)
+            health_events = []
+            resource_health = []
+            for sid in sub_ids:
+                health_events.extend(azure_data.get_service_health_events(sid, days=7))
+                resource_health.extend(azure_data.get_resource_health_statuses(sid))
+            tagging = azure_data.get_tagging_compliance(subscription_ids=sub_ids)
 
             degraded = [r for r in resource_health if r.get("status") in ("Degraded", "Unavailable")]
             active_incidents = [e for e in health_events if e.get("status") == "Active"]
@@ -420,17 +486,32 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
 
     # ─── Helpers ────────────────────────────────────────────
 
+    def _parse_sub_ids() -> list[str]:
+        """Parse subscription IDs from ?subs= query param."""
+        subs_param = request.args.get("subs", "").strip()
+        if subs_param == "all":
+            all_subs = azure_data.list_subscriptions()
+            return [s["id"] for s in all_subs if s.get("state") == "Enabled"]
+        elif subs_param:
+            return [s.strip() for s in subs_param.split(",") if s.strip()]
+        else:
+            return [settings.subscription_id]
+
     def _gather_live_context() -> str:
         """Gather real Azure data to use as agent context."""
-        scan = _gather_live_scan()
+        sub_ids = _parse_sub_ids()
+        scan = _gather_live_scan(sub_ids)
         return json.dumps(scan, indent=2, default=str)
 
-    def _gather_live_scan() -> dict:
-        """Full scan of the Azure subscription."""
-        resources = azure_data.get_all_resources()
-        tagging = azure_data.get_tagging_compliance()
-        orphaned = azure_data.get_orphaned_disks()
-        public_ips = azure_data.get_public_endpoints()
+    def _gather_live_scan(sub_ids: list[str] = None) -> dict:
+        """Full scan of Azure subscriptions."""
+        if not sub_ids:
+            sub_ids = [settings.subscription_id]
+
+        resources = azure_data.get_all_resources(subscription_ids=sub_ids)
+        tagging = azure_data.get_tagging_compliance(subscription_ids=sub_ids)
+        orphaned = azure_data.get_orphaned_disks(subscription_ids=sub_ids)
+        public_ips = azure_data.get_public_endpoints(subscription_ids=sub_ids)
 
         rg_count = len(set(r.get("resourceGroup", "") for r in resources))
         tagged = sum(1 for t in tagging if t.get("supportOwner"))
@@ -438,7 +519,7 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
 
         health = []
         try:
-            health = azure_data.get_resource_health()
+            health = azure_data.get_resource_health(subscription_ids=sub_ids)
         except Exception:
             pass
 
@@ -449,7 +530,8 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
             pass
 
         return {
-            "subscription_id": settings.subscription_id,
+            "subscription_ids": sub_ids,
+            "subscription_count": len(sub_ids),
             "scan_type": "live",
             "resources": {
                 "total": len(resources),
