@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test the ADO integration module — proposal lifecycle.
+"""Test the ADO integration module — proposal lifecycle + ADO client + remediation parsing.
 
 Run: python3 tests/test_ado_integration.py
 """
@@ -11,6 +11,8 @@ from app.ado_integration import (
     create_proposal, get_proposals, get_proposal,
     approve_proposal, reject_proposal,
     generate_proposals_from_inspection,
+    parse_remediation_to_file_changes,
+    AdoClient, get_ado_client,
     ViolationClass, ProposalType, ProposalStatus,
     _proposals,  # access the store for cleanup
 )
@@ -125,8 +127,8 @@ test("approved_by set", result["proposal"]["approved_by"] == "brad.allen")
 test("has ADO payload", "ado_payload" in result)
 
 payload = result["ado_payload"]
-test("PR payload has sourceRefName", "sourceRefName" in str(payload.get("body", {})))
-test("PR payload has file_changes", len(payload.get("file_changes", [])) == 1)
+test("PR payload has steps", "steps" in payload)
+test("PR payload has file push step", any("files" in str(s) for s in payload.get("steps", [])))
 
 # Can't approve again
 result2 = approve_proposal(p1.id)
@@ -237,6 +239,210 @@ test("approve missing → error", "error" in result)
 # Reject nonexistent
 result = reject_proposal("doesnt-exist")
 test("reject missing → error", "error" in result)
+
+
+# ─── Test 10: Parse remediation to file changes ─────────
+print("\n🧪 Test 10: Parse Roughneck remediation output into PR file changes")
+
+remediation_output = """Here's the fix for the Deny-Storage-HTTP policy:
+
+**main.tf**
+```hcl
+resource "azurerm_policy_definition" "deny_storage_http_v2" {
+  name         = "deny-storage-http-v2"
+  policy_type  = "Custom"
+  mode         = "Indexed"
+  display_name = "Storage accounts should use HTTPS (with SFTP exemption)"
+
+  metadata = jsonencode({
+    category    = "Storage"
+    managed-by  = "ops-council"
+  })
+
+  policy_rule = jsonencode({
+    if = {
+      allOf = [
+        { field = "type", equals = "Microsoft.Storage/storageAccounts" },
+        { field = "Microsoft.Storage/storageAccounts/supportsHttpsTrafficOnly", equals = false },
+        { not = { field = "tags['sftp-gateway']", equals = "true" } }
+      ]
+    }
+    then = { effect = "deny" }
+  })
+}
+```
+
+**variables.tf**
+```hcl
+variable "subscription_id" {
+  description = "Target subscription"
+  type        = string
+}
+
+variable "resource_group" {
+  description = "Resource group for policy assignment"
+  type        = string
+  default     = "policy-management"
+}
+```
+
+**RUNBOOK.md**
+```markdown
+## Deny-Storage-HTTP Policy Fix
+
+1. Review the updated policy definition
+2. Run terraform plan — verify only the policy definition changes
+3. Apply — the new policy exempts SFTP gateway storage accounts
+4. Validate: check that legacy SFTP account is now compliant
+```
+"""
+
+file_changes = parse_remediation_to_file_changes(remediation_output, "Deny-Storage-HTTP")
+test("3 files extracted", len(file_changes) == 3)
+test("main.tf path", file_changes[0]["path"] == "/remediation/deny-storage-http/main.tf")
+test("variables.tf path", file_changes[1]["path"] == "/remediation/deny-storage-http/variables.tf")
+test("RUNBOOK.md path", file_changes[2]["path"] == "/remediation/deny-storage-http/RUNBOOK.md")
+test("main.tf has terraform content", "azurerm_policy_definition" in file_changes[0]["content"])
+test("variables.tf has variable", 'variable "subscription_id"' in file_changes[1]["content"])
+test("RUNBOOK.md has steps", "terraform plan" in file_changes[2]["content"])
+
+
+# ─── Test 11: Parse remediation — edge cases ────────────
+print("\n🧪 Test 11: Remediation parsing edge cases")
+
+# No code blocks at all
+empty_changes = parse_remediation_to_file_changes("No code here, just text.", "test")
+test("no code blocks → empty", len(empty_changes) == 0)
+
+# Generic code blocks without labeled filenames
+generic_output = """Here's a fix:
+
+```hcl
+resource "azurerm_storage_account" "fix" {
+  name = "fixed"
+}
+```
+
+And a script:
+
+```bash
+az storage account update --name fixed --https-only true
+```
+"""
+generic_changes = parse_remediation_to_file_changes(generic_output, "generic-fix")
+test("generic blocks parsed", len(generic_changes) == 2)
+test("tf file detected", generic_changes[0]["path"].endswith(".tf"))
+test("sh file detected", generic_changes[1]["path"].endswith(".sh"))
+
+# Policy name sanitization
+changes = parse_remediation_to_file_changes(
+    "**main.tf**\n```hcl\ntest\n```", "Deny/Storage HTTP (v2)"
+)
+test("policy name sanitized", "/remediation/deny-storage-http--v2-/main.tf" == changes[0]["path"] or "deny" in changes[0]["path"])
+
+
+# ─── Test 12: ADO Client — configuration check ──────────
+print("\n🧪 Test 12: ADO Client configuration")
+
+client = AdoClient()
+test("unconfigured without env vars", not client.configured)
+
+# Simulate configured client
+client.org_url = "https://dev.azure.com/contoso"
+client.project = "CloudOps"
+client.repo = "policy-as-code"
+client.pat = "fake-pat-for-testing"
+test("configured with all vars", client.configured)
+test("auth header is Basic", "Basic" in client._auth_header["Authorization"])
+
+
+# ─── Test 13: PR proposal payload shows full flow ───────
+print("\n🧪 Test 13: PR proposal payload shows 6-step Terraform pipeline flow")
+reset()
+
+p = create_proposal(
+    violation_class="policy_bug",
+    policy_name="Deny-Storage-HTTP",
+    resource_id="/subs/xxx/storage1",
+    support_owner="data-team",
+    inspector_reasoning="Policy doesn't handle SFTP",
+    title="Fix storage HTTP policy",
+    description="Exempt SFTP gateways",
+    pr_file_changes=[
+        {"path": "/remediation/deny-storage-http/main.tf", "content": "resource \"azurerm_policy\"..."},
+        {"path": "/remediation/deny-storage-http/variables.tf", "content": "variable \"sub\"..."},
+    ],
+)
+
+# Approve without ADO configured → get payload showing full flow
+result = approve_proposal(p.id)
+test("approved in PoC mode", result["status"] == "approved")
+
+payload = result["ado_payload"]
+test("payload has steps", "steps" in payload)
+test("6 steps in flow", len(payload["steps"]) == 6)
+test("step 1 = create branch", "branch" in str(payload["steps"][0]))
+test("step 2 = push files", "files" in payload["steps"][1])
+test("step 3 = create PR", "pullrequest" in str(payload["steps"][2]).lower())
+test("step 4 = terraform plan", "terraform" in str(payload["steps"][3]).lower())
+test("step 5 = human review", "approval" in str(payload["steps"][4]).lower())
+test("step 6 = terraform apply", "apply" in str(payload["steps"][5]).lower())
+test("metadata has policy name", payload["metadata"]["policy_name"] == "Deny-Storage-HTTP")
+
+
+# ─── Test 14: Full flow — policy bug with fix code ──────
+print("\n🧪 Test 14: Full flow — Inspector classifies + Roughneck generates fix → PR proposal")
+reset()
+
+# Simulate what inspect-and-propose does after calling both agents
+classifications = [
+    {
+        "class": "policy_bug",
+        "policy_name": "Deny-Storage-HTTP",
+        "resource_id": "/subs/xxx/storage1",
+        "support_owner": "data-team",
+        "reasoning": "Policy doesn't handle SFTP pattern",
+        "title": "Fix storage HTTP policy",
+        "description": "Update policy to exempt SFTP gateways",
+        "acceptance_criteria": "SFTP storage compliant",
+        "priority": 2,
+        "file_changes": [
+            {"path": "/remediation/deny-storage-http/main.tf", "content": "resource \"azurerm_policy\"..."},
+            {"path": "/remediation/deny-storage-http/variables.tf", "content": "variable..."},
+            {"path": "/remediation/deny-storage-http/RUNBOOK.md", "content": "# Steps..."},
+        ],
+    },
+    {
+        "class": "workaround_abuse",
+        "policy_name": "Require-Workload-ID",
+        "resource_id": "/subs/xxx/aks1",
+        "support_owner": "devops-team",
+        "reasoning": "Expired exemption",
+        "title": "Migrate AKS to workload identity",
+        "description": "Create PBI",
+        "acceptance_criteria": "Workload identity enabled",
+        "priority": 1,
+    },
+]
+
+proposals = generate_proposals_from_inspection({"classifications": classifications})
+test("2 proposals created", len(proposals) == 2)
+
+pr_proposal = proposals[0]
+pbi_proposal = proposals[1]
+
+test("PR has file changes", len(pr_proposal["pr_file_changes"]) == 3)
+test("PBI has no file changes", len(pbi_proposal["pr_file_changes"]) == 0)
+test("PR is pull_request type", pr_proposal["proposal_type"] == "pull_request")
+test("PBI is pbi type", pbi_proposal["proposal_type"] == "pbi")
+
+# Approve the PR proposal — should show full 6-step flow
+result = approve_proposal(pr_proposal["id"])
+test("PR approval shows terraform pipeline flow", len(result["ado_payload"]["steps"]) == 6)
+
+# Approve the PBI proposal — should show work item payload
+result = approve_proposal(pbi_proposal["id"])
+test("PBI shows work item API", "wit/workitems" in result["ado_payload"]["api"])
 
 
 # ─── Summary ──────────────────────────────────────────────

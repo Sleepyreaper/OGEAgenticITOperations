@@ -1,0 +1,245 @@
+# ═══════════════════════════════════════════════════════════════
+# OGE Ops Council — Terraform Remediation Pipeline
+# ═══════════════════════════════════════════════════════════════
+#
+# PURPOSE: Validate and deploy Terraform remediation code that the
+# Ops Council Inspector + Roughneck generate for policy fixes.
+#
+# THIS IS THE CUSTOMER'S PIPELINE — it lives in their policy-as-code
+# repo. When the Ops Council creates a PR with Terraform fix files,
+# this pipeline triggers automatically.
+#
+# FLOW:
+#   1. PR created by Ops Council (branch: ops-council/policy-fix-*)
+#   2. Pipeline triggers → terraform init + validate + plan
+#   3. Plan output posted as PR comment for human review
+#   4. Human reviews code + plan, approves the PR
+#   5. PR merged to main → pipeline triggers terraform apply
+#   6. Changes deployed to production
+#
+# HUMAN-IN-THE-LOOP:
+#   - On PR: terraform plan only (read-only, safe)
+#   - On merge to main: terraform apply requires Environment approval
+#   - No automatic deployment without human sign-off
+#
+# ═══════════════════════════════════════════════════════════════
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - remediation/**
+      - policies/**
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - remediation/**
+      - policies/**
+
+# ─── Variables ──────────────────────────────────────────────
+variables:
+  - name: terraformVersion
+    value: '1.9.x'
+  - name: workingDirectory
+    value: '$(System.DefaultWorkingDirectory)'
+  # These come from the variable group linked to each environment
+  # - ARM_CLIENT_ID, ARM_TENANT_ID, ARM_SUBSCRIPTION_ID
+  # - ARM_USE_OIDC=true (for Workload Identity Federation)
+
+# ─── Stages ────────────────────────────────────────────────
+
+stages:
+
+  # ════════════════════════════════════════════════════════
+  # Stage 1: Validate (runs on every PR)
+  # ════════════════════════════════════════════════════════
+  - stage: Validate
+    displayName: 'Terraform Validate & Plan'
+    condition: eq(variables['Build.Reason'], 'PullRequest')
+    jobs:
+      - job: TerraformPlan
+        displayName: 'Init → Validate → Plan'
+        pool:
+          vmImage: 'ubuntu-latest'
+        variables:
+          - group: OpsCouncil-Terraform  # ARM credentials
+        steps:
+
+          - task: TerraformInstaller@1
+            displayName: 'Install Terraform $(terraformVersion)'
+            inputs:
+              terraformVersion: '$(terraformVersion)'
+
+          # Find which remediation directories changed in this PR
+          - script: |
+              echo "Finding changed remediation directories..."
+              CHANGED_DIRS=$(git diff --name-only origin/main...HEAD -- 'remediation/' 'policies/' | \
+                xargs -I{} dirname {} | sort -u)
+              echo "Changed directories:"
+              echo "$CHANGED_DIRS"
+              echo "##vso[task.setvariable variable=changedDirs]$CHANGED_DIRS"
+            displayName: 'Detect changed Terraform directories'
+
+          # Run terraform init + validate + plan for each changed directory
+          - script: |
+              set -euo pipefail
+              PLAN_OUTPUT=""
+              EXIT_CODE=0
+
+              for dir in $(echo "$(changedDirs)"); do
+                if [ ! -f "$dir/main.tf" ] && [ ! -f "$dir/*.tf" ]; then
+                  echo "Skipping $dir — no .tf files"
+                  continue
+                fi
+
+                echo ""
+                echo "═══════════════════════════════════════════"
+                echo "  Processing: $dir"
+                echo "═══════════════════════════════════════════"
+
+                cd "$dir"
+
+                echo "→ terraform init"
+                terraform init -input=false -no-color || { EXIT_CODE=1; cd -; continue; }
+
+                echo "→ terraform validate"
+                terraform validate -no-color || { EXIT_CODE=1; cd -; continue; }
+
+                echo "→ terraform plan"
+                PLAN=$(terraform plan -input=false -no-color -detailed-exitcode 2>&1) || {
+                  PLAN_EXIT=$?
+                  if [ $PLAN_EXIT -eq 2 ]; then
+                    echo "Plan has changes (expected for new remediation)"
+                  else
+                    EXIT_CODE=1
+                  fi
+                }
+                PLAN_OUTPUT="$PLAN_OUTPUT\n\n## $dir\n\`\`\`\n$PLAN\n\`\`\`"
+
+                cd "$(workingDirectory)"
+              done
+
+              # Write plan output for PR comment
+              echo -e "$PLAN_OUTPUT" > $(Build.ArtifactStagingDirectory)/plan-output.md
+              echo "Plan complete. Exit code: $EXIT_CODE"
+              exit $EXIT_CODE
+            displayName: 'Terraform init → validate → plan'
+            env:
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
+              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+              ARM_USE_OIDC: 'true'
+
+          # Post plan output as PR comment so reviewers can see it
+          - task: PowerShell@2
+            displayName: 'Post plan to PR comment'
+            condition: always()
+            inputs:
+              targetType: 'inline'
+              script: |
+                $planFile = "$(Build.ArtifactStagingDirectory)/plan-output.md"
+                if (Test-Path $planFile) {
+                  $plan = Get-Content $planFile -Raw
+                  $comment = @{
+                    comments = @(@{
+                      parentCommentId = 0
+                      content = "## 🔧 Terraform Plan Output`n`n" +
+                                "Auto-generated by the Ops Council Terraform pipeline.`n" +
+                                "Review the plan below before approving this PR.`n`n" +
+                                $plan
+                      commentType = 1
+                    })
+                    status = 1
+                  } | ConvertTo-Json -Depth 5
+
+                  $prId = "$(System.PullRequest.PullRequestId)"
+                  $repoId = "$(Build.Repository.ID)"
+                  $org = "$(System.CollectionUri)"
+                  $project = "$(System.TeamProject)"
+
+                  $url = "${org}${project}/_apis/git/repositories/${repoId}/pullRequests/${prId}/threads?api-version=7.1"
+
+                  $headers = @{
+                    Authorization = "Bearer $(System.AccessToken)"
+                    "Content-Type" = "application/json"
+                  }
+
+                  Invoke-RestMethod -Uri $url -Method POST -Body $comment -Headers $headers
+                  Write-Host "Posted plan output to PR #$prId"
+                }
+
+  # ════════════════════════════════════════════════════════
+  # Stage 2: Apply (runs on merge to main — HUMAN APPROVAL)
+  # ════════════════════════════════════════════════════════
+  - stage: Apply
+    displayName: 'Terraform Apply → Production'
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - deployment: TerraformApply
+        displayName: 'Apply remediation to production'
+        # ─── HUMAN GATE ───
+        # This environment must have Approval Checks configured in ADO.
+        # The pipeline STOPS HERE until a Cloud Ops lead approves.
+        environment: 'terraform-production'
+        pool:
+          vmImage: 'ubuntu-latest'
+        variables:
+          - group: OpsCouncil-Terraform
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: TerraformInstaller@1
+                  displayName: 'Install Terraform $(terraformVersion)'
+                  inputs:
+                    terraformVersion: '$(terraformVersion)'
+
+                # Find which directories changed in the merge commit
+                - script: |
+                    CHANGED_DIRS=$(git diff --name-only HEAD~1 HEAD -- 'remediation/' 'policies/' | \
+                      xargs -I{} dirname {} | sort -u)
+                    echo "Directories to apply:"
+                    echo "$CHANGED_DIRS"
+                    echo "##vso[task.setvariable variable=changedDirs]$CHANGED_DIRS"
+                  displayName: 'Detect merged remediation directories'
+
+                - script: |
+                    set -euo pipefail
+
+                    for dir in $(echo "$(changedDirs)"); do
+                      if [ ! -f "$dir/main.tf" ] && [ ! -f "$dir/*.tf" ]; then
+                        continue
+                      fi
+
+                      echo ""
+                      echo "═══════════════════════════════════════════"
+                      echo "  Applying: $dir"
+                      echo "═══════════════════════════════════════════"
+
+                      cd "$dir"
+
+                      echo "→ terraform init"
+                      terraform init -input=false -no-color
+
+                      echo "→ terraform apply"
+                      terraform apply -input=false -no-color -auto-approve
+
+                      cd "$(workingDirectory)"
+                    done
+
+                    echo ""
+                    echo "✅ All remediations applied successfully."
+                  displayName: 'Terraform apply (production)'
+                  env:
+                    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+                    ARM_TENANT_ID: $(ARM_TENANT_ID)
+                    ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+                    ARM_USE_OIDC: 'true'

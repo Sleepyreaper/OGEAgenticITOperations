@@ -519,7 +519,11 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
 
     @app.route("/api/ado/proposals/<proposal_id>/approve", methods=["POST"])
     def approve_proposal(proposal_id):
-        """Human approves a proposal — returns the ADO payload that would be created."""
+        """Human approves a proposal → creates item in ADO.
+
+        If ADO is configured: creates branch+PR (policy bugs) or work item (PBI/Bug/Task).
+        If not configured: returns the payload showing what would be created.
+        """
         body = request.get_json(force=True) if request.is_json else {}
         approved_by = body.get("approved_by", "ops-user")
         result = ado_integration.approve_proposal(proposal_id, approved_by=approved_by)
@@ -539,13 +543,21 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
 
     @app.route("/api/ado/inspect-and-propose", methods=["POST"])
     def inspect_and_propose():
-        """Full pipeline: scan compliance → Inspector classifies → generate proposals.
+        """Full Phase 2 pipeline: scan → classify → generate fix code → propose.
 
-        This is the main Phase 2 workflow endpoint. It:
+        This is the main Phase 2 workflow endpoint:
         1. Scans Azure Policy compliance for the subscription
         2. Sends findings to The Inspector for classification
-        3. Parses Inspector output into structured proposals
-        4. Returns proposals for human review
+        3. For policy bugs: calls The Roughneck to generate Terraform/policy fix code
+        4. Creates proposals with fix code attached (for PRs) or work item details (for PBIs)
+        5. Returns proposals for human review
+
+        On human approval, the system will:
+        - Policy bugs: create branch → push fix files → open PR in ADO
+          (Terraform pipeline auto-runs plan, human reviews, merges → apply)
+        - Workaround abuse: create PBI in ADO backlog
+        - Misconfiguration: create Bug assigned to support owner
+        - Exemptions: create Task to verify documentation
 
         Body (optional): { "subs": ["sub-id-1", ...] }
         """
@@ -592,10 +604,35 @@ NON-COMPLIANT RESOURCES:
             inspector_cfg = settings.agents["compliance_inspector"]
             inspector_result = call_agent(inspector_cfg, inspector_prompt)
 
-            # Step 3: Parse Inspector output into proposals
+            # Step 3: Parse Inspector output into classifications
             response_text = inspector_result.get("response", "")
             classifications = _parse_inspector_classifications(response_text)
 
+            # Step 4: For policy bugs, call The Roughneck to generate fix code
+            roughneck_cfg = settings.agents["standards_architect"]
+            for c in classifications:
+                if c.get("class") == "policy_bug":
+                    remediation_prompt = (
+                        f"Generate Terraform/policy-as-code to fix this policy definition bug.\n\n"
+                        f"Policy: {c.get('policy_name', 'unknown')}\n"
+                        f"Resource: {c.get('resource_id', 'unknown')}\n"
+                        f"Problem: {c.get('reasoning', 'unknown')}\n"
+                        f"Fix needed: {c.get('description', 'unknown')}\n\n"
+                        f"Generate:\n"
+                        f"1. **main.tf** — Terraform to deploy the corrected policy definition\n"
+                        f"2. **variables.tf** — Variable declarations with defaults\n"
+                        f"3. **RUNBOOK.md** — Validation steps after apply\n\n"
+                        f"Follow OGE standards: tags (support-owner, managed-by=ops-council), "
+                        f"azurerm provider with version constraint."
+                    )
+                    fix_result = call_agent(roughneck_cfg, remediation_prompt)
+                    fix_text = fix_result.get("response", "")
+                    c["file_changes"] = ado_integration.parse_remediation_to_file_changes(
+                        fix_text, c.get("policy_name", "")
+                    )
+                    c["remediation_raw"] = fix_text
+
+            # Step 5: Create proposals
             proposals = []
             for c in classifications:
                 proposal = ado_integration.create_proposal(
@@ -608,6 +645,7 @@ NON-COMPLIANT RESOURCES:
                     description=c.get("description", ""),
                     acceptance_criteria=c.get("acceptance_criteria", ""),
                     priority=c.get("priority", 2),
+                    pr_file_changes=c.get("file_changes", []),
                 )
                 proposals.append(proposal.to_dict())
 
@@ -616,6 +654,7 @@ NON-COMPLIANT RESOURCES:
                 "proposals": proposals,
                 "count": len(proposals),
                 "non_compliant_scanned": len(non_compliant),
+                "policy_bugs_with_fix_code": sum(1 for c in classifications if c.get("class") == "policy_bug"),
                 "message": f"Inspector classified {len(classifications)} violations. {len(proposals)} proposals pending human review.",
             })
 
