@@ -9,14 +9,18 @@ class AgentConfig:
     deployment: str
     system_prompt: str
     temperature: float = 1.0  # reasoning models use 1.0
+    endpoint: str = ""  # override endpoint (empty = use default)
 
 
 @dataclass
 class Settings:
-    # Azure OpenAI
+    # Azure OpenAI — primary (westus3)
     openai_endpoint: str = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
     openai_deployment: str = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "o4MiniAgent")
     azure_client_id: str = os.environ.get("AZURE_CLIENT_ID", "")
+
+    # Azure OpenAI — secondary (eastus2, newer models)
+    openai_endpoint_eastus2: str = os.environ.get("AZURE_OPENAI_ENDPOINT_EASTUS2", "")
 
     # Key Vault
     key_vault_uri: str = os.environ.get("KEY_VAULT_URI", "")
@@ -31,32 +35,38 @@ class Settings:
     agents: dict = None
 
     def __post_init__(self):
+        eu2 = self.openai_endpoint_eastus2  # shorthand for eastus2 endpoint
+
         self.agents = {
             "orchestrator": AgentConfig(
                 name="Pipeline",
                 role="The central nervous system. Routes requests through the specialist crew, connects their insights, and delivers a unified recommendation — just like OGE's pipeline network connects everything.",
-                deployment="WorkForce4.1mini",
+                deployment="gpt-5.4",
                 system_prompt=ORCHESTRATOR_PROMPT,
                 temperature=0.7,
+                endpoint=eu2,
             ),
             "cost_sentinel": AgentConfig(
                 name="Barrel Counter",
                 role="Every barrel counts. Every dollar counts. Ultra-conservative cost hawk who finds waste, tracks burn rate, and squeezes savings out of every resource. Shows the math, always.",
-                deployment="o4MiniAgent",
+                deployment="o3",
                 system_prompt=COST_SENTINEL_PROMPT,
+                endpoint=eu2,
             ),
             "standards_architect": AgentConfig(
                 name="The Roughneck",
                 role="The grizzled veteran who built this place. Knows WHY every pipe is that diameter, why every valve is rated for that pressure. Defends engineering decisions with hard-won field experience.",
-                deployment="gpt-4.1",
+                deployment="gpt-5.4-pro",
                 system_prompt=STANDARDS_ARCHITECT_PROMPT,
                 temperature=0.5,
+                endpoint=eu2,
             ),
             "diagnostics_sre": AgentConfig(
                 name="Turnaround",
                 role="Named after the most critical event in refinery ops. Methodical, evidence-based diagnostic specialist. Gives you root cause analysis without needing elevated access — like running a turnaround on your cloud infrastructure.",
-                deployment="o4MiniAgent",
+                deployment="o3",
                 system_prompt=DIAGNOSTICS_SRE_PROMPT,
+                endpoint=eu2,
             ),
             "scout": AgentConfig(
                 name="Flare Stack",
@@ -68,8 +78,9 @@ class Settings:
             "compliance_inspector": AgentConfig(
                 name="The Inspector",
                 role="Like a pipeline inspector who enforces regulatory compliance — checks every weld, every pressure rating, every safety valve. Finds Azure Policy non-compliance, determines if the policy is wrong or the resource is wrong, and recommends the fix.",
-                deployment="o4MiniAgent",
+                deployment="o3",
                 system_prompt=COMPLIANCE_INSPECTOR_PROMPT,
+                endpoint=eu2,
             ),
         }
 

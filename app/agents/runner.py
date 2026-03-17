@@ -16,8 +16,13 @@ import os
 from app.config import settings, AgentConfig
 
 
-def _get_client(deployment: str) -> tuple[AzureOpenAI, str]:
-    """Get an AzureOpenAI client configured for the given deployment."""
+def _get_client(deployment: str, endpoint: str = "") -> tuple[AzureOpenAI, str]:
+    """Get an AzureOpenAI client configured for the given deployment.
+
+    If endpoint is provided, uses that instead of the default.
+    This enables per-agent endpoint routing when models live in
+    different regions/accounts.
+    """
     client_id = os.environ.get("AZURE_CLIENT_ID")
     if client_id:
         credential = ManagedIdentityCredential(client_id=client_id)
@@ -28,8 +33,10 @@ def _get_client(deployment: str) -> tuple[AzureOpenAI, str]:
         credential, "https://cognitiveservices.azure.com/.default"
     )
 
+    azure_endpoint = endpoint or settings.openai_endpoint
+
     client = AzureOpenAI(
-        azure_endpoint=settings.openai_endpoint,
+        azure_endpoint=azure_endpoint,
         azure_ad_token_provider=token_provider,
         api_version="2025-01-01-preview",
     )
@@ -39,7 +46,7 @@ def _get_client(deployment: str) -> tuple[AzureOpenAI, str]:
 def call_agent(agent_config: AgentConfig, user_message: str,
                context_data: str = "") -> dict:
     """Call a single specialist agent and return its response."""
-    client, deployment = _get_client(agent_config.deployment)
+    client, deployment = _get_client(agent_config.deployment, agent_config.endpoint)
 
     messages = [
         {"role": "system", "content": agent_config.system_prompt},
@@ -65,9 +72,9 @@ def call_agent(agent_config: AgentConfig, user_message: str,
 
     kwargs = {"model": deployment, "messages": messages}
 
-    # Some models only support default temperature (1.0)
-    models_no_temp = ("o4MiniAgent", "LightWork5Nano", "MerlinGPT5Mini")
-    if agent_config.deployment not in models_no_temp:
+    # Reasoning models (o-series) only support default temperature (1.0)
+    reasoning_models = ("o4MiniAgent", "o3", "o3-pro")
+    if agent_config.deployment not in reasoning_models:
         kwargs["temperature"] = agent_config.temperature
 
     response = client.chat.completions.create(**kwargs)
