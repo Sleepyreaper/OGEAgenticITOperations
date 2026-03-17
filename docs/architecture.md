@@ -36,9 +36,9 @@ A multi-agent AI operations platform running on Azure, purpose-built for OGE Clo
 │         ▼          ▼          ▼          ▼                    │
 │  ┌──────────┐ ┌────────┐ ┌────────┐ ┌────────────────────┐  │
 │  │ Azure    │ │Resource│ │Service │ │ Azure OpenAI       │  │
-│  │ Resource │ │Health  │ │Health  │ │ (5 deployments)    │  │
-│  │ Graph    │ │API     │ │API     │ │ o4-mini, gpt-4.1,  │  │
-│  │ (free)   │ │(free)  │ │(free)  │ │ 4.1-mini, 5-nano   │  │
+│  │ Resource │ │Health  │ │Health  │ │ (6 deployments,    │  │
+│  │ Graph    │ │API     │ │API     │ │  2 regions)        │  │
+│  │ (free)   │ │(free)  │ │(free)  │ │ gpt-5.4, o3, nano  │  │
 │  └──────────┘ └────────┘ └────────┘ └────────────────────┘  │
 │         │          │          │          │                    │
 │         ▼          ▼          ▼          ▼                    │
@@ -65,13 +65,16 @@ A multi-agent AI operations platform running on Azure, purpose-built for OGE Clo
 
 ## Agent Architecture
 
-| Agent | Model | Token Cost/Call | Why This Model |
-|-------|-------|----------------|----------------|
-| Pipeline (coord) | gpt-4.1-mini | ~$0.001 | Fast routing, low latency |
-| Barrel Counter (cost) | o4-mini | ~$0.005 | Deep reasoning over numbers |
-| The Roughneck (standards) | gpt-4.1 | ~$0.008 | Broad knowledge, explains rationale |
-| Turnaround (diagnostics) | o4-mini | ~$0.005 | Complex multi-step log analysis |
-| Flare Stack (monitor) | gpt-5-nano | ~$0.0005 | Lightweight, fast scanning |
+| Agent | Model | Endpoint | Token Cost/Call | Why This Model |
+|-------|-------|----------|----------------|----------------|
+| Pipeline (coord) | gpt-5.4 | eastus2 | ~$0.008 | Broad knowledge, strong synthesis |
+| Barrel Counter (cost) | o3 | eastus2 | ~$0.015 | Deep reasoning over cost data |
+| The Roughneck (standards) | gpt-5.4 | eastus2 | ~$0.008 | Explains rationale, defends decisions |
+| Turnaround (diagnostics) | o3 | eastus2 | ~$0.015 | Complex multi-step root cause analysis |
+| Flare Stack (monitor) | gpt-5-nano | westus3 | ~$0.0005 | Lightweight, fast scanning |
+| The Inspector (compliance) | o3 | eastus2 | ~$0.015 | Deep reasoning for policy classification |
+
+**Multi-endpoint routing**: Agents route to different Azure OpenAI accounts based on model availability. gpt-5.4 and o3 are on `springfield-ai-eastus2` (eastus2). gpt-5-nano stays on `nextgenagentfoundry` (westus3). The Managed Identity has Cognitive Services OpenAI User on both accounts.
 
 ## Data Flow: Full Debate (3 rounds)
 
@@ -82,7 +85,7 @@ A multi-agent AI operations platform running on Azure, purpose-built for OGE Clo
 5. **Round 3**: Pipeline synthesizes — "Where they agreed, where they clashed, recommendation"
 6. User can click "Generate Terraform/CLI Fix" for remediation code
 
-Total per query: ~$0.03-0.08 in tokens. Scanning is free.
+Total per query: ~$0.06-0.12 in tokens. Scanning is free. Compliance scans ~$0.03-0.05.
 
 ## Deep Intelligence Queries
 
@@ -105,6 +108,6 @@ Beyond basic Advisor recommendations, the system runs cross-resource correlation
 | Health/Advisor APIs | $0 | Free with Reader |
 | Auto-refresh (1,440/day) | $0 | All free APIs |
 | Web App hosting | $0 | Shared existing plan |
-| Morning Briefing | ~$0.08 | 5 agent calls |
-| Ad-hoc crew queries | ~$0.03-0.08 each | On-demand only |
-| **Total** | **~$0.10-0.50/day** | |
+| Morning Briefing | ~$0.12 | 4 agent calls |
+| Ad-hoc crew queries | ~$0.06-0.12 each | On-demand only |
+| **Total** | **~$0.15-0.75/day** | |

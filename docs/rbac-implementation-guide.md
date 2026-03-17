@@ -23,7 +23,7 @@ The Ops Council uses a single **User-Assigned Managed Identity** to access Azure
 | Role | Role Definition ID | Scope | Purpose |
 |------|-------------------|-------|---------|
 | **Key Vault Secrets User** | `4633458b-17de-408a-b874-0445c86b69e6` | Ops Council Key Vault | Read secrets only |
-| **Cognitive Services OpenAI User** | `5e0bd9bd-7b93-4f28-af87-19fc36ad61bd` | Azure OpenAI Account | Call models only |
+| **Cognitive Services OpenAI User** | `5e0bd9bd-7b93-4f28-af87-19fc36ad61bd` | Azure OpenAI Accounts (westus3 + eastus2) | Call models across both regional endpoints |
 | **Network Contributor** | `4d97b98b-1d4f-4787-a291-c67834d212e7` | Demo NSG only | Chaos demo NSG rule create/delete (remove in production) |
 
 ---
@@ -36,6 +36,7 @@ The Ops Council uses a single **User-Assigned Managed Identity** to access Azure
 | 🔧 **The Roughneck** | Resource Graph | Tags, SKU config, VNet topology, NSG rules, architecture patterns | Reader |
 | 🔄 **Turnaround** | Resource Graph, Log Analytics | Activity Logs, deployment errors, resource health | Reader + Log Analytics Reader |
 | 🔥 **Flare Stack** | Resource Graph, Resource Health, Service Health | Health status, security drift, anomalies, platform incidents | Reader + Monitoring Reader |
+| 📋 **The Inspector** | Resource Graph, Policy Insights API | Policy compliance state, non-compliant resources, policy definitions | Reader |
 | ⚡ **Pipeline** | Azure OpenAI | Synthesizes other agents' outputs | Cognitive Services OpenAI User |
 
 ---
@@ -88,12 +89,14 @@ az role assignment create \
   --role "Key Vault Secrets User" \
   --scope "<KV_RESOURCE_ID>"
 
-# 4. OpenAI User (OpenAI account only)
-az role assignment create \
-  --assignee-object-id $MI_PRINCIPAL_ID \
-  --assignee-principal-type ServicePrincipal \
-  --role "Cognitive Services OpenAI User" \
-  --scope "<OPENAI_RESOURCE_ID>"
+# 4. OpenAI User (BOTH regional accounts)
+for openai_id in "<OPENAI_WESTUS3_ID>" "<OPENAI_EASTUS2_ID>"; do
+  az role assignment create \
+    --assignee-object-id $MI_PRINCIPAL_ID \
+    --assignee-principal-type ServicePrincipal \
+    --role "Cognitive Services OpenAI User" \
+    --scope "$openai_id"
+done
 ```
 
 ---
@@ -113,7 +116,7 @@ az role assignment create \
 
 | OGE Standard | How Ops Council Aligns |
 |-------------|----------------------|
-| Least-privilege access | 5 read-only roles. Zero write/admin. |
+| Least-privilege access | 5 read-only roles on 2 OpenAI accounts. Zero write/admin. |
 | Teams have read-only in Test/Prod | Unchanged. Ops Council provides insight without granting more access. |
 | Terraform is the standard IaC | Infrastructure defined in Bicep. Remediation output generates Terraform. |
 | Resource groups tagged with support-owner | Flare Stack uses tags for routing. The Roughneck validates compliance. |

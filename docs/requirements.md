@@ -32,9 +32,10 @@
 - Generate Remediation — Terraform/CLI code following OGE standards
 
 ### Ops Council (Chat)
-- 5 AI agents with OGE-themed personalities that debate and argue
+- 6 AI agents with OGE-themed personalities that debate and argue
 - Streaming responses via SSE — watch the debate live
 - Transparent disagreement between Cost Sentinel and Standards Architect
+- Compliance classification by The Inspector (policy bug vs workaround abuse)
 - Token cost ticker for full transparency
 
 ## Customer-Requested Use Cases
@@ -51,11 +52,16 @@
 - **Status**: ✅ Built — Barrel Counter vs The Roughneck debate system
 - **Demo**: VM sizing scenario, waste analysis scenario
 
-### 4. RBAC Role Classification (Christopher's personal interest)
+### 5. Continuous Compliance (Rick/Shane's ask)
+- **Status**: ✅ Phase 1 built — The Inspector agent classifies policy violations
+- **Demo**: Compliance inspection scenario (policy bugs, expired exemptions, workaround abuse)
+- **Phase 2**: ADO integration (auto-create PRs for policy fixes, PBIs for workaround abuse)
+
+### 5. RBAC Role Classification (Christopher's personal interest)
 - **Status**: 🔲 Planned for Phase 2
 - **Notes**: Christopher already exploring with SRE Agent; strong candidate for follow-up
 
-### 5. Wiz Findings Validation (Christopher suggested)
+### 6. Wiz Findings Validation (Christopher suggested)
 - **Status**: 🔲 Phase 2 roadmap
 - **Notes**: Feed Wiz output to crew for validation/enrichment
 
@@ -71,7 +77,7 @@
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Azure OpenAI models | ✅ Done | Reusing existing nextgenagentfoundry deployments |
+| Azure OpenAI models | ✅ Done | Per-agent endpoint routing: eastus2 (gpt-5.4, o3) + westus3 (gpt-5-nano) |
 | App Service Plan | ✅ Done | Sharing existing P0v3 in West US 2 |
 | Managed Identity + RBAC | ✅ Done | Reader + Log Analytics Reader + Monitoring Reader |
 | Bicep IaC | ✅ Done | Parameterized for customer deployment |

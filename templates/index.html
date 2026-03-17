@@ -704,7 +704,7 @@
          │
          ▼
     ┌─────────────┐
-    │ ⚡ Pipeline  │ ← gpt-4.1-mini (fast routing + synthesis)
+    │ ⚡ Pipeline  │ ← gpt-5.4 (routing + synthesis)
     └──────┬──────┘
            │ routes to the crew
      ┌─────┼──────────┬──────────┬──────────┐
@@ -713,7 +713,7 @@
   │🛢️    │ │🔧      │ │🔄     │ │🔥      │ │📋        │
   │Barrel│ │Rough-  │ │Turn-  │ │Flare   │ │The       │
   │Countr│ │neck    │ │around │ │Stack   │ │Inspector │
-  │o4mini│ │gpt-4.1 │ │o4mini │ │gpt5nan │ │o4-mini   │
+  │o3   │ │gpt-5.4 │ │o3    │ │gpt5nan │ │o3        │
   └──┬───┘ └───┬────┘ └───┬───┘ └───┬────┘ └────┬─────┘
      │         │           │         │           │
      └─────────┴───────────┴─────────┘           │
@@ -1612,7 +1612,7 @@
           <span class="text-xs font-bold text-oge-gray-500">Total for this query</span>
           <span class="text-xs font-bold text-green-600">${totalTokens.toLocaleString()} tokens · ~$${totalCost}</span>
         </div>
-        <div class="text-xs text-oge-gray-400 mt-1">5 agent calls · pennies per interaction</div>`;
+        <div class="text-xs text-oge-gray-400 mt-1">6 agent calls · pennies per interaction</div>`;
       panel.appendChild(summaryDiv);
     }
 

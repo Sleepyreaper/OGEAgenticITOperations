@@ -155,7 +155,7 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
 
         def generate():
             try:
-                # Use The Roughneck (gpt-4.1) for remediation — he knows the standards
+                # Use The Roughneck (gpt-5.4) for remediation — he knows the standards
                 roughneck_cfg = settings.agents["standards_architect"]
                 result = call_agent(roughneck_cfg, remediation_prompt)
                 yield f"data: {json.dumps({'phase': 'remediation', 'result': result}, default=str)}\n\n"

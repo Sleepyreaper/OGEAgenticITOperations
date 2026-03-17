@@ -2,7 +2,7 @@
 
 **Multi-agent operational intelligence for Azure Cloud Operations**
 
-Five AI specialists — each named after OGE operations concepts — debate, disagree, and synthesize to deliver balanced, transparent recommendations. Built for teams that need operational answers without elevated access.
+Six AI specialists — each named after OGE operations concepts — debate, disagree, and synthesize to deliver balanced, transparent recommendations. Built for teams that need operational answers without elevated access.
 
 **Two views, one platform:**
 - **Reliability** — Executive dashboard with reliability scores, pillar assessments, and service health (Rick's view)
@@ -12,11 +12,12 @@ Five AI specialists — each named after OGE operations concepts — debate, dis
 
 | | Agent | Role | Model | What They Do |
 |--|-------|------|-------|-------------|
-| ⚡ | **Pipeline** | Coordinator | gpt-4.1-mini | Routes requests, synthesizes the crew's takes, delivers exec-ready summaries |
-| 🛢️ | **Barrel Counter** | Cost | o4-mini | Finds waste, recommends rightsizing, shows the math — every dollar is a barrel |
-| 🔧 | **The Roughneck** | Standards | gpt-4.1 | Knows *why* things are built the way they are. Writes Terraform remediation. |
-| 🔄 | **Turnaround** | Diagnostics | o4-mini | Root cause analysis without users needing elevated access |
+| ⚡ | **Pipeline** | Coordinator | gpt-5.4 | Routes requests, synthesizes the crew's takes, delivers exec-ready summaries |
+| 🛢️ | **Barrel Counter** | Cost | o3 | Finds waste, recommends rightsizing, shows the math — every dollar is a barrel |
+| 🔧 | **The Roughneck** | Standards | gpt-5.4 | Knows *why* things are built the way they are. Writes Terraform remediation. |
+| 🔄 | **Turnaround** | Diagnostics | o3 | Root cause analysis without users needing elevated access |
 | 🔥 | **Flare Stack** | Monitoring | gpt-5-nano | Proactive scanning — surfaces problems before they become incidents |
+| 📋 | **The Inspector** | Compliance | o3 | Classifies policy violations as definition bugs, misconfigurations, exemptions, or workaround abuse |
 
 ## How It Works
 
@@ -26,11 +27,11 @@ User Question  /  🔥 Flare Stack Alert  /  ☀️ Morning Briefing
          ▼
     ⚡ Pipeline (routes to crew)
          │
-   ┌─────┼──────────┬──────────┐
-   ▼     ▼          ▼          ▼
- 🛢️      🔧         🔄         🔥
-Barrel  Rough-    Turn-     Flare
-Counter neck      around    Stack
+   ┌─────┼──────────┬──────────┬──────────┐
+   ▼     ▼          ▼          ▼          ▼
+ 🛢️      🔧         🔄         🔥         📋
+Barrel  Rough-    Turn-     Flare     The
+Counter neck      around    Stack     Inspector
    │     │          │          │
    └─────┴──────────┘          │
         ▼  (Round 2: Debate)   │
@@ -86,12 +87,12 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 | Frontend | Tailwind CSS (CDN), vanilla JS, SSE | Dashboard + chat UI |
 | Backend | Python 3.13 / Flask / Gunicorn | API, scan, agent orchestration |
 | Hosting | Azure Web App on P0v3 plan | Shared existing plan |
-| AI | Azure OpenAI (5 model deployments) | Agent reasoning and synthesis |
+| AI | Azure OpenAI (6 model deployments across 2 regions) | Agent reasoning and synthesis |
 | Data | Resource Graph, Resource Health, Service Health, Advisor, Monitor | Environment intelligence |
 | Deep Analysis | Cross-resource ARG queries | Architecture smells, blast radius, correlation |
 | Security | VNet, Key Vault (PE), Managed Identity, RBAC | Zero passwords, least-privilege |
 
-**Daily cost: ~$0.10-0.50** (scanning is free, AI tokens are pennies per interaction)
+**Daily cost: ~$0.15-0.75** (scanning is free; reasoning models cost more per query but deliver better output)
 
 ## Quick Start
 
@@ -111,7 +112,7 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 | Log Analytics Reader | Subscription | Activity logs, deployment failures |
 | Monitoring Reader | Subscription | Metrics, alerts, diagnostics |
 | Key Vault Secrets User | Key Vault (resource) | Read secrets only |
-| Cognitive Services OpenAI User | OpenAI Account (resource) | Call models only |
+| Cognitive Services OpenAI User | OpenAI Accounts (westus3 + eastus2) | Call models across both regions |
 | Network Contributor | NSG (resource, demo only) | Chaos demo NSG rule create/delete |
 
 ## API Endpoints
@@ -121,6 +122,7 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 | `/api/health` | GET | Health check with agent status |
 | `/api/scan/overview` | GET | Full scan (Resource Graph + Health + Advisor + Deep) |
 | `/api/scan/security` | GET | Quick security drift scan |
+| `/api/scan/compliance` | GET | Azure Policy compliance scan + violation classification |
 | `/api/ask/stream` | POST | SSE streaming crew debate |
 | `/api/demo/<id>/stream` | POST | SSE streaming demo scenario |
 | `/api/remediate` | POST | Generate Terraform/CLI fix |
@@ -133,7 +135,7 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 ```
 ├── app/
 │   ├── agents/
-│   │   ├── demos.py          # 5 demo scenarios with realistic data
+│   │   ├── demos.py          # 6 demo scenarios with realistic data
 │   │   └── runner.py         # Debate system, SSE streaming, remediation
 │   ├── azure_data.py         # Resource Graph, Health APIs, Advisor, deep analysis
 │   ├── config.py             # Agent configs, OGE-styled system prompts
