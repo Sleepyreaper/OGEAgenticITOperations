@@ -7,9 +7,17 @@
 
 ---
 
-## Opening (1 minute)
+## Opening: What You Asked For (1 minute)
 
-**Say**: "What you're about to see was purpose-built for OGE Cloud Operations. Six AI specialists — each named after OGE operations concepts — that debate each other and deliver balanced recommendations. Two views: one for leadership, one for engineering. And we've added something new based on your compliance ask."
+**Say**: "Before we show anything, let's start with what you asked us to solve."
+
+**Put up the three asks** (say them, don't read a slide):
+
+1. **"Diagnosing issues without giving users elevated access to Test/Prod would be a massive win."**
+2. **"AI that enhances productivity while reinforcing standards and governance policy."**
+3. **"Can an AI agent continuously watch for Azure Policy non-compliance, reason about why resources are non-compliant, and route fixes — either a PR to fix the policy or a PBI to investigate the workaround?"**
+
+**Say**: "Everything you're about to see was built to answer those three questions. Six AI specialists, named after OGE operations. They debate each other. They disagree. And they produce actionable output — not just dashboards."
 
 ---
 
@@ -110,9 +118,20 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 
 ---
 
-## Closing (30 seconds)
+## Closing: What Was Accomplished (1 minute)
 
-**Say**: "ServiceNow automates your help desk. Kiro writes your code. This gives your Cloud Ops team a crew of AI specialists that know your environment, respect your standards, debate each other, and produce remediation code — all without anyone needing more access than they have today. And The Inspector proves we can extend this to the continuous compliance scenario you asked about — policy bug vs workaround abuse classification, with PR and PBI routing, all in the same platform."
+**Say**: "Let's go back to those three asks."
+
+**Ask #1: Diagnosing without elevated access.**
+"Turnaround just diagnosed a deployment failure from Activity Logs and Resource Health — the team never needed more than Reader. The Managed Identity reads on their behalf. Zero access changes."
+
+**Ask #2: AI that reinforces standards and governance.**
+"Barrel Counter wanted to downsize that VM. The Roughneck said no — it peaks at 94% on month-end batch. The system didn't just give an answer, it gave you both sides and let you decide. That IS governance reinforcement."
+
+**Ask #3: Continuous compliance with policy reasoning.**
+"The Inspector classified five violations in under a minute. Two were policy bugs — the built-in definitions don't account for your architecture patterns. One was an expired exemption that's now workaround abuse. He didn't just flag red — he told you WHY and WHAT to do: PR for the policy fix, PBI for the workaround."
+
+**Close**: "ServiceNow automates your help desk. Kiro writes your code. This gives your Cloud Ops team a crew of AI specialists that know your environment, respect your standards, debate each other, and produce remediation code — all without anyone needing more access than they have today. And we built the compliance scenario you asked about in your email — it's live, right now, at that URL."
 
 ---
 
@@ -120,7 +139,7 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 
 | Question | Answer |
 |----------|--------|
-| "What does this cost?" | ~$0.10-0.50/day. Scanning is free (Resource Graph). AI tokens are pennies per interaction. The token cost is visible on every query. |
+| "What does this cost?" | ~$0.15-0.75/day. Scanning is free (Resource Graph). Reasoning models cost a few cents per query. The token cost is visible on every interaction. |
 | "What access does it need?" | 5 read-only roles on 1 Managed Identity. Zero write permissions. Zero changes to anyone's existing access. See the RBAC guide. |
 | "Can this scale to all our subscriptions?" | Yes — grant the 3 Reader roles per subscription. Resource Graph queries across all subs natively. |
 | "Can we feed it our Terraform standards?" | Yes — The Roughneck's system prompt is where org knowledge lives. Ground it with your naming conventions, module library, tagging standards. |
