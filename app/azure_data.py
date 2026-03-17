@@ -354,16 +354,14 @@ def create_chaos_nsg_rule(resource_group: str = "OGE_Envisioning",
     rule = client.security_rules.begin_create_or_update(
         resource_group, nsg_name, "chaos-allow-ssh-from-anywhere",
         {
-            "properties": {
-                "protocol": "Tcp",
-                "source_address_prefix": "*",
-                "source_port_range": "*",
-                "destination_address_prefix": "*",
-                "destination_port_range": "22",
-                "access": "Allow",
-                "direction": "Inbound",
-                "priority": 100,
-            }
+            "protocol": "Tcp",
+            "source_address_prefix": "*",
+            "source_port_range": "*",
+            "destination_address_prefix": "*",
+            "destination_port_range": "22",
+            "access": "Allow",
+            "direction": "Inbound",
+            "priority": 100,
         }
     ).result()
     return {"rule_name": rule.name, "status": "created", "port": "22", "source": "*"}
