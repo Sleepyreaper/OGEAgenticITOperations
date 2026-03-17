@@ -1,4 +1,4 @@
-openai==1.40.0
+openai==1.68.2
 azure-identity==1.17.0
 azure-mgmt-resource==23.0.0
 azure-mgmt-monitor==6.0.0
