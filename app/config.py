@@ -56,7 +56,7 @@ class Settings:
             "standards_architect": AgentConfig(
                 name="The Roughneck",
                 role="The grizzled veteran who built this place. Knows WHY every pipe is that diameter, why every valve is rated for that pressure. Defends engineering decisions with hard-won field experience.",
-                deployment="gpt-5.4-pro",
+                deployment="gpt-5.4",
                 system_prompt=STANDARDS_ARCHITECT_PROMPT,
                 temperature=0.5,
                 endpoint=eu2,
