@@ -1,0 +1,204 @@
+# ═══════════════════════════════════════════════════════════════
+# OGE Ops Council — Azure DevOps Pipeline
+# ═══════════════════════════════════════════════════════════════
+#
+# PURPOSE: Build + deploy Ops Council to Azure App Service.
+# This pipeline is designed for OGE's ADO environment.
+#
+# PREREQUISITES:
+#   1. ADO Service Connection with Contributor on the target RG
+#   2. Infrastructure already deployed via Bicep (infra/main.bicep)
+#   3. Variable group "OpsCouncil-<env>" with required secrets
+#
+# HUMAN-IN-THE-LOOP:
+#   - Production deploys require manual approval via ADO Environment
+#   - The pipeline BUILDS and PACKAGES automatically
+#   - Deployment to prod WAITS for human approval
+#
+# ═══════════════════════════════════════════════════════════════
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - app/**
+      - templates/**
+      - static/**
+      - requirements.txt
+      - startup.sh
+      - wsgi.py
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - app/**
+
+# ─── Variables ──────────────────────────────────────────────
+variables:
+  - name: pythonVersion
+    value: '3.13'
+  - name: webAppName
+    value: 'ogeops-app'  # Override per environment via variable groups
+  - name: resourceGroup
+    value: 'OGE_Envisioning'
+
+# ─── Stages ────────────────────────────────────────────────
+
+stages:
+
+  # ════════════════════════════════════════════════════════
+  # Stage 1: Build & Test
+  # ════════════════════════════════════════════════════════
+  - stage: Build
+    displayName: 'Build & Test'
+    jobs:
+      - job: BuildAndTest
+        displayName: 'Build, Lint, Test'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+
+          - task: UsePythonVersion@0
+            displayName: 'Use Python $(pythonVersion)'
+            inputs:
+              versionSpec: '$(pythonVersion)'
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+            displayName: 'Install dependencies'
+
+          - script: |
+              python -m py_compile app/__init__.py
+              python -m py_compile app/config.py
+              python -m py_compile app/main.py
+              python -m py_compile app/azure_data.py
+              python -m py_compile app/ado_integration.py
+              python -m py_compile app/agents/__init__.py
+              python -m py_compile app/agents/runner.py
+              python -m py_compile app/agents/demos.py
+              echo "All modules compile clean"
+            displayName: 'Syntax check — all modules'
+
+          - script: |
+              python tests/test_ado_integration.py
+            displayName: 'Run ADO integration tests'
+
+          # Package for deployment — exclude dev/docs/infra files
+          - script: |
+              mkdir -p $(Build.ArtifactStagingDirectory)/deploy
+              rsync -av --progress . $(Build.ArtifactStagingDirectory)/deploy/ \
+                --exclude '.git' \
+                --exclude 'node_modules' \
+                --exclude 'dist' \
+                --exclude '__pycache__' \
+                --exclude 'docs/' \
+                --exclude 'infra/' \
+                --exclude 'src/' \
+                --exclude 'tests/' \
+                --exclude '*.md' \
+                --exclude '*.bicep' \
+                --exclude '*.bicepparam' \
+                --exclude 'package-lock.json' \
+                --exclude 'package.json' \
+                --exclude 'input.css' \
+                --exclude '.azure/'
+              cd $(Build.ArtifactStagingDirectory)/deploy && zip -r ../deploy.zip .
+            displayName: 'Package deployment artifact'
+
+          - publish: $(Build.ArtifactStagingDirectory)/deploy.zip
+            artifact: ops-council-deploy
+            displayName: 'Publish artifact'
+
+  # ════════════════════════════════════════════════════════
+  # Stage 2: Deploy to Staging (auto)
+  # ════════════════════════════════════════════════════════
+  - stage: DeployStaging
+    displayName: 'Deploy → Staging'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    variables:
+      - group: OpsCouncil-Staging  # Variable group with staging-specific values
+    jobs:
+      - deployment: DeployToStaging
+        displayName: 'Deploy to Staging App Service'
+        environment: 'ops-council-staging'
+        pool:
+          vmImage: 'ubuntu-latest'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: ops-council-deploy
+
+                - task: AzureWebApp@1
+                  displayName: 'Deploy to $(webAppName)-staging'
+                  inputs:
+                    azureSubscription: '$(serviceConnection)'
+                    appName: '$(webAppName)-staging'
+                    resourceGroupName: '$(resourceGroup)'
+                    package: '$(Pipeline.Workspace)/ops-council-deploy/deploy.zip'
+                    deploymentMethod: 'zipDeploy'
+
+                - script: |
+                    echo "Waiting for app to start..."
+                    sleep 30
+                    STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://$(webAppName)-staging.azurewebsites.net/api/health)
+                    if [ "$STATUS" -ne 200 ]; then
+                      echo "##vso[task.logissue type=error]Health check failed with status $STATUS"
+                      exit 1
+                    fi
+                    echo "Health check passed (HTTP $STATUS)"
+                  displayName: 'Post-deploy health check'
+
+  # ════════════════════════════════════════════════════════
+  # Stage 3: Deploy to Production (HUMAN APPROVAL REQUIRED)
+  # ════════════════════════════════════════════════════════
+  - stage: DeployProduction
+    displayName: 'Deploy → Production'
+    dependsOn: DeployStaging
+    condition: succeeded()
+    variables:
+      - group: OpsCouncil-Production  # Variable group with prod-specific values
+    jobs:
+      - deployment: DeployToProduction
+        displayName: 'Deploy to Production App Service'
+        # ─── THIS IS THE HUMAN GATE ───
+        # The "ops-council-production" environment in ADO must be configured
+        # with an Approval Check. The pipeline STOPS HERE until a human
+        # (Christopher, Shane, or Brad) clicks "Approve" in ADO.
+        environment: 'ops-council-production'
+        pool:
+          vmImage: 'ubuntu-latest'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: ops-council-deploy
+
+                - task: AzureWebApp@1
+                  displayName: 'Deploy to $(webAppName)'
+                  inputs:
+                    azureSubscription: '$(serviceConnection)'
+                    appName: '$(webAppName)'
+                    resourceGroupName: '$(resourceGroup)'
+                    package: '$(Pipeline.Workspace)/ops-council-deploy/deploy.zip'
+                    deploymentMethod: 'zipDeploy'
+
+                - script: |
+                    echo "Waiting for production app to start..."
+                    sleep 30
+                    STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://$(webAppName).azurewebsites.net/api/health)
+                    if [ "$STATUS" -ne 200 ]; then
+                      echo "##vso[task.logissue type=error]Production health check failed with status $STATUS"
+                      exit 1
+                    fi
+                    echo "Production health check passed (HTTP $STATUS)"
+                  displayName: 'Post-deploy health check'

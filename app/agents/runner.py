@@ -72,9 +72,9 @@ def call_agent(agent_config: AgentConfig, user_message: str,
 
     kwargs = {"model": deployment, "messages": messages}
 
-    # Reasoning models (o-series) only support default temperature (1.0)
-    reasoning_models = ("o4MiniAgent", "o3", "o3-pro")
-    if agent_config.deployment not in reasoning_models:
+    # These models only support default temperature (1.0)
+    fixed_temp_models = ("o4MiniAgent", "o3", "o3-pro", "LightWork5Nano")
+    if agent_config.deployment not in fixed_temp_models:
         kwargs["temperature"] = agent_config.temperature
 
     response = client.chat.completions.create(**kwargs)

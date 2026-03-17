@@ -111,3 +111,78 @@ Beyond basic Advisor recommendations, the system runs cross-resource correlation
 | Morning Briefing | ~$0.12 | 4 agent calls |
 | Ad-hoc crew queries | ~$0.06-0.12 each | On-demand only |
 | **Total** | **~$0.15-0.75/day** | |
+
+---
+
+## Phase 2: Azure DevOps Integration
+
+Phase 2 adds a closed-loop workflow: The Inspector classifies policy violations → proposes ADO actions → human reviews and approves → ADO work items or PRs are created automatically.
+
+### Phase 2 Data Flow
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    Phase 2 — ADO Workflow                     │
+│                                                              │
+│  1. Policy Scan         2. Inspector           3. Proposal   │
+│  ┌─────────────┐       ┌──────────────┐       ┌───────────┐ │
+│  │ Azure Policy │──────▶│ The Inspector│──────▶│ Proposal  │ │
+│  │ Insights API │       │ classifies   │       │ (pending) │ │
+│  └─────────────┘       └──────────────┘       └─────┬─────┘ │
+│                                                     │       │
+│                         4. Human Review             │       │
+│                         ┌──────────────┐            │       │
+│                         │  Ops Council │◀───────────┘       │
+│                         │  Dashboard   │                     │
+│                         │  ✅ Approve  │                     │
+│                         │  ❌ Reject   │                     │
+│                         └──────┬───────┘                     │
+│                                │                             │
+│                   ┌────────────┴────────────┐                │
+│                   ▼                         ▼                │
+│  5a. Policy Bug                5b. Workaround/Misconfig      │
+│  ┌──────────────────┐         ┌──────────────────┐          │
+│  │ ADO: Create PR   │         │ ADO: Create PBI  │          │
+│  │ Branch + fix     │         │ or Bug work item │          │
+│  │ → Code review    │         │ → Sprint backlog │          │
+│  └──────────────────┘         └──────────────────┘          │
+└──────────────────────────────────────────────────────────────┘
+        Human approval required at EVERY step
+```
+
+### Violation → ADO Action Mapping
+
+| Inspector Classification | ADO Action | Work Item Type | Priority |
+|-------------------------|------------|---------------|----------|
+| **Policy Bug** | Create PR to fix policy definition | Pull Request | Depends on blast radius |
+| **Misconfiguration** | Create Bug for resource owner | Bug | Based on risk (1-4) |
+| **Workaround Abuse** | Create PBI to redesign control | Product Backlog Item | High (expired exemption = P1) |
+| **Intentional Exemption** | Create Task to verify documentation | Task | Low (P4) |
+
+### Phase 2 API Endpoints
+
+| Endpoint | Method | Purpose |
+|---------|--------|---------|
+| `/api/ado/inspect-and-propose` | POST | Full pipeline: scan → classify → propose |
+| `/api/ado/proposals` | GET | List proposals (filter by `?status=`) |
+| `/api/ado/proposals` | POST | Create proposals from classifications |
+| `/api/ado/proposals/{id}` | GET | Get single proposal detail |
+| `/api/ado/proposals/{id}/approve` | POST | Human approves → generates ADO payload |
+| `/api/ado/proposals/{id}/reject` | POST | Human rejects with reason |
+
+### ADO Pipeline (CI/CD)
+
+The project includes an Azure Pipelines YAML definition (`pipelines/azure-pipelines.yml`) with three stages:
+
+1. **Build & Test** — Install deps, compile check, run tests (auto on every push/PR)
+2. **Deploy Staging** — Auto-deploy to staging App Service on main merge
+3. **Deploy Production** — Requires **human approval** via ADO Environment check
+
+### Phase 2 Components
+
+| File | Purpose |
+|------|---------|
+| `app/ado_integration.py` | ADO proposal lifecycle — create, approve, reject, payload generation |
+| `pipelines/azure-pipelines.yml` | ADO pipeline — build, test, stage, prod with human gate |
+| `infra/modules/subscription-rbac.bicep` | Reusable module — grants Reader roles on any subscription |
+| `tests/test_ado_integration.py` | 44 tests covering full proposal lifecycle |

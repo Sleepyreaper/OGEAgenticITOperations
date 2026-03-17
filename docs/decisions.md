@@ -21,3 +21,9 @@
 | 17 | 2026-03-17 | Add The Inspector agent for continuous compliance | Addresses Rick/Shane's ask — classifies policy violations as definition bugs, misconfigurations, valid exemptions, or workaround abuse |
 | 18 | 2026-03-17 | Upgrade to gpt-5.4 + o3 from gpt-4.1 + o4-mini | Significantly better reasoning and synthesis quality; gpt-5.4-pro doesn't support chat completions (Responses API only) |
 | 19 | 2026-03-17 | Per-agent endpoint routing (multi-region) | Models aren't all available in one region; agents route to westus3 or eastus2 based on model availability |
+| 20 | 2026-03-17 | Phase 2: ADO integration with human-in-the-loop | Inspector classifications → proposals → human approval → ADO work items/PRs. System never auto-creates without human gate. |
+| 21 | 2026-03-17 | Proposal-based ADO workflow (not direct creation) | Inspector generates PROPOSALS that humans review. Approved proposals generate ADO REST API payloads. Rejected proposals archived with reason. Separation of AI reasoning from action. |
+| 22 | 2026-03-17 | ADO Pipeline with 3-stage deploy (build → staging → prod) | Build auto-triggers on push. Staging auto-deploys on main merge. Production requires human approval via ADO Environment check. |
+| 23 | 2026-03-17 | Subscription RBAC as reusable Bicep module | `subscription-rbac.bicep` grants Reader + Log Analytics Reader + Monitoring Reader at subscription scope. Deploy once per monitored subscription. Makes multi-env deployment repeatable. |
+| 24 | 2026-03-17 | In-memory proposal store for PoC, Cosmos DB for production | Proposals stored in-memory for demo. Production path: persist to Cosmos DB or blob storage with TTL. |
+| 25 | 2026-03-17 | PAT-based ADO auth for PoC, Workload Identity Federation for production | PAT stored in Key Vault for demo. Production: Managed Identity + ADO service connection via Workload Identity Federation — no secrets. |

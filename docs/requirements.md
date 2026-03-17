@@ -55,14 +55,19 @@
 ### 5. Continuous Compliance (Rick/Shane's ask)
 - **Status**: ✅ Phase 1 built — The Inspector agent classifies policy violations
 - **Demo**: Compliance inspection scenario (policy bugs, expired exemptions, workaround abuse)
-- **Phase 2**: ADO integration (auto-create PRs for policy fixes, PBIs for workaround abuse)
+- **Phase 2**: ✅ ADO integration built — Inspector → proposals → human approval → ADO work items/PRs
+  - `POST /api/ado/inspect-and-propose` — full pipeline: scan → classify → propose
+  - Human reviews proposals in dashboard, approves or rejects
+  - Approved proposals generate ADO REST API payloads (PBI, Bug, Task, or PR)
+  - ADO pipeline (`pipelines/azure-pipelines.yml`) with staging + production human gate
 
-### 5. RBAC Role Classification (Christopher's personal interest)
-- **Status**: 🔲 Planned for Phase 2
+### 6. RBAC Role Classification (Christopher's personal interest)
+- **Status**: 🔲 Planned for Phase 3
 - **Notes**: Christopher already exploring with SRE Agent; strong candidate for follow-up
+- **Path**: Add a new crew member specializing in RBAC analysis (architecture supports it)
 
-### 6. Wiz Findings Validation (Christopher suggested)
-- **Status**: 🔲 Phase 2 roadmap
+### 7. Wiz Findings Validation (Christopher suggested)
+- **Status**: 🔲 Phase 3 roadmap
 - **Notes**: Feed Wiz output to crew for validation/enrichment
 
 ## Success Criteria (from the call)

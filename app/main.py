@@ -7,6 +7,7 @@ from app.agents.runner import run_council, run_council_streaming, call_agent
 from app.agents.demos import DEMO_SCENARIOS
 from app.config import settings
 from app import azure_data
+from app import ado_integration
 
 
 def create_app():
@@ -483,6 +484,165 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
+
+    # ─── ADO Integration (Phase 2) ─────────────────────────
+
+    @app.route("/api/ado/proposals", methods=["GET"])
+    def list_proposals():
+        """List ADO proposals. Optional ?status=pending|approved|rejected|created"""
+        status = request.args.get("status", "").strip() or None
+        proposals = ado_integration.get_proposals(status=status)
+        return jsonify({"proposals": proposals, "count": len(proposals)})
+
+    @app.route("/api/ado/proposals", methods=["POST"])
+    def create_proposal():
+        """Create a proposal from an Inspector classification.
+
+        Body: { "classifications": [ { class, policy_name, resource_id,
+                support_owner, reasoning, title, description, ... } ] }
+        """
+        body = request.get_json(force=True)
+        classifications = body.get("classifications", [])
+        if not classifications:
+            return jsonify({"error": "classifications array is required"}), 400
+
+        proposals = ado_integration.generate_proposals_from_inspection(body)
+        return jsonify({"proposals": proposals, "count": len(proposals)})
+
+    @app.route("/api/ado/proposals/<proposal_id>", methods=["GET"])
+    def get_proposal(proposal_id):
+        """Get a single proposal by ID."""
+        proposal = ado_integration.get_proposal(proposal_id)
+        if not proposal:
+            return jsonify({"error": f"Proposal {proposal_id} not found"}), 404
+        return jsonify(proposal.to_dict())
+
+    @app.route("/api/ado/proposals/<proposal_id>/approve", methods=["POST"])
+    def approve_proposal(proposal_id):
+        """Human approves a proposal — returns the ADO payload that would be created."""
+        body = request.get_json(force=True) if request.is_json else {}
+        approved_by = body.get("approved_by", "ops-user")
+        result = ado_integration.approve_proposal(proposal_id, approved_by=approved_by)
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/ado/proposals/<proposal_id>/reject", methods=["POST"])
+    def reject_proposal(proposal_id):
+        """Human rejects a proposal with optional reason."""
+        body = request.get_json(force=True) if request.is_json else {}
+        reason = body.get("reason", "")
+        result = ado_integration.reject_proposal(proposal_id, reason=reason)
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/ado/inspect-and-propose", methods=["POST"])
+    def inspect_and_propose():
+        """Full pipeline: scan compliance → Inspector classifies → generate proposals.
+
+        This is the main Phase 2 workflow endpoint. It:
+        1. Scans Azure Policy compliance for the subscription
+        2. Sends findings to The Inspector for classification
+        3. Parses Inspector output into structured proposals
+        4. Returns proposals for human review
+
+        Body (optional): { "subs": ["sub-id-1", ...] }
+        """
+        body = request.get_json(force=True) if request.is_json else {}
+        subs = body.get("subs")
+
+        try:
+            sub_ids = subs if subs else [settings.subscription_id]
+
+            # Step 1: Get compliance data
+            non_compliant = []
+            for sid in sub_ids:
+                nc = azure_data.get_non_compliant_resources(sid)
+                non_compliant.extend(nc)
+
+            if not non_compliant:
+                return jsonify({
+                    "message": "No non-compliant resources found. The estate is clean.",
+                    "proposals": [],
+                    "count": 0,
+                })
+
+            # Step 2: Send to The Inspector for classification
+            compliance_context = json.dumps(non_compliant[:30], indent=2, default=str)
+
+            inspector_prompt = f"""Analyze these non-compliant Azure resources and classify each violation.
+
+For EACH non-compliant resource, output a JSON block with:
+- "class": one of "policy_bug", "misconfiguration", "intentional_exemption", "workaround_abuse"
+- "policy_name": the policy that flagged it
+- "resource_id": the resource ID
+- "support_owner": from tags if available, otherwise "unassigned"
+- "reasoning": 1-2 sentences explaining your classification
+- "title": a clear work item title
+- "description": detailed description for the ADO work item
+- "acceptance_criteria": what "done" looks like
+- "priority": 1-4 (1=Critical)
+
+Wrap your output in ```json ... ``` with an array of classification objects.
+
+NON-COMPLIANT RESOURCES:
+{compliance_context}"""
+
+            inspector_cfg = settings.agents["compliance_inspector"]
+            inspector_result = call_agent(inspector_cfg, inspector_prompt)
+
+            # Step 3: Parse Inspector output into proposals
+            response_text = inspector_result.get("response", "")
+            classifications = _parse_inspector_classifications(response_text)
+
+            proposals = []
+            for c in classifications:
+                proposal = ado_integration.create_proposal(
+                    violation_class=c.get("class", "misconfiguration"),
+                    policy_name=c.get("policy_name", ""),
+                    resource_id=c.get("resource_id", ""),
+                    support_owner=c.get("support_owner", "unassigned"),
+                    inspector_reasoning=c.get("reasoning", ""),
+                    title=c.get("title", "Ops Council Finding"),
+                    description=c.get("description", ""),
+                    acceptance_criteria=c.get("acceptance_criteria", ""),
+                    priority=c.get("priority", 2),
+                )
+                proposals.append(proposal.to_dict())
+
+            return jsonify({
+                "inspector_analysis": inspector_result,
+                "proposals": proposals,
+                "count": len(proposals),
+                "non_compliant_scanned": len(non_compliant),
+                "message": f"Inspector classified {len(classifications)} violations. {len(proposals)} proposals pending human review.",
+            })
+
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    def _parse_inspector_classifications(response_text: str) -> list[dict]:
+        """Extract JSON classifications from Inspector's response text."""
+        import re
+        # Look for ```json ... ``` block
+        match = re.search(r'```json\s*\n(.*?)\n\s*```', response_text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # Fallback: try to find a JSON array anywhere in the response
+        match = re.search(r'\[.*\]', response_text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+        return []
 
     # ─── Helpers ────────────────────────────────────────────
 
