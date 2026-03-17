@@ -219,6 +219,125 @@ ENVIRONMENT_OVERVIEW_DATA = json.dumps({
 OVERVIEW_QUESTION = "Give me a full environment health overview. What's the status of our Azure subscription?"
 
 
+# ─── Scenario 6: Continuous compliance ────────────────────────────
+
+COMPLIANCE_DATA = json.dumps({
+    "policy_compliance_summary": {
+        "total_policies": 47,
+        "non_compliant_policies": 8,
+        "non_compliant_resources": 14,
+        "compliant_resources": 833,
+        "total_resources": 847,
+        "compliance_pct": 98.3,
+        "scan_timestamp": "2026-03-17T06:00:00Z"
+    },
+    "non_compliant_resources": [
+        {
+            "resourceName": "stlegacyexport01",
+            "resourceType": "Microsoft.Storage/storageAccounts",
+            "resourceGroup": "Legacy-Migration-RG",
+            "policyDefinitionName": "Secure transfer to storage accounts should be enabled",
+            "policyDefinitionAction": "Audit",
+            "complianceState": "NonCompliant",
+            "tags": {"support-owner": "data-platform@contoso.com", "environment": "production", "migration-phase": "3"},
+            "detail": "HTTPS-only transfer is disabled. Account uses HTTP for legacy ETL pipeline from on-prem SFTP gateway.",
+            "created": "2024-06-15",
+            "last_policy_eval": "2026-03-17T05:42:00Z"
+        },
+        {
+            "resourceName": "kv-sandbox-dev",
+            "resourceType": "Microsoft.KeyVault/vaults",
+            "resourceGroup": "Dev-Sandbox-RG",
+            "policyDefinitionName": "Key Vault should use a virtual network service endpoint",
+            "policyDefinitionAction": "Audit",
+            "complianceState": "NonCompliant",
+            "tags": {"support-owner": "dev-team-alpha@contoso.com", "environment": "development"},
+            "detail": "Key Vault has no VNet service endpoint. Dev teams use public endpoint for local development.",
+            "created": "2025-11-02",
+            "last_policy_eval": "2026-03-17T05:42:00Z"
+        },
+        {
+            "resourceName": "sql-analytics-prod",
+            "resourceType": "Microsoft.Sql/servers",
+            "resourceGroup": "Data-Prod-RG",
+            "policyDefinitionName": "Azure SQL Database should have Azure Active Directory Only Authentication",
+            "policyDefinitionAction": "Audit",
+            "complianceState": "NonCompliant",
+            "tags": {"support-owner": "data-platform@contoso.com", "environment": "production", "application": "analytics-dwh"},
+            "detail": "SQL Auth is enabled alongside AAD. Legacy analytics ETL uses SQL auth with a service account password rotated quarterly via Key Vault.",
+            "created": "2023-09-10",
+            "last_policy_eval": "2026-03-17T05:42:00Z"
+        },
+        {
+            "resourceName": "aks-microservices-01",
+            "resourceType": "Microsoft.ContainerService/managedClusters",
+            "resourceGroup": "Microservices-Prod-RG",
+            "policyDefinitionName": "Azure Kubernetes Service Clusters should have local authentication methods disabled",
+            "policyDefinitionAction": "Audit",
+            "complianceState": "NonCompliant",
+            "tags": {"support-owner": "platform-eng@contoso.com", "environment": "production", "application": "microservices"},
+            "detail": "Local accounts still enabled. Team filed exemption request 6 months ago citing CI/CD pipeline dependency. Exemption expired last month.",
+            "created": "2024-03-20",
+            "last_policy_eval": "2026-03-17T05:42:00Z"
+        },
+        {
+            "resourceName": "func-etl-legacy",
+            "resourceType": "Microsoft.Web/sites",
+            "resourceGroup": "Legacy-Migration-RG",
+            "policyDefinitionName": "Function apps should use the latest TLS version",
+            "policyDefinitionAction": "Audit",
+            "complianceState": "NonCompliant",
+            "tags": {"support-owner": "cloud-ops@contoso.com", "environment": "production"},
+            "detail": "Running TLS 1.0. Function app is stopped (runtime deprecated) but still exists as a resource. Migration to new function app was completed Q4 2025 but old resource never deleted.",
+            "created": "2022-08-01",
+            "last_policy_eval": "2026-03-17T05:42:00Z"
+        }
+    ],
+    "policy_definitions_with_issues": [
+        {
+            "policy_name": "Secure transfer to storage accounts should be enabled",
+            "policy_type": "BuiltIn",
+            "known_gap": "Does not account for storage accounts acting as SFTP gateway endpoints for on-prem integration. OGE has 3 storage accounts in this pattern.",
+            "suggested_fix": "Create custom policy that exempts storage accounts tagged 'sftp-gateway: true' OR create a policy exemption for the specific resources."
+        },
+        {
+            "policy_name": "Key Vault should use a virtual network service endpoint",
+            "policy_type": "BuiltIn",
+            "known_gap": "Policy is correct for production. For development Key Vaults used by developers on corporate VPN, enforcing VNet endpoints breaks local dev workflow. The policy definition doesn't distinguish by environment tag.",
+            "suggested_fix": "Create custom policy: 'Key Vaults tagged environment=production MUST have VNet service endpoint. Key Vaults tagged environment=development SHOULD have VNet endpoint but are exempt if tagged dev-access-pattern=local.'"
+        }
+    ],
+    "workaround_patterns": [
+        {
+            "pattern": "AKS local auth exemption expired",
+            "resource": "aks-microservices-01",
+            "risk": "High — local auth on a production AKS cluster is a credential theft vector. The CI/CD pipeline should have been migrated to workload identity when the exemption was granted.",
+            "recommendation": "PBI: Migrate CI/CD to workload identity federation. Priority: High. Sprint: current+1."
+        },
+        {
+            "pattern": "SQL Auth enabled alongside AAD on production database",
+            "resource": "sql-analytics-prod",
+            "risk": "Medium — SQL auth is a weaker auth pattern but the password rotation via KV mitigates immediate risk. However, this is a documented workaround that's been in place for 2.5 years.",
+            "recommendation": "PBI: Migrate analytics ETL to managed identity auth. Priority: Medium. Timeline: 90 days."
+        }
+    ],
+    "exemption_status": {
+        "total_active": 3,
+        "recently_expired": 1,
+        "expired_detail": {
+            "resource": "aks-microservices-01",
+            "exemption_name": "AKS-local-auth-ci-cd-pipeline",
+            "granted": "2025-09-17",
+            "expired": "2026-02-17",
+            "reason": "CI/CD pipeline dependency on kubeconfig with local credentials. Migration to workload identity planned for Q1 2026.",
+            "status": "EXPIRED — migration not completed"
+        }
+    }
+}, indent=2)
+
+COMPLIANCE_QUESTION = "Run a compliance scan. We need to know what's non-compliant, whether our policies are right, and if anyone is abusing exemptions."
+
+
 # ─── Registry ────────────────────────────────────────────────────
 
 DEMO_SCENARIOS = {
@@ -261,5 +380,13 @@ DEMO_SCENARIOS = {
         "question": OVERVIEW_QUESTION,
         "data": ENVIRONMENT_OVERVIEW_DATA,
         "agents": ["cost_sentinel", "standards_architect", "diagnostics_sre", "scout"],
+    },
+    "continuous_compliance": {
+        "title": "📋 Compliance inspection",
+        "subtitle": "The Inspector classifies violations — policy bugs vs workaround abuse",
+        "icon": "clipboard-check",
+        "question": COMPLIANCE_QUESTION,
+        "data": COMPLIANCE_DATA,
+        "agents": ["compliance_inspector", "standards_architect", "cost_sentinel"],
     },
 }

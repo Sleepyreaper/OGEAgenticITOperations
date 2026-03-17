@@ -58,6 +58,7 @@ def call_agent(agent_config: AgentConfig, user_message: str,
         "Turnaround": "Respond like a calm incident commander. Timeline first, then root cause, then fix. Structured and clinical. 3-5 sentences.",
         "Flare Stack": "Respond like an alert system — short, punchy, severity-tagged. Use 🔴🟡🔵 severity indicators. 2-4 sentences max.",
         "Pipeline": "Respond as a crisp executive readout. No debate recap — just the bottom line recommendation with key tradeoffs in 3-5 sentences.",
+        "The Inspector": "Respond like a regulatory inspector filing a citation. Lead with the violation, classify it (policy bug / misconfiguration / exemption / workaround abuse), then state the required fix. 3-5 sentences, by the book.",
     }
     style = style_hints.get(agent_config.name, "Keep your response to 3-5 concise sentences.")
     messages.append({"role": "user", "content": user_message + f"\n\nSTYLE: {style}"})

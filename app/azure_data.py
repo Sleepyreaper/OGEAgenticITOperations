@@ -470,3 +470,91 @@ def get_vm_metrics_summary(resource_id: str, metric: str = "Percentage CPU",
         "hours": hours,
         "data_points": len(values),
     }
+
+
+# ─── Azure Policy Compliance ────────────────────────────────────
+
+def get_policy_compliance_summary(subscription_id: str = None) -> dict:
+    """Get subscription-level policy compliance summary."""
+    import requests
+
+    sub = subscription_id or _subscription_id()
+    cred = _credential()
+    token = cred.get_token("https://management.azure.com/.default").token
+
+    url = (
+        f"https://management.azure.com/subscriptions/{sub}"
+        f"/providers/Microsoft.PolicyInsights/policyStates/latest/summarize"
+        f"?api-version=2019-10-01"
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = requests.post(url, headers=headers, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+
+    summaries = data.get("value", [])
+    if not summaries:
+        return {"total_policies": 0, "non_compliant_policies": 0, "non_compliant_resources": 0, "details": []}
+
+    summary = summaries[0]
+    results = summary.get("results", {})
+
+    policy_details = []
+    for pd in summary.get("policyAssignments", [])[:20]:
+        pd_results = pd.get("results", {})
+        if pd_results.get("nonCompliantResources", 0) > 0:
+            policy_details.append({
+                "assignmentId": pd.get("policyAssignmentId", ""),
+                "assignmentName": pd.get("policyAssignmentId", "").split("/")[-1],
+                "nonCompliantResources": pd_results.get("nonCompliantResources", 0),
+                "nonCompliantPolicies": pd_results.get("nonCompliantPolicies", 0),
+            })
+
+    return {
+        "total_policies": results.get("totalPoliciesCount", 0),
+        "non_compliant_policies": results.get("nonCompliantPolicies", 0),
+        "non_compliant_resources": results.get("nonCompliantResources", 0),
+        "compliant_resources": results.get("totalResources", 0) - results.get("nonCompliantResources", 0),
+        "total_resources": results.get("totalResources", 0),
+        "compliance_pct": round(
+            (1 - results.get("nonCompliantResources", 0) / max(results.get("totalResources", 1), 1)) * 100, 1
+        ),
+        "top_non_compliant_assignments": policy_details,
+    }
+
+
+def get_non_compliant_resources(subscription_id: str = None, top: int = 25) -> list[dict]:
+    """Get specific non-compliant resources with policy details."""
+    import requests
+
+    sub = subscription_id or _subscription_id()
+    cred = _credential()
+    token = cred.get_token("https://management.azure.com/.default").token
+
+    url = (
+        f"https://management.azure.com/subscriptions/{sub}"
+        f"/providers/Microsoft.PolicyInsights/policyStates/latest/queryResults"
+        f"?api-version=2019-10-01&$top={top}"
+        f"&$filter=complianceState eq 'NonCompliant'"
+        f"&$orderby=timestamp desc"
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = requests.post(url, headers=headers, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+
+    results = []
+    for record in data.get("value", []):
+        results.append({
+            "resourceId": record.get("resourceId", ""),
+            "resourceName": record.get("resourceId", "").split("/")[-1],
+            "resourceType": record.get("resourceType", ""),
+            "resourceGroup": record.get("resourceGroup", ""),
+            "policyAssignmentName": record.get("policyAssignmentName", ""),
+            "policyDefinitionName": record.get("policyDefinitionName", ""),
+            "policyDefinitionAction": record.get("policyDefinitionAction", ""),
+            "complianceState": record.get("complianceState", ""),
+            "timestamp": record.get("timestamp", ""),
+        })
+
+    return results

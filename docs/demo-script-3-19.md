@@ -1,15 +1,15 @@
 # OGE Ops Council — Demo Script for 3/19
 
 > **Audience**: Rick + OGE leadership
-> **Duration**: ~15 minutes
+> **Duration**: ~20 minutes
 > **Presenter**: Christopher Smith / Brad Allen
-> **Goal**: Show Azure AI delivers immediate, visible operational value that ServiceNow and Kiro can't match
+> **Goal**: Show Azure AI delivers immediate, visible operational value — AND responds directly to Rick/Shane's continuous compliance ask
 
 ---
 
 ## Opening (1 minute)
 
-**Say**: "What you're about to see was purpose-built for OGE Cloud Operations in a day. Five AI specialists — each named after OGE operations concepts — that debate each other and deliver balanced recommendations. Two views: one for leadership, one for engineering."
+**Say**: "What you're about to see was purpose-built for OGE Cloud Operations. Six AI specialists — each named after OGE operations concepts — that debate each other and deliver balanced recommendations. Two views: one for leadership, one for engineering. And we've added something new based on your compliance ask."
 
 ---
 
@@ -47,8 +47,9 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 - 🔧 **The Roughneck** — knows why things are built this way
 - 🔄 **Turnaround** — diagnoses issues at 3 AM without anyone needing admin access
 - 🔥 **Flare Stack** — early warning system
+- 📋 **The Inspector** — **NEW** — continuous compliance, classifies violations, recommends PR or PBI
 
-**Say**: "The tension between Barrel Counter and The Roughneck is the whole point. One wants to save money. The other knows why you spent it. Pipeline makes sure you see both sides."
+**Say**: "The tension between Barrel Counter and The Roughneck is the whole point. One wants to save money. The other knows why you spent it. Pipeline makes sure you see both sides. And The Inspector — our newest crew member — is the direct response to what Rick and Shane asked for: continuous compliance intelligence."
 
 ---
 
@@ -68,7 +69,26 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 
 ---
 
-## Act 5: Chaos Demo (3 minutes) — THE SHOWSTOPPER
+## Act 5: Compliance Inspection (3 minutes) — RICK/SHANE'S ASK
+
+**Do**: Click the **"📋 Compliance inspection"** demo scenario.
+
+**Say**: "This is what Rick and Shane asked about — continuous compliance. The Inspector scans Azure Policy state, finds non-compliant resources, and classifies every violation."
+
+**Point out as messages stream in**:
+1. The Inspector leads — classifies each violation: policy bug, misconfiguration, valid exemption, or workaround abuse
+2. The Roughneck pushes back on one — "that storage account needs HTTP for the legacy SFTP gateway, the policy doesn't account for that pattern"
+3. Barrel Counter quantifies the cost of remediating vs the risk of not remediating
+
+**After synthesis**: 
+
+**Say**: "Watch what Pipeline did: for the storage account, he classified it as a **policy bug** — the built-in policy doesn't handle the SFTP gateway pattern. Fix: create a custom policy with an exemption tag. For the AKS cluster with the expired exemption, he classified it as **workaround abuse** — the CI/CD pipeline should have moved to workload identity six months ago. Fix: create a PBI, priority high, this sprint."
+
+**Key message**: "This is what you asked for: an AI that doesn't just flag non-compliance — it REASONS about whether the policy is wrong or the resource is wrong. That's the difference between a compliance dashboard and an AI compliance inspector."
+
+---
+
+## Act 6: Chaos Demo (2 minutes) — THE SHOWSTOPPER
 
 **Do**: Go back to **Ops Center**. Click **"💥 Do Something Stupid"**.
 
@@ -82,7 +102,7 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 
 ---
 
-## Act 6: Morning Briefing (1 minute)
+## Act 7: Morning Briefing (1 minute)
 
 **Do**: Click **"☀️ Morning Briefing"**.
 
@@ -92,7 +112,7 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 
 ## Closing (30 seconds)
 
-**Say**: "ServiceNow automates your help desk. Kiro writes your code. This gives your Cloud Ops team a crew of AI specialists that know your environment, respect your standards, debate each other, and produce remediation code — all without anyone needing more access than they have today. And we built it in a day."
+**Say**: "ServiceNow automates your help desk. Kiro writes your code. This gives your Cloud Ops team a crew of AI specialists that know your environment, respect your standards, debate each other, and produce remediation code — all without anyone needing more access than they have today. And The Inspector proves we can extend this to the continuous compliance scenario you asked about — policy bug vs workaround abuse classification, with PR and PBI routing, all in the same platform."
 
 ---
 
@@ -106,6 +126,9 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 | "Can we feed it our Terraform standards?" | Yes — The Roughneck's system prompt is where org knowledge lives. Ground it with your naming conventions, module library, tagging standards. |
 | "How does this compare to Azure Copilot Agents?" | Copilot Agents require tenant-scope preview enablement (Mandy's team). This runs today, no preview needed. Complementary if the preview becomes available. |
 | "Can it take action?" | By design, it recommends but never acts — governance first. Phase 2 could add approval workflows (Terraform PR → normal change process). |
+| "How does the compliance piece connect to ADO?" | The Inspector classifies violations and outputs the exact PR or PBI content. Phase 2 connects to Azure DevOps APIs to create the branch/PR automatically for policy bug fixes, or create the PBI for workaround abuse. The reasoning is the hard part — the plumbing is straightforward. |
+| "Can it handle custom policies, not just built-in?" | Yes. The Inspector reads whatever Azure Policy is assigned — built-in, custom, or initiative. If you have custom policy definitions in a repo, we can ground it with your policy-as-code patterns. |
+| "What happens when an exemption expires?" | The Inspector checks exemption status as part of every scan. Expired exemptions are flagged as workaround abuse with a recommendation to either renew with justification or remediate the underlying issue. |
 | "What about the RBAC role classification Christopher mentioned?" | Great Phase 2 candidate. The architecture supports it — add a new crew member that specializes in RBAC analysis. |
 | "How fast does it detect changes?" | Resource Graph: 5-15 seconds. Activity Log: 1-2 minutes. Advisor: ~24 hours. Our chaos demo proves the speed live. |
 | "Is the executive score real?" | Yes — calculated from Resource Health, Service Health, security drift, tagging compliance, architecture analysis. All sourced from Azure APIs, not AI opinions. |

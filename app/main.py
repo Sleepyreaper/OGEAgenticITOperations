@@ -240,6 +240,13 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
             except Exception:
                 pass
 
+            # Policy compliance
+            policy_compliance = {}
+            try:
+                policy_compliance = azure_data.get_policy_compliance_summary(sub_id)
+            except Exception:
+                pass
+
             # Resource health — per-resource availability
             resource_health = []
             try:
@@ -299,6 +306,7 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                 },
                 "service_health": service_health,
                 "deep_analysis": deep,
+                "policy_compliance": policy_compliance,
             })
         except Exception as e:
             traceback.print_exc()
@@ -340,6 +348,22 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
         try:
             drift = azure_data.detect_security_drift(settings.subscription_id)
             return jsonify({"drift_findings": drift, "count": len(drift)})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/scan/compliance", methods=["GET"])
+    def scan_compliance():
+        """Azure Policy compliance scan — summary + non-compliant resources."""
+        try:
+            sub_id = settings.subscription_id
+            summary = azure_data.get_policy_compliance_summary(sub_id)
+            non_compliant = azure_data.get_non_compliant_resources(sub_id)
+            return jsonify({
+                "summary": summary,
+                "non_compliant_resources": non_compliant,
+                "count": len(non_compliant),
+            })
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
