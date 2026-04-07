@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-# OGE Ops Council — App Deployment Pipeline
+# Ops Council — App Deployment Pipeline
 # ═══════════════════════════════════════════════════════════════
 #
 # PURPOSE: Build + deploy the Ops Council web app to Azure App Service.
@@ -44,9 +44,9 @@ variables:
   - name: pythonVersion
     value: '3.13'
   - name: webAppName
-    value: 'ogeops-app'  # Override per environment via variable groups
+    value: '{prefix}-app'  # Override per environment via variable groups
   - name: resourceGroup
-    value: 'OGE_Envisioning'
+    value: '{PREFIX}_RG'
 
 # ─── Stages ────────────────────────────────────────────────
 
@@ -124,7 +124,7 @@ stages:
     dependsOn: Build
     condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
     variables:
-      - group: OpsCouncil-Staging  # Variable group with staging-specific values
+      - group: {PREFIX}-Staging  # Variable group with staging-specific values
     jobs:
       - deployment: DeployToStaging
         displayName: 'Deploy to Staging App Service'
@@ -166,7 +166,7 @@ stages:
     dependsOn: DeployStaging
     condition: succeeded()
     variables:
-      - group: OpsCouncil-Production  # Variable group with prod-specific values
+      - group: {PREFIX}-Production  # Variable group with prod-specific values
     jobs:
       - deployment: DeployToProduction
         displayName: 'Deploy to Production App Service'

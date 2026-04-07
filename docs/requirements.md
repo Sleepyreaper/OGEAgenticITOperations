@@ -1,4 +1,4 @@
-# OGE Ops Council — Requirements
+# Ops Council — Requirements
 
 ## Org Context
 
@@ -29,10 +29,10 @@
 - Deep intelligence beyond Azure Advisor (architecture smells, cross-resource correlation)
 - Chaos demo — create a real security problem, detect in 10 seconds
 - Morning Briefing — overnight digest from the crew
-- Generate Remediation — Terraform/CLI code following OGE standards
+- Generate Remediation — Terraform/CLI code following organizational standards
 
 ### Ops Council (Chat)
-- 6 AI agents with OGE-themed personalities that debate and argue
+- 6 AI agents with themed personalities that debate and argue
 - Streaming responses via SSE — watch the debate live
 - Transparent disagreement between Cost Sentinel and Standards Architect
 - Compliance classification by The Inspector (policy bug vs workaround abuse)
@@ -72,7 +72,7 @@
 
 ## Success Criteria (from the call)
 
-- ✅ "Eye-catching and potentially have significant use" — OGE branding, crew personalities, chaos demo
+- ✅ "Eye-catching and potentially have significant use" — Custom branding, crew personalities, chaos demo
 - ✅ "Super scalable — one person could do it, AI manages the rest" — Managed Identity scans everything automatically
 - ✅ "Spark curiosity with leadership" — Executive Reliability view with scores
 - ✅ "Art of the possible" — deep intelligence, streaming debate, remediation code
@@ -82,9 +82,9 @@
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Azure OpenAI models | ✅ Done | Per-agent endpoint routing: eastus2 (gpt-5.4, o3) + westus3 (gpt-5-nano) |
+| Azure OpenAI models | ✅ Done | Per-agent endpoint routing: Configure in Foundry (see DEPLOYMENT.md) |
 | App Service Plan | ✅ Done | Sharing existing P0v3 in West US 2 |
 | Managed Identity + RBAC | ✅ Done | Reader + Log Analytics Reader + Monitoring Reader |
 | Bicep IaC | ✅ Done | Parameterized for customer deployment |
-| OGE Branding | ✅ Done | Logo, colors (#101820, #DA291C, #CEE5E8), Inter font |
+| Custom Branding | ✅ Done | Configurable logo, colors, Inter font |
 | Copilot Agents preview | ❌ Not needed | Custom solution doesn't depend on tenant preview |

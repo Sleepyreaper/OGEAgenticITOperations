@@ -1,8 +1,8 @@
-# OGE Ops Council — Architecture
+# Ops Council — Architecture
 
 ## Solution Overview
 
-A multi-agent AI operations platform running on Azure, purpose-built for OGE Cloud Ops.
+A multi-agent AI operations platform running on Azure, purpose-built for Cloud Ops teams.
 
 **Key architectural decisions:**
 - Custom-built (not dependent on Azure Copilot Agents preview or SRE Agent)
@@ -14,7 +14,7 @@ A multi-agent AI operations platform running on Azure, purpose-built for OGE Clo
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                      OGE Ops Council                         │
+│                      Ops Council                         │
 │                                                              │
 │  ┌─────────────────┐    ┌──────────────────────────────────┐│
 │  │  Reliability     │    │  Ops Center                      ││
@@ -38,7 +38,7 @@ A multi-agent AI operations platform running on Azure, purpose-built for OGE Clo
 │  │ Azure    │ │Resource│ │Service │ │ Azure OpenAI       │  │
 │  │ Resource │ │Health  │ │Health  │ │ (6 deployments,    │  │
 │  │ Graph    │ │API     │ │API     │ │  2 regions)        │  │
-│  │ (free)   │ │(free)  │ │(free)  │ │ gpt-5.4, o3, nano  │  │
+│  │ (free)   │ │(free)  │ │(free)  │ │ foundry-gpt, reasoning, nano  │  │
 │  └──────────┘ └────────┘ └────────┘ └────────────────────┘  │
 │         │          │          │          │                    │
 │         ▼          ▼          ▼          ▼                    │
@@ -51,30 +51,30 @@ A multi-agent AI operations platform running on Azure, purpose-built for OGE Clo
          All access via Managed Identity (Reader RBAC)
 ```
 
-## Azure Resources (OGE_Envisioning Resource Group)
+## Azure Resources ({PREFIX}_RG Resource Group)
 
 | Resource | Type | Purpose |
 |----------|------|---------|
-| ogeops-app | Web App (P0v3, shared plan) | Dashboard + API backend |
-| ogeops-id | Managed Identity | Auth to all Azure APIs + OpenAI |
-| ogeops-kv | Key Vault (private endpoint) | Secrets management |
-| ogeops-vnet | Virtual Network | Network isolation |
-| ogeops-log | Log Analytics | Telemetry collection |
-| ogeops-appi | Application Insights | App monitoring |
-| ogeops-nsg-* | NSGs | Network security + chaos demo target |
+| {prefix}-app | Web App (P0v3, shared plan) | Dashboard + API backend |
+| {prefix}-id | Managed Identity | Auth to all Azure APIs + OpenAI |
+| {prefix}-kv | Key Vault (private endpoint) | Secrets management |
+| {prefix}-vnet | Virtual Network | Network isolation |
+| {prefix}-log | Log Analytics | Telemetry collection |
+| {prefix}-appi | Application Insights | App monitoring |
+| {prefix}-nsg-* | NSGs | Network security + chaos demo target |
 
 ## Agent Architecture
 
-| Agent | Model | Endpoint | Token Cost/Call | Why This Model |
-|-------|-------|----------|----------------|----------------|
-| Pipeline (coord) | gpt-5.4 | eastus2 | ~$0.008 | Broad knowledge, strong synthesis |
-| Barrel Counter (cost) | o3 | eastus2 | ~$0.015 | Deep reasoning over cost data |
-| The Roughneck (standards) | gpt-5.4 | eastus2 | ~$0.008 | Explains rationale, defends decisions |
-| Turnaround (diagnostics) | o3 | eastus2 | ~$0.015 | Complex multi-step root cause analysis |
-| Flare Stack (monitor) | gpt-5-nano | westus3 | ~$0.0005 | Lightweight, fast scanning |
-| The Inspector (compliance) | o3 | eastus2 | ~$0.015 | Deep reasoning for policy classification |
+| Agent | Foundry Deployment | Role | Token Cost/Call | Why This Model |
+|-------|-------------------|------|----------------|----------------|
+| Pipeline (coord) | foundry-gpt | General-purpose LLM | ~$0.008 | Broad knowledge, strong synthesis |
+| Barrel Counter (cost) | foundry-reasoning | Reasoning model | ~$0.015 | Deep reasoning over cost data |
+| The Roughneck (standards) | foundry-gpt | General-purpose LLM | ~$0.008 | Explains rationale, defends decisions |
+| Turnaround (diagnostics) | foundry-reasoning | Reasoning model | ~$0.015 | Complex multi-step root cause analysis |
+| Flare Stack (monitor) | foundry-nano | Lightweight model | ~$0.0005 | Lightweight, fast scanning |
+| The Inspector (compliance) | foundry-reasoning | Reasoning model | ~$0.015 | Deep reasoning for policy classification |
 
-**Multi-endpoint routing**: Agents route to different Azure OpenAI accounts based on model availability. gpt-5.4 and o3 are on `springfield-ai-eastus2` (eastus2). gpt-5-nano stays on `nextgenagentfoundry` (westus3). The Managed Identity has Cognitive Services OpenAI User on both accounts.
+**Multi-endpoint routing**: Agents can route to different Azure OpenAI accounts based on model availability. Configure `AZURE_OPENAI_ENDPOINT` for your primary account and `AZURE_OPENAI_ENDPOINT_SECONDARY` for a secondary account if models are spread across regions. The Managed Identity needs Cognitive Services OpenAI User on all accounts.
 
 ## Data Flow: Full Debate (3 rounds)
 

@@ -1,16 +1,16 @@
 // ═══════════════════════════════════════════════════
-// OGE Envisioning — Ops Agent Infrastructure
+// Ops Council — Ops Agent Infrastructure
 // ═══════════════════════════════════════════════════
 // Region       : West US 2
 // OpenAI       : Reuses existing Azure OpenAI account
-// App Service  : Reuses existing nextgen-webapp-plan (P0v3)
-// Model        : o4-mini (o4MiniAgent deployment)
+// App Service  : Reuses existing <YOUR_APP_SERVICE_PLAN> (P0v3)
+// Model        : foundry-gpt (foundry-gpt deployment)
 // ═══════════════════════════════════════════════════
 
 targetScope = 'resourceGroup'
 
 @description('Prefix for new resource names.')
-param prefix string = 'ogeops'
+param prefix string = 'opscouncil'
 
 @description('Azure region for new resources.')
 param location string = 'westus2'
@@ -27,8 +27,8 @@ param openaiResourceGroup string
 @description('Endpoint of the existing Azure OpenAI account.')
 param openaiEndpoint string
 
-@description('Name of the o4-mini model deployment.')
-param openaiDeploymentName string = 'o4MiniAgent'
+@description('Name of the foundry-gpt model deployment.')
+param openaiDeploymentName string = 'foundry-gpt'
 
 @description('Object ID of the deploying user (for Key Vault admin). Leave empty to skip.')
 param deployerPrincipalId string = ''

@@ -1,8 +1,8 @@
 # OGE Ops Council
 
-**Multi-agent operational intelligence for Azure Cloud Operations**
+**Multi-agent operational intelligence for Azure Cloud Operations — Microsoft Oil, Gas & Energy**
 
-Six AI specialists — each named after OGE operations concepts — debate, disagree, and synthesize to deliver balanced, transparent recommendations. Built for teams that need operational answers without elevated access.
+Six AI specialists — each named after cloud operations concepts — debate, disagree, and synthesize to deliver balanced, transparent recommendations. Built for teams that need operational answers without elevated access.
 
 **Two views, one platform:**
 - **Reliability** — Executive dashboard with reliability scores, pillar assessments, and service health (Rick's view)
@@ -12,12 +12,12 @@ Six AI specialists — each named after OGE operations concepts — debate, disa
 
 | | Agent | Role | Model | What They Do |
 |--|-------|------|-------|-------------|
-| ⚡ | **Pipeline** | Coordinator | gpt-5.4 | Routes requests, synthesizes the crew's takes, delivers exec-ready summaries |
-| 🛢️ | **Barrel Counter** | Cost | o3 | Finds waste, recommends rightsizing, shows the math — every dollar is a barrel |
-| 🔧 | **The Roughneck** | Standards | gpt-5.4 | Knows *why* things are built the way they are. Writes Terraform remediation. |
-| 🔄 | **Turnaround** | Diagnostics | o3 | Root cause analysis without users needing elevated access |
-| 🔥 | **Flare Stack** | Monitoring | gpt-5-nano | Proactive scanning — surfaces problems before they become incidents |
-| 📋 | **The Inspector** | Compliance | o3 | Classifies policy violations as definition bugs, misconfigurations, exemptions, or workaround abuse |
+| ⚡ | **Pipeline** | Coordinator | foundry-gpt | Routes requests, synthesizes the crew's takes, delivers exec-ready summaries |
+| 🛢️ | **Barrel Counter** | Cost | foundry-reasoning | Finds waste, recommends rightsizing, shows the math — every dollar is a barrel |
+| 🔧 | **The Roughneck** | Standards | foundry-gpt | Knows *why* things are built the way they are. Writes Terraform remediation. |
+| 🔄 | **Turnaround** | Diagnostics | foundry-reasoning | Root cause analysis without users needing elevated access |
+| 🔥 | **Flare Stack** | Monitoring | foundry-nano | Proactive scanning — surfaces problems before they become incidents |
+| 📋 | **The Inspector** | Compliance | foundry-reasoning | Classifies policy violations as definition bugs, misconfigurations, exemptions, or workaround abuse |
 
 ## How It Works
 
@@ -70,14 +70,14 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 - ☀️ Morning Briefing — overnight digest from the crew
 
 ### Ops Council Chat
-- Streaming multi-agent debate with OGE-styled personalities
+- Streaming multi-agent debate with custom-styled personalities
 - 🔧 Generate Terraform / CLI Fix button after every analysis
 - 📊 Executive Summary button for leadership-ready output
 - Token cost ticker — transparency on every interaction (pennies per query)
 - Dynamic suggested questions that update based on real environment scan
 
 ### Data Modes
-- **Demo**: Pre-built OGE scenarios (VM sizing, deployment failure, waste analysis)
+- **Demo**: Pre-built demo scenarios (VM sizing, deployment failure, waste analysis)
 - **Live**: Scans real Azure subscription via Managed Identity — everything real
 
 ## Architecture
@@ -112,7 +112,7 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 | Log Analytics Reader | Subscription | Activity logs, deployment failures |
 | Monitoring Reader | Subscription | Metrics, alerts, diagnostics |
 | Key Vault Secrets User | Key Vault (resource) | Read secrets only |
-| Cognitive Services OpenAI User | OpenAI Accounts (westus3 + eastus2) | Call models across both regions |
+| Cognitive Services OpenAI User | OpenAI Accounts (your Azure regions) | Call models across both regions |
 | Network Contributor | NSG (resource, demo only) | Chaos demo NSG rule create/delete |
 
 ## API Endpoints
@@ -138,7 +138,7 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 │   │   ├── demos.py          # 6 demo scenarios with realistic data
 │   │   └── runner.py         # Debate system, SSE streaming, remediation
 │   ├── azure_data.py         # Resource Graph, Health APIs, Advisor, deep analysis
-│   ├── config.py             # Agent configs, OGE-styled system prompts
+│   ├── config.py             # Agent configs, custom-styled system prompts
 │   └── main.py               # Flask app, all API endpoints
 ├── infra/                    # Bicep IaC (VNet, KV, identity, web app)
 ├── templates/index.html      # Executive + Ops views

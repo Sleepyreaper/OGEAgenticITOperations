@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-# OGE Ops Council — Terraform Remediation Pipeline
+# Ops Council — Terraform Remediation Pipeline
 # ═══════════════════════════════════════════════════════════════
 #
 # PURPOSE: Validate and deploy Terraform remediation code that the

@@ -134,7 +134,7 @@ ANALYSIS:
 
 Generate FOUR distinct artifacts, each in its own clearly labeled code block:
 
-1. **main.tf** — Terraform configuration to remediate the issue. Follow these OGE standards:
+1. **main.tf** — Terraform configuration to remediate the issue. Follow these organizational standards:
    - Use variables for subscription_id, resource_group, location
    - Include proper tags (support-owner, environment, managed-by = "ops-council")
    - Use azurerm provider with required_version constraint
@@ -162,7 +162,7 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
 
         def generate():
             try:
-                # Use The Roughneck (gpt-5.4) for remediation — he knows the standards
+                # Use The Roughneck (foundry-gpt) for remediation — he knows the standards
                 roughneck_cfg = settings.agents["standards_architect"]
                 result = call_agent(roughneck_cfg, remediation_prompt)
                 yield f"data: {json.dumps({'phase': 'remediation', 'result': result}, default=str)}\n\n"
@@ -622,7 +622,7 @@ NON-COMPLIANT RESOURCES:
                         f"1. **main.tf** — Terraform to deploy the corrected policy definition\n"
                         f"2. **variables.tf** — Variable declarations with defaults\n"
                         f"3. **RUNBOOK.md** — Validation steps after apply\n\n"
-                        f"Follow OGE standards: tags (support-owner, managed-by=ops-council), "
+                        f"Follow organizational standards: tags (support-owner, managed-by=ops-council), "
                         f"azurerm provider with version constraint."
                     )
                     fix_result = call_agent(roughneck_cfg, remediation_prompt)

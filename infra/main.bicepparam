@@ -20,7 +20,7 @@ param openaiResourceGroup = '<YOUR_OPENAI_RESOURCE_GROUP>'
 // Endpoint for the existing OpenAI account
 param openaiEndpoint = 'https://<YOUR_OPENAI_ACCOUNT_NAME>.openai.azure.com/'
 
-// Model deployment name for the reasoning model (o4-mini recommended)
+// Model deployment name for the reasoning model (foundry-gpt recommended)
 param openaiDeploymentName = '<YOUR_O4_MINI_DEPLOYMENT_NAME>'
 
 // Deployer's Azure AD object ID — retrieve with: az ad signed-in-user show --query id -o tsv

@@ -11,7 +11,7 @@ import json
 
 VM_SIZING_DATA = json.dumps({
     "resource": {
-        "name": "oge-sap-batch-vm01",
+        "name": "demo-sap-batch-vm01",
         "type": "Microsoft.Compute/virtualMachines",
         "resourceGroup": "SAP-Production-RG",
         "location": "eastus2",
@@ -44,7 +44,7 @@ VM_SIZING_DATA = json.dumps({
     ]
 }, indent=2)
 
-VM_SIZING_QUESTION = "Why is oge-sap-batch-vm01 running on a D16s_v5? It seems oversized. Can we save money here?"
+VM_SIZING_QUESTION = "Why is demo-sap-batch-vm01 running on a D16s_v5? It seems oversized. Can we save money here?"
 
 
 # ─── Scenario 2: "My deployment failed" ──────────────────────────
@@ -145,9 +145,9 @@ WASTE_QUESTION = "Give me a full waste analysis of our Azure subscription. Where
 SCOUT_ALERT_DATA = json.dumps({
     "alert_type": "quota_pressure",
     "resource": {
-        "name": "ogeops-log",
+        "name": "{prefix}-log",
         "type": "Microsoft.OperationalInsights/workspaces",
-        "resourceGroup": "OGE_Envisioning",
+        "resourceGroup": "{PREFIX}_RG",
         "location": "westus2"
     },
     "details": {
@@ -175,7 +175,7 @@ SCOUT_ALERT_QUESTION = "Run a proactive environment scan. What issues should we 
 
 ENVIRONMENT_OVERVIEW_DATA = json.dumps({
     "subscription": {
-        "name": "OGE-CloudOps-Production",
+        "name": "CloudOps-Production",
         "id": "00000000-0000-0000-0000-000000000000",
         "total_resources": 847,
         "resource_groups": 64
@@ -297,7 +297,7 @@ COMPLIANCE_DATA = json.dumps({
         {
             "policy_name": "Secure transfer to storage accounts should be enabled",
             "policy_type": "BuiltIn",
-            "known_gap": "Does not account for storage accounts acting as SFTP gateway endpoints for on-prem integration. OGE has 3 storage accounts in this pattern.",
+            "known_gap": "Does not account for storage accounts acting as SFTP gateway endpoints for on-prem integration. The org has 3 storage accounts in this pattern.",
             "suggested_fix": "Create custom policy that exempts storage accounts tagged 'sftp-gateway: true' OR create a policy exemption for the specific resources."
         },
         {

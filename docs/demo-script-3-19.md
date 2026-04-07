@@ -1,6 +1,6 @@
-# OGE Ops Council — Demo Script for 3/19
+# Ops Council — Demo Script for 3/19
 
-> **Audience**: Rick + OGE leadership
+> **Audience**: Customer leadership
 > **Duration**: ~20 minutes
 > **Presenter**: Christopher Smith / Brad Allen
 > **Goal**: Show Azure AI delivers immediate, visible operational value — AND responds directly to Rick/Shane's continuous compliance ask
@@ -20,7 +20,7 @@ Continuous compliance with policy reasoning
 2. **"AI that enhances productivity while reinforcing standards and governance policy."**
 3. **"Can an AI agent continuously watch for Azure Policy non-compliance, reason about why resources are non-compliant, and route fixes — either a PR to fix the policy or a PBI to investigate the workaround?"**
 
-**Say**: "Everything you're about to see was built to answer those three questions. Six AI specialists, named after OGE operations. They debate each other. They disagree. And they produce actionable output — not just dashboards."
+**Say**: "Everything you're about to see was built to answer those three questions. Six AI specialists, named after cloud operations concepts. They debate each other. They disagree. And they produce actionable output — not just dashboards."
 
 ---
 
@@ -76,7 +76,7 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 
 **After synthesis**: Click **"🔧 Generate Terraform / CLI Fix"**
 
-**Say**: "That's not just a recommendation — that's production-ready Terraform following OGE standards. From 'why is this big?' to 'here's the code to fix it' in under a minute."
+**Say**: "That's not just a recommendation — that's production-ready Terraform following organizational standards. From 'why is this big?' to 'here's the code to fix it' in under a minute."
 
 ---
 

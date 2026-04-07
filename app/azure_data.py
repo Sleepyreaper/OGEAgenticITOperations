@@ -354,8 +354,8 @@ def get_service_health_events(subscription_id: str = None, days: int = 30) -> li
 
 # ─── Chaos / Demo Functions ─────────────────────────────────────
 
-def create_chaos_nsg_rule(resource_group: str = "OGE_Envisioning",
-                          nsg_name: str = "ogeops-nsg-pe") -> dict:
+def create_chaos_nsg_rule(resource_group: str = "{PREFIX}_RG",
+                          nsg_name: str = "{prefix}-nsg-pe") -> dict:
     """Create a deliberately bad NSG rule — SSH open to the world."""
     from azure.mgmt.network import NetworkManagementClient
     cred = _credential()
@@ -377,8 +377,8 @@ def create_chaos_nsg_rule(resource_group: str = "OGE_Envisioning",
     return {"rule_name": rule.name, "status": "created", "port": "22", "source": "*"}
 
 
-def cleanup_chaos_nsg_rule(resource_group: str = "OGE_Envisioning",
-                            nsg_name: str = "ogeops-nsg-pe") -> dict:
+def cleanup_chaos_nsg_rule(resource_group: str = "{PREFIX}_RG",
+                            nsg_name: str = "{prefix}-nsg-pe") -> dict:
     """Remove the chaos NSG rule."""
     from azure.mgmt.network import NetworkManagementClient
     cred = _credential()

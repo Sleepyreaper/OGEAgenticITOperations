@@ -1,6 +1,6 @@
-# OGE Ops Council — RBAC & Least-Privilege Implementation Guide
+# Ops Council — RBAC & Least-Privilege Implementation Guide
 
-> **Guiding Principle**: AI that enhances productivity while *reinforcing* standards and governance policy. Every permission follows OGE's least-privilege model.
+> **Guiding Principle**: AI that enhances productivity while *reinforcing* standards and governance policy. Every permission follows organizational least-privilege model.
 > 
 > **Audience**: Any team deploying the Ops Council in their own Azure environment.
 
@@ -38,9 +38,9 @@ az deployment group create \
 # ═══════════════════════════════════════════════════════
 # Step 2: Get the Managed Identity principal ID
 # ═══════════════════════════════════════════════════════
-# The prefix defaults to "ogeops" — adjust if you changed it.
+# The prefix defaults to "opscouncil" — adjust if you changed it.
 MI_PRINCIPAL_ID=$(az identity show \
-  --name ogeops-id \
+  --name {prefix}-id \
   --resource-group <YOUR_RG> \
   --query principalId -o tsv)
 
@@ -194,7 +194,7 @@ The Ops Council natively supports monitoring multiple subscriptions. Resource Gr
 ```
 ┌─────────────────────────┐
 │  Managed Identity       │
-│  (ogeops-id)            │
+│  ({prefix}-id)            │
 └───┬───────┬───────┬─────┘
     │       │       │
     ▼       ▼       ▼
@@ -205,7 +205,7 @@ The Ops Council natively supports monitoring multiple subscriptions. Resource Gr
 
 ```bash
 # Get MI principal ID (one-time)
-MI_PRINCIPAL_ID=$(az identity show --name ogeops-id --resource-group <RG> --query principalId -o tsv)
+MI_PRINCIPAL_ID=$(az identity show --name {prefix}-id --resource-group <RG> --query principalId -o tsv)
 
 # Grant roles on the new subscription
 az deployment sub create \
@@ -230,8 +230,8 @@ Different AI models may only be available in specific Azure regions. The Ops Cou
     │               │
     ▼               ▼
  OpenAI (eastus2)   OpenAI (westus3)
- ├─ gpt-5.4         └─ gpt-5-nano (LightWork5Nano)
- ├─ o3
+ ├─ foundry-gpt         └─ foundry-nano (foundry-nano)
+ ├─ foundry-reasoning
  └─ (future models)
 ```
 
@@ -248,7 +248,7 @@ az role assignment create \
   --scope "$OPENAI_ID"
 ```
 
-Then update the `AZURE_OPENAI_ENDPOINT_EASTUS2` (or add a new env var) in App Service config, and map agents to the new endpoint in `app/config.py`.
+Then update the `AZURE_OPENAI_ENDPOINT_SECONDARY` (or add a new env var) in App Service config, and map agents to the new endpoint in `app/config.py`.
 
 ---
 

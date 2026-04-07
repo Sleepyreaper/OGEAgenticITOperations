@@ -2,15 +2,15 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════
-# OGE Envisioning — Infrastructure Deployment
+# Ops Council — Infrastructure Deployment
 # ═══════════════════════════════════════════════════
 # Region       : West US 2
 # OpenAI       : Reuses existing Azure OpenAI account
-# App Service  : Reuses existing nextgen-webapp-plan (P0v3)
-# Model        : o4-mini (o4MiniAgent)
+# App Service  : Reuses existing <YOUR_APP_SERVICE_PLAN> (P0v3)
+# Model        : foundry-gpt (foundry-gpt)
 # ═══════════════════════════════════════════════════
 
-RESOURCE_GROUP="${RESOURCE_GROUP:-OGE_Envisioning}"
+RESOURCE_GROUP="${RESOURCE_GROUP:-{PREFIX}_RG}"
 LOCATION="${LOCATION:-westus2}"
 SENSITIVE_LOGGING="${SENSITIVE_LOGGING:-false}" # set to "true" to allow full resource name logging
 
@@ -33,7 +33,7 @@ redact() {
 }
 
 echo "========================================="
-echo " OGE Envisioning — Deploy Infrastructure"
+echo " Ops Council — Deploy Infrastructure"
 echo "========================================="
 echo "Resource Group : $(redact "$RESOURCE_GROUP")"
 echo "Location       : $LOCATION"
@@ -61,7 +61,7 @@ echo "→ Creating resource group in selected location..."
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
 
 # ── Deploy ──
-DEPLOYMENT_NAME="ogeops-$(date +%Y%m%d-%H%M%S)"
+DEPLOYMENT_NAME="{prefix}-$(date +%Y%m%d-%H%M%S)"
 echo "→ Deploying infrastructure (deployment id: $(redact "$DEPLOYMENT_NAME"))..."
 az deployment group create \
   --resource-group "$RESOURCE_GROUP" \

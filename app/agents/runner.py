@@ -73,7 +73,7 @@ def call_agent(agent_config: AgentConfig, user_message: str,
     kwargs = {"model": deployment, "messages": messages}
 
     # These models only support default temperature (1.0)
-    fixed_temp_models = ("o4MiniAgent", "o3", "o3-pro", "LightWork5Nano", "gpt-5.4")
+    fixed_temp_models = ("foundry-gpt", "foundry-reasoning", "foundry-nano")
     if agent_config.deployment not in fixed_temp_models:
         kwargs["temperature"] = agent_config.temperature
 
