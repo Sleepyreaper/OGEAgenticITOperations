@@ -1,6 +1,12 @@
-# OGE Ops Council
+<p align="center">
+  <img src="static/oge-logo.png" alt="Americas Enterprise — US Oil, Gas & Energy" width="480">
+</p>
 
-**Multi-agent operational intelligence for Azure Cloud Operations — Microsoft Oil, Gas & Energy**
+<h1 align="center">OGE Ops Council</h1>
+
+<p align="center"><strong>Multi-agent operational intelligence for Azure Cloud Operations — Microsoft Oil, Gas & Energy</strong></p>
+
+---
 
 Six AI specialists — each named after cloud operations concepts — debate, disagree, and synthesize to deliver balanced, transparent recommendations. Built for teams that need operational answers without elevated access.
 
