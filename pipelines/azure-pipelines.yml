@@ -1,8 +1,8 @@
 # ═══════════════════════════════════════════════════════════════
-# Ops Council — App Deployment Pipeline
+# Cloud Weather Ops — App Deployment Grid Dispatch
 # ═══════════════════════════════════════════════════════════════
 #
-# PURPOSE: Build + deploy the Ops Council web app to Azure App Service.
+# PURPOSE: Build + deploy the Cloud Weather Ops web app to Azure App Service.
 # This deploys the DASHBOARD — not the Terraform remediation code.
 # For the Terraform pipeline, see terraform-pipeline.yml.
 #
@@ -113,7 +113,7 @@ stages:
             displayName: 'Package deployment artifact'
 
           - publish: $(Build.ArtifactStagingDirectory)/deploy.zip
-            artifact: ops-council-deploy
+            artifact: dte-weather-ops-deploy
             displayName: 'Publish artifact'
 
   # ════════════════════════════════════════════════════════
@@ -128,7 +128,7 @@ stages:
     jobs:
       - deployment: DeployToStaging
         displayName: 'Deploy to Staging App Service'
-        environment: 'ops-council-staging'
+        environment: 'dte-weather-ops-staging'
         pool:
           vmImage: 'ubuntu-latest'
         strategy:
@@ -136,7 +136,7 @@ stages:
             deploy:
               steps:
                 - download: current
-                  artifact: ops-council-deploy
+                  artifact: dte-weather-ops-deploy
 
                 - task: AzureWebApp@1
                   displayName: 'Deploy to $(webAppName)-staging'
@@ -144,7 +144,7 @@ stages:
                     azureSubscription: '$(serviceConnection)'
                     appName: '$(webAppName)-staging'
                     resourceGroupName: '$(resourceGroup)'
-                    package: '$(Pipeline.Workspace)/ops-council-deploy/deploy.zip'
+                    package: '$(Grid Dispatch.Workspace)/dte-weather-ops-deploy/deploy.zip'
                     deploymentMethod: 'zipDeploy'
 
                 - script: |
@@ -171,10 +171,10 @@ stages:
       - deployment: DeployToProduction
         displayName: 'Deploy to Production App Service'
         # ─── THIS IS THE HUMAN GATE ───
-        # The "ops-council-production" environment in ADO must be configured
+        # The "dte-weather-ops-production" environment in ADO must be configured
         # with an Approval Check. The pipeline STOPS HERE until a human
         # (Christopher, Shane, or Brad) clicks "Approve" in ADO.
-        environment: 'ops-council-production'
+        environment: 'dte-weather-ops-production'
         pool:
           vmImage: 'ubuntu-latest'
         strategy:
@@ -182,7 +182,7 @@ stages:
             deploy:
               steps:
                 - download: current
-                  artifact: ops-council-deploy
+                  artifact: dte-weather-ops-deploy
 
                 - task: AzureWebApp@1
                   displayName: 'Deploy to $(webAppName)'
@@ -190,7 +190,7 @@ stages:
                     azureSubscription: '$(serviceConnection)'
                     appName: '$(webAppName)'
                     resourceGroupName: '$(resourceGroup)'
-                    package: '$(Pipeline.Workspace)/ops-council-deploy/deploy.zip'
+                    package: '$(Grid Dispatch.Workspace)/dte-weather-ops-deploy/deploy.zip'
                     deploymentMethod: 'zipDeploy'
 
                 - script: |

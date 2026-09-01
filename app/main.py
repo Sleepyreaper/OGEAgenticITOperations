@@ -1,4 +1,4 @@
-"""OGE Ops Council — Flask application."""
+"""DTE Cloud Weather Ops — Flask application."""
 
 from flask import Flask, render_template, request, jsonify, Response
 import json
@@ -31,7 +31,7 @@ def create_app():
 
     @app.route("/api/ask", methods=["POST"])
     def ask():
-        """Run a question through the Ops Council.
+        """Run a question through the Cloud Weather Ops.
 
         Body: { "question": str, "context_data": str (optional),
                 "agents": list[str] (optional), "mode": "demo"|"live" }
@@ -120,7 +120,7 @@ def create_app():
     def generate_remediation():
         """Generate Terraform/CLI remediation code based on a crew analysis.
 
-        Body: { "context": str (the crew's analysis to remediate) }
+        Body: { "context": str (the grid team's analysis to remediate) }
         """
         body = request.get_json(force=True)
         context = body.get("context", "").strip()
@@ -136,7 +136,7 @@ Generate FOUR distinct artifacts, each in its own clearly labeled code block:
 
 1. **main.tf** — Terraform configuration to remediate the issue. Follow these organizational standards:
    - Use variables for subscription_id, resource_group, location
-   - Include proper tags (support-owner, environment, managed-by = "ops-council")
+   - Include proper tags (support-owner, environment, managed-by = "dte-weather-ops")
    - Use azurerm provider with required_version constraint
    - Include comments explaining the remediation rationale
 
@@ -162,9 +162,9 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
 
         def generate():
             try:
-                # Use The Roughneck (foundry-gpt) for remediation — he knows the standards
-                roughneck_cfg = settings.agents["standards_architect"]
-                result = call_agent(roughneck_cfg, remediation_prompt)
+                # Use The Lineman (foundry-gpt) for remediation — he knows the standards
+                lineman_cfg = settings.agents["standards_architect"]
+                result = call_agent(lineman_cfg, remediation_prompt)
                 yield f"data: {json.dumps({'phase': 'remediation', 'result': result}, default=str)}\n\n"
                 yield f"data: {json.dumps({'phase': 'done'})}\n\n"
             except Exception as e:
@@ -434,7 +434,7 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
 
     @app.route("/api/digest", methods=["GET"])
     def daily_digest():
-        """Generate a daily 'top of mind' digest — what the crew found overnight."""
+        """Generate a daily 'top of mind' digest — what the grid team found overnight."""
         try:
             sub_ids = _parse_sub_ids()
             # Gather all signals across selected subscriptions
@@ -464,7 +464,7 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
             }, default=str)
 
             def generate():
-                yield f"data: {json.dumps({'phase': 'round1', 'agent_key': 'scout', 'result': {'agent': 'Flare Stack', 'role': 'Overnight scan', 'model': 'digest', 'response': '🔥 **Daily Digest — scanning overnight findings...**', 'usage': {'prompt_tokens': 0, 'completion_tokens': 0}}})}\n\n"
+                yield f"data: {json.dumps({'phase': 'round1', 'agent_key': 'scout', 'result': {'agent': 'Arc Flash', 'role': 'Overnight scan', 'model': 'digest', 'response': '⚠️ **Daily Digest — scanning overnight findings...**', 'usage': {'prompt_tokens': 0, 'completion_tokens': 0}}})}\n\n"
 
                 for agent_key in ["scout", "cost_sentinel", "standards_architect"]:
                     agent_cfg = settings.agents.get(agent_key)
@@ -473,9 +473,9 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                     result = call_agent(agent_cfg, f"Generate a daily morning briefing. What should the ops team address TODAY based on this overnight scan data? Prioritize by risk and impact.\n\nOvernight scan results:\n{digest_context}")
                     yield f"data: {json.dumps({'phase': 'round1', 'agent_key': agent_key, 'result': result}, default=str)}\n\n"
 
-                # Pipeline summary
+                # Grid Dispatch summary
                 orchestrator_cfg = settings.agents["orchestrator"]
-                summary = call_agent(orchestrator_cfg, f"Create a crisp morning briefing from the crew's overnight findings. Format as: TOP PRIORITY (1 item), WATCH LIST (2-3 items), ALL CLEAR (what's fine). Data:\n{digest_context}")
+                summary = call_agent(orchestrator_cfg, f"Create a crisp morning briefing from the grid team's overnight findings. Format as: TOP PRIORITY (1 item), WATCH LIST (2-3 items), ALL CLEAR (what's fine). Data:\n{digest_context}")
                 yield f"data: {json.dumps({'phase': 'synthesis', 'agent_key': 'orchestrator', 'result': summary}, default=str)}\n\n"
                 yield f"data: {json.dumps({'phase': 'done'})}\n\n"
 
@@ -547,8 +547,8 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
 
         This is the main Phase 2 workflow endpoint:
         1. Scans Azure Policy compliance for the subscription
-        2. Sends findings to The Inspector for classification
-        3. For policy bugs: calls The Roughneck to generate Terraform/policy fix code
+        2. Sends findings to The Regulator for classification
+        3. For policy bugs: calls The Lineman to generate Terraform/policy fix code
         4. Creates proposals with fix code attached (for PRs) or work item details (for PBIs)
         5. Returns proposals for human review
 
@@ -580,7 +580,7 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                     "count": 0,
                 })
 
-            # Step 2: Send to The Inspector for classification
+            # Step 2: Send to The Regulator for classification
             compliance_context = json.dumps(non_compliant[:30], indent=2, default=str)
 
             inspector_prompt = f"""Analyze these non-compliant Azure resources and classify each violation.
@@ -608,8 +608,8 @@ NON-COMPLIANT RESOURCES:
             response_text = inspector_result.get("response", "")
             classifications = _parse_inspector_classifications(response_text)
 
-            # Step 4: For policy bugs, call The Roughneck to generate fix code
-            roughneck_cfg = settings.agents["standards_architect"]
+            # Step 4: For policy bugs, call The Lineman to generate fix code
+            lineman_cfg = settings.agents["standards_architect"]
             for c in classifications:
                 if c.get("class") == "policy_bug":
                     remediation_prompt = (
@@ -622,10 +622,10 @@ NON-COMPLIANT RESOURCES:
                         f"1. **main.tf** — Terraform to deploy the corrected policy definition\n"
                         f"2. **variables.tf** — Variable declarations with defaults\n"
                         f"3. **RUNBOOK.md** — Validation steps after apply\n\n"
-                        f"Follow organizational standards: tags (support-owner, managed-by=ops-council), "
+                        f"Follow organizational standards: tags (support-owner, managed-by=dte-weather-ops), "
                         f"azurerm provider with version constraint."
                     )
-                    fix_result = call_agent(roughneck_cfg, remediation_prompt)
+                    fix_result = call_agent(lineman_cfg, remediation_prompt)
                     fix_text = fix_result.get("response", "")
                     c["file_changes"] = ado_integration.parse_remediation_to_file_changes(
                         fix_text, c.get("policy_name", "")
@@ -641,7 +641,7 @@ NON-COMPLIANT RESOURCES:
                     resource_id=c.get("resource_id", ""),
                     support_owner=c.get("support_owner", "unassigned"),
                     inspector_reasoning=c.get("reasoning", ""),
-                    title=c.get("title", "Ops Council Finding"),
+                    title=c.get("title", "Cloud Weather Ops Finding"),
                     description=c.get("description", ""),
                     acceptance_criteria=c.get("acceptance_criteria", ""),
                     priority=c.get("priority", 2),

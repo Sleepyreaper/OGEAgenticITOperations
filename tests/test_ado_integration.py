@@ -52,7 +52,7 @@ p1 = create_proposal(
 )
 test("policy_bug → pull_request", p1.proposal_type == ProposalType.PULL_REQUEST.value)
 test("has PR file changes", len(p1.pr_file_changes) == 1)
-test("has source branch", p1.pr_source_branch.startswith("ops-council/policy-fix-"))
+test("has source branch", p1.pr_source_branch.startswith("dte-weather-ops/policy-fix-"))
 
 p2 = create_proposal(
     violation_class="misconfiguration",
@@ -221,7 +221,7 @@ test("2 proposals created", len(proposals) == 2)
 test("first is PR", proposals[0]["proposal_type"] == "pull_request")
 test("second is PBI", proposals[1]["proposal_type"] == "pbi")
 test("tags include class", "policy_bug" in proposals[0]["tags"])
-test("tags include ops-council", "ops-council" in proposals[0]["tags"])
+test("tags include dte-weather-ops", "dte-weather-ops" in proposals[0]["tags"])
 
 
 # ─── Test 9: Edge cases ──────────────────────────────────
@@ -256,7 +256,7 @@ resource "azurerm_policy_definition" "deny_storage_http_v2" {
 
   metadata = jsonencode({
     category    = "Storage"
-    managed-by  = "ops-council"
+    managed-by  = "dte-weather-ops"
   })
 
   policy_rule = jsonencode({
@@ -348,7 +348,7 @@ client = AdoClient()
 test("unconfigured without env vars", not client.configured)
 
 # Simulate configured client
-client.org_url = "https://dev.azure.com/contoso"
+client.org_url = "https://dev.azure.com/dtenergy"
 client.project = "CloudOps"
 client.repo = "policy-as-code"
 client.pat = "fake-pat-for-testing"

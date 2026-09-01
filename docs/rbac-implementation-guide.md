@@ -1,12 +1,12 @@
-# Ops Council — RBAC & Least-Privilege Implementation Guide
+# Cloud Weather Ops — RBAC & Least-Privilege Implementation Guide
 
 > **Guiding Principle**: AI that enhances productivity while *reinforcing* standards and governance policy. Every permission follows organizational least-privilege model.
 > 
-> **Audience**: Any team deploying the Ops Council in their own Azure environment.
+> **Audience**: Any team deploying the Cloud Weather Ops in their own Azure environment.
 
 ## Overview
 
-The Ops Council uses a single **User-Assigned Managed Identity** to access Azure data. This identity is the *only* principal that needs RBAC assignments. End users authenticate to the web app but **never receive elevated Azure permissions** — the Managed Identity reads on their behalf.
+The Cloud Weather Ops uses a single **User-Assigned Managed Identity** to access Azure data. This identity is the *only* principal that needs RBAC assignments. End users authenticate to the web app but **never receive elevated Azure permissions** — the Managed Identity reads on their behalf.
 
 This guide covers everything needed to deploy this RBAC model in any Azure subscription.
 
@@ -19,7 +19,7 @@ This guide covers everything needed to deploy this RBAC model in any Azure subsc
 | Item | Required | Notes |
 |------|----------|-------|
 | Azure subscription(s) to monitor | Yes | One or more. Identity gets Reader across all of them. |
-| Resource group for Ops Council infra | Yes | Contains: App Service, Key Vault, Managed Identity, networking |
+| Resource group for Cloud Weather Ops infra | Yes | Contains: App Service, Key Vault, Managed Identity, networking |
 | Azure OpenAI account(s) | Yes | One or two, depending on model availability per region |
 | Azure DevOps project (Phase 2) | Optional | For automated PR/PBI creation from Inspector findings |
 | Permissions to create RBAC assignments | Yes | Requires **User Access Administrator** or **Owner** on target scopes |
@@ -68,7 +68,7 @@ for role in "Reader" "Log Analytics Reader" "Monitoring Reader"; do
 done
 
 # ═══════════════════════════════════════════════════════
-# Step 4: Grant Key Vault Secrets User (Ops Council KV only)
+# Step 4: Grant Key Vault Secrets User (Cloud Weather Ops KV only)
 # ═══════════════════════════════════════════════════════
 # This is already handled by keyvault.bicep during infra deploy.
 # Only run manually if deploying Key Vault separately.
@@ -122,7 +122,7 @@ az role assignment create \
 
 ### Subscription-Level Roles (per monitored subscription)
 
-These three roles grant read-only access across the entire subscription. The Managed Identity needs these on **every subscription** you want the Ops Council to monitor.
+These three roles grant read-only access across the entire subscription. The Managed Identity needs these on **every subscription** you want the Cloud Weather Ops to monitor.
 
 | # | Role | Role Definition ID | Scope | Purpose | Bicep Module |
 |---|------|-------------------|-------|---------|-------------|
@@ -130,13 +130,13 @@ These three roles grant read-only access across the entire subscription. The Man
 | 2 | **Log Analytics Reader** | `73c42c96-874c-492b-b04d-ab87d138a893` | Subscription | Activity logs, deployment failure analysis, KQL queries via Log Analytics | `subscription-rbac.bicep` |
 | 3 | **Monitoring Reader** | `43d0d8ad-25c7-4714-9337-8ba259a9fe05` | Subscription | Azure Monitor metrics, alerts, diagnostics, Resource Health, Service Health | `subscription-rbac.bicep` |
 
-### Resource-Level Roles (Ops Council infrastructure only)
+### Resource-Level Roles (Cloud Weather Ops infrastructure only)
 
-These roles are scoped to specific resources within the Ops Council's own resource group. They are **not** granted at subscription scope.
+These roles are scoped to specific resources within the Cloud Weather Ops's own resource group. They are **not** granted at subscription scope.
 
 | # | Role | Role Definition ID | Scope | Purpose | Bicep Module |
 |---|------|-------------------|-------|---------|-------------|
-| 4 | **Key Vault Secrets User** | `4633458b-17de-408a-b874-0445c86b69e6` | Ops Council Key Vault | Read API keys and secrets | `keyvault.bicep` |
+| 4 | **Key Vault Secrets User** | `4633458b-17de-408a-b874-0445c86b69e6` | Cloud Weather Ops Key Vault | Read API keys and secrets | `keyvault.bicep` |
 | 5 | **Cognitive Services OpenAI User** | `5e0bd9bd-7b93-4f28-af87-19fc36ad61bd` | Azure OpenAI Account(s) | Call deployed models (chat completions) | `openai-rbac.bicep` |
 | 6 | **Network Contributor** ⚠️ | `4d97b98b-1d4f-4787-a291-c67834d212e7` | Demo NSG only | Chaos demo — create/delete NSG rule. **REMOVE IN PRODUCTION.** | Manual |
 
@@ -148,12 +148,12 @@ These roles are scoped to specific resources within the Ops Council's own resour
 
 | Agent | Azure APIs Used | Data Accessed | Roles Required |
 |-------|----------------|---------------|---------------|
-| 🛢️ **Barrel Counter** (cost) | Resource Graph, Advisor | Resource inventory, SKUs, orphaned disks, cost recommendations | Reader |
-| 🔧 **The Roughneck** (standards) | Resource Graph | Tags, SKU config, VNet topology, NSG rules, architecture patterns | Reader |
-| 🔄 **Turnaround** (diagnostics) | Resource Graph, Activity Log, Log Analytics | Deployment errors, config changes, resource health | Reader + Log Analytics Reader |
-| 🔥 **Flare Stack** (monitoring) | Resource Graph, Resource Health, Service Health | Health status, security drift, anomalies, platform incidents | Reader + Monitoring Reader |
-| 📋 **The Inspector** (compliance) | Resource Graph, Policy Insights API | Policy compliance state, non-compliant resources, policy definitions | Reader |
-| ⚡ **Pipeline** (orchestrator) | Azure OpenAI | Synthesizes other agents' outputs | Cognitive Services OpenAI User |
+| ⚡ **Meter Reader** (cost) | Resource Graph, Advisor | Resource inventory, SKUs, orphaned disks, cost recommendations | Reader |
+| 🔌 **The Lineman** (standards) | Resource Graph | Tags, SKU config, VNet topology, NSG rules, architecture patterns | Reader |
+| 🌑 **Blackout** (diagnostics) | Resource Graph, Activity Log, Log Analytics | Deployment errors, config changes, resource health | Reader + Log Analytics Reader |
+| ⚠️ **Arc Flash** (monitoring) | Resource Graph, Resource Health, Service Health | Health status, security drift, anomalies, platform incidents | Reader + Monitoring Reader |
+| 📊 **The Regulator** (compliance) | Resource Graph, Policy Insights API | Policy compliance state, non-compliant resources, policy definitions | Reader |
+| ⚡ **Grid Dispatch** (orchestrator) | Azure OpenAI | Synthesizes other agents' outputs | Cognitive Services OpenAI User |
 
 ---
 
@@ -176,20 +176,20 @@ These roles are scoped to specific resources within the Ops Council's own resour
 
 ## End User Access Model
 
-The Ops Council does **not** change any user's existing Azure permissions.
+The Cloud Weather Ops does **not** change any user's existing Azure permissions.
 
-| User Type | Current Access | Ops Council Access | Change Needed |
+| User Type | Current Access | Cloud Weather Ops Access | Change Needed |
 |-----------|---------------|-------------------|---------------|
 | DevOps team | Read-only in Test/Prod | Full dashboard + crew chat | ❌ None |
 | Cloud Ops engineer | Admin across tenant | Full access + act on recommendations | ❌ None |
 | Executive (leadership) | Varies | Reliability dashboard view | ❌ None |
-| ADO service connection (Phase 2) | Contributor on Ops Council RG | Deploy pipeline artifacts | See Phase 2 section |
+| ADO service connection (Phase 2) | Contributor on Cloud Weather Ops RG | Deploy pipeline artifacts | See Phase 2 section |
 
 ---
 
 ## Multi-Subscription Deployment
 
-The Ops Council natively supports monitoring multiple subscriptions. Resource Graph queries accept an array of subscription IDs.
+The Cloud Weather Ops natively supports monitoring multiple subscriptions. Resource Graph queries accept an array of subscription IDs.
 
 ```
 ┌─────────────────────────┐
@@ -221,7 +221,7 @@ The web app discovers accessible subscriptions at runtime via `GET /api/subscrip
 
 ## Multi-Region OpenAI Deployment
 
-Different AI models may only be available in specific Azure regions. The Ops Council supports per-agent endpoint routing.
+Different AI models may only be available in specific Azure regions. The Cloud Weather Ops supports per-agent endpoint routing.
 
 ```
 ┌─────────────────────────┐
@@ -254,7 +254,7 @@ Then update the `AZURE_OPENAI_ENDPOINT_SECONDARY` (or add a new env var) in App 
 
 ## Phase 2: Azure DevOps Integration RBAC
 
-Phase 2 adds the ability for The Inspector to create work items (PBIs, Bugs) and pull requests in Azure DevOps. This requires additional permissions **in ADO, not in Azure**.
+Phase 2 adds the ability for The Regulator to create work items (PBIs, Bugs) and pull requests in Azure DevOps. This requires additional permissions **in ADO, not in Azure**.
 
 ### ADO Permissions Required
 
@@ -298,17 +298,17 @@ az webapp config appsettings set \
     ADO_REPO="<POLICY_REPO_NAME>"
 ```
 
-### ADO Pipeline Environments (Human Gates)
+### ADO Grid Dispatch Environments (Human Gates)
 
 The pipeline uses ADO Environments with approval checks for human-in-the-loop control:
 
 | Environment | Auto-Deploy? | Approval Required | Approvers |
 |------------|-------------|-------------------|-----------|
-| `ops-council-staging` | Yes (on main merge) | No | — |
-| `ops-council-production` | No | **Yes** | Cloud Ops leads |
+| `dte-weather-ops-staging` | Yes (on main merge) | No | — |
+| `dte-weather-ops-production` | No | **Yes** | Cloud Ops leads |
 
 **To configure approvals in ADO:**
-1. Go to Pipelines → Environments → `ops-council-production`
+1. Go to Grid Dispatchs → Environments → `dte-weather-ops-production`
 2. Click "Approvals and checks" → Add → Approvals
 3. Add approvers (Christopher, Shane, or equivalent)
 4. Set timeout (e.g., 72 hours)
@@ -329,13 +329,13 @@ The pipeline uses ADO Environments with approval checks for human-in-the-loop co
 
 ## Compliance with Governance Standards
 
-| Standard | How Ops Council Aligns |
+| Standard | How Cloud Weather Ops Aligns |
 |----------|----------------------|
 | Least-privilege access | 5 read-only roles + 1 scoped demo role. Zero write permissions. |
-| Teams have read-only in Test/Prod | Unchanged. Ops Council provides insight without granting more access. |
+| Teams have read-only in Test/Prod | Unchanged. Cloud Weather Ops provides insight without granting more access. |
 | Terraform is the standard IaC | Infra in Bicep, remediation output generates Terraform for the team's existing workflow. |
-| Resource groups tagged with support-owner | Flare Stack uses tags for alert routing. The Roughneck validates tagging compliance. |
-| Changes go through governance | Ops Council recommends but never auto-executes. Human approval required at every step. |
+| Resource groups tagged with support-owner | Arc Flash uses tags for alert routing. The Lineman validates tagging compliance. |
+| Changes go through governance | Cloud Weather Ops recommends but never auto-executes. Human approval required at every step. |
 | ADO work items follow process | Phase 2 proposals are PENDING until human approves. ADO work items follow existing board/sprint process. |
 | Policy changes require PR review | Policy bug PRs go through normal code review. Inspector writes the PR, humans review and merge. |
 
@@ -414,4 +414,4 @@ echo "❌ If any show ERROR, check role assignments for the Managed Identity."
 
 **5 read-only roles + 1 scoped demo role on 1 Managed Identity.** Zero changes to user permissions. Zero passwords. Zero write access to customer resources.
 
-The Ops Council reads your environment and reasons about it — it never changes anything. Phase 2 adds the ability to *propose* changes (PRs and work items in ADO), but every proposal requires human approval before anything is created.
+The Cloud Weather Ops reads your environment and reasons about it — it never changes anything. Phase 2 adds the ability to *propose* changes (PRs and work items in ADO), but every proposal requires human approval before anything is created.

@@ -1,4 +1,4 @@
-# Ops Council — Requirements
+# Cloud Weather Ops — Requirements
 
 ## Org Context
 
@@ -28,32 +28,32 @@
 - Real-time environment scanning with auto-refresh
 - Deep intelligence beyond Azure Advisor (architecture smells, cross-resource correlation)
 - Chaos demo — create a real security problem, detect in 10 seconds
-- Morning Briefing — overnight digest from the crew
+- Morning Briefing — overnight digest from the grid team
 - Generate Remediation — Terraform/CLI code following organizational standards
 
-### Ops Council (Chat)
+### Cloud Weather Ops (Chat)
 - 6 AI agents with themed personalities that debate and argue
 - Streaming responses via SSE — watch the debate live
 - Transparent disagreement between Cost Sentinel and Standards Architect
-- Compliance classification by The Inspector (policy bug vs workaround abuse)
+- Compliance classification by The Regulator (policy bug vs workaround abuse)
 - Token cost ticker for full transparency
 
 ## Customer-Requested Use Cases
 
 ### 1. Troubleshooting Without Elevated Access (Highest Impact)
-- **Status**: ✅ Built — Turnaround agent diagnoses from Activity Logs, Resource Health
+- **Status**: ✅ Built — Blackout agent diagnoses from Activity Logs, Resource Health
 - **Demo**: "My deployment failed" scenario
 
 ### 2. Observability / Proactive Monitoring
-- **Status**: ✅ Built — Flare Stack + auto-refresh + Morning Briefing + Service Health
+- **Status**: ✅ Built — Arc Flash + auto-refresh + Morning Briefing + Service Health
 - **Demo**: Morning Briefing, chaos detection, service health events
 
 ### 3. Cost Optimization with Standards Balance
-- **Status**: ✅ Built — Barrel Counter vs The Roughneck debate system
+- **Status**: ✅ Built — Meter Reader vs The Lineman debate system
 - **Demo**: VM sizing scenario, waste analysis scenario
 
 ### 5. Continuous Compliance (Rick/Shane's ask)
-- **Status**: ✅ Phase 1 built — The Inspector agent classifies policy violations
+- **Status**: ✅ Phase 1 built — The Regulator agent classifies policy violations
 - **Demo**: Compliance inspection scenario (policy bugs, expired exemptions, workaround abuse)
 - **Phase 2**: ✅ ADO integration built — Inspector → proposals → human approval → ADO work items/PRs
   - `POST /api/ado/inspect-and-propose` — full pipeline: scan → classify → propose

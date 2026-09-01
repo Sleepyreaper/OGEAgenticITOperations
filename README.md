@@ -1,47 +1,41 @@
-<p align="center">
-  <img src="static/oge-logo.png" alt="Americas Enterprise — US Oil, Gas & Energy" width="480">
-</p>
+# DTE Cloud Weather Ops
 
-<h1 align="center">OGE Ops Council</h1>
+**Multi-agent operational intelligence for Azure Cloud Operations — Microsoft DTE Energy**
 
-<p align="center"><strong>Multi-agent operational intelligence for Azure Cloud Operations — Microsoft Oil, Gas & Energy</strong></p>
-
----
-
-Six AI specialists — each named after cloud operations concepts — debate, disagree, and synthesize to deliver balanced, transparent recommendations. Built for teams that need operational answers without elevated access.
+Six AI specialists — each named after energy operations concepts — debate, disagree, and synthesize to deliver balanced, transparent recommendations. Built for DTE Energy teams that need operational answers without elevated access.
 
 **Two views, one platform:**
 - **Reliability** — Executive dashboard with reliability scores, pillar assessments, and service health (Rick's view)
 - **Ops Center** — Operational findings, chaos testing, remediation code, and deep intelligence (Christopher/Shane's view)
 
-## The Crew
+## The Grid Team
 
 | | Agent | Role | Model | What They Do |
 |--|-------|------|-------|-------------|
-| ⚡ | **Pipeline** | Coordinator | foundry-gpt | Routes requests, synthesizes the crew's takes, delivers exec-ready summaries |
-| 🛢️ | **Barrel Counter** | Cost | foundry-reasoning | Finds waste, recommends rightsizing, shows the math — every dollar is a barrel |
-| 🔧 | **The Roughneck** | Standards | foundry-gpt | Knows *why* things are built the way they are. Writes Terraform remediation. |
-| 🔄 | **Turnaround** | Diagnostics | foundry-reasoning | Root cause analysis without users needing elevated access |
-| 🔥 | **Flare Stack** | Monitoring | foundry-nano | Proactive scanning — surfaces problems before they become incidents |
-| 📋 | **The Inspector** | Compliance | foundry-reasoning | Classifies policy violations as definition bugs, misconfigurations, exemptions, or workaround abuse |
+| ⚡ | **Grid Dispatch** | Coordinator | foundry-gpt | Routes requests, synthesizes the grid team's takes, delivers exec-ready summaries |
+| ⚡ | **Meter Reader** | Cost | foundry-reasoning | Finds waste, recommends rightsizing, shows the math — every dollar is a kilowatt-hour |
+| 🔌 | **The Lineman** | Standards | foundry-gpt | Knows *why* things are built the way they are. Writes Terraform remediation. |
+| 🌑 | **Blackout** | Diagnostics | foundry-reasoning | Root cause analysis without users needing elevated access |
+| ⚠️ | **Arc Flash** | Monitoring | foundry-nano | Proactive scanning — surfaces problems before they become incidents |
+| 📊 | **The Regulator** | Compliance | foundry-reasoning | Classifies policy violations as definition bugs, misconfigurations, exemptions, or workaround abuse |
 
 ## How It Works
 
 ```
-User Question  /  🔥 Flare Stack Alert  /  ☀️ Morning Briefing
+User Question  /  ⚠️ Arc Flash Alert  /  ☀️ Morning Briefing
          │
          ▼
-    ⚡ Pipeline (routes to crew)
+    ⚡ Grid Dispatch (routes to crew)
          │
    ┌─────┼──────────┬──────────┬──────────┐
    ▼     ▼          ▼          ▼          ▼
- 🛢️      🔧         🔄         🔥         📋
+ ⚡      🔌         🌑         ⚠️         📊
 Barrel  Rough-    Turn-     Flare     The
 Counter neck      around    Stack     Inspector
    │     │          │          │
    └─────┴──────────┘          │
         ▼  (Round 2: Debate)   │
-   ⚡ Pipeline ◄───────────────┘
+   ⚡ Grid Dispatch ◄───────────────┘
         │
         ▼
   Streamed live: each crew member
@@ -52,9 +46,9 @@ Counter neck      around    Stack     Inspector
 
 **Round 1**: Each specialist gives their styled take (3-5 sentences).
 **Round 2**: Each specialist sees the others' takes and argues back (2-3 sentences).
-**Round 3**: Pipeline delivers a crisp executive readout.
+**Round 3**: Grid Dispatch delivers a crisp executive readout.
 
-All responses stream via Server-Sent Events — you watch the crew debate live.
+All responses stream via Server-Sent Events — you watch the grid team debate live.
 
 ## Key Features
 
@@ -63,7 +57,7 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 - Four pillar assessments: Security, Governance, Resilience, Cost Efficiency — each with score bars
 - Azure Service Health events — clickable for "which of MY resources are affected?"
 - Prioritized action cards (HIGH / MED / LOW)
-- "Ask Pipeline for Executive Summary" button
+- "Ask Grid Dispatch for Executive Summary" button
 
 ### Ops Center
 - Real-time findings: orphaned disks, public IPs, insecure storage, NSG drift
@@ -73,11 +67,11 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 - Auto-refresh every 60 seconds in Live mode (Resource Graph queries are free)
 - Change detection — badge flashes "⚡ CHANGE DETECTED" when environment changes
 - 💥 "Do Something Stupid" chaos demo — creates real security problem, detected in ~10 seconds
-- ☀️ Morning Briefing — overnight digest from the crew
+- ☀️ Morning Briefing — overnight digest from the grid team
 
-### Ops Council Chat
+### Cloud Weather Ops Chat
 - Streaming multi-agent debate with custom-styled personalities
-- 🔧 Generate Terraform / CLI Fix button after every analysis
+- 🔌 Generate Terraform / CLI Fix button after every analysis
 - 📊 Executive Summary button for leadership-ready output
 - Token cost ticker — transparency on every interaction (pennies per query)
 - Dynamic suggested questions that update based on real environment scan

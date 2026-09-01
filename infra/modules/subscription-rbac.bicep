@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Subscription-Level RBAC for Managed Identity
 // ──────────────────────────────────────────────
-// Grants the Ops Council Managed Identity the
+// Grants the Cloud Weather Ops Managed Identity the
 // read-only roles it needs on each monitored
 // subscription. Deploy once PER subscription.
 //
@@ -14,7 +14,7 @@
 
 targetScope = 'subscription'
 
-@description('Principal ID of the Ops Council Managed Identity.')
+@description('Principal ID of the Cloud Weather Ops Managed Identity.')
 param managedIdentityPrincipalId string
 
 // ── Role Definition IDs (built-in) ──

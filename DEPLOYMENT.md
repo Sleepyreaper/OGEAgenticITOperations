@@ -2,7 +2,7 @@
 
 ## Overview
 
-The OGE Ops Council runs on Azure and requires the following resources. All infrastructure is defined in `infra/` as Bicep templates.
+The DTE Cloud Weather Ops runs on Azure and requires the following resources. All infrastructure is defined in `infra/` as Bicep templates.
 
 ## Required Azure Resources
 
@@ -12,9 +12,9 @@ You need **3 model deployments** in Azure AI Foundry (or Azure OpenAI):
 
 | Deployment Name | Model Type | Used By | Purpose |
 |----------------|-----------|---------|---------|
-| `foundry-gpt` | General-purpose LLM (e.g., GPT-4o, GPT-4.1, GPT-5.x) | Pipeline, The Roughneck | Orchestration, synthesis, standards analysis |
-| `foundry-reasoning` | Reasoning model (e.g., o3, o4-mini) | Barrel Counter, Turnaround, The Inspector | Deep cost analysis, diagnostics, compliance |
-| `foundry-nano` | Lightweight model (e.g., GPT-4o-mini, GPT-5-nano) | Flare Stack | Fast scanning, alerting |
+| `foundry-gpt` | General-purpose LLM (e.g., GPT-4o, GPT-4.1, GPT-5.x) | Grid Dispatch, The Lineman | Orchestration, synthesis, standards analysis |
+| `foundry-reasoning` | Reasoning model (e.g., o3, o4-mini) | Meter Reader, Blackout, The Regulator | Deep cost analysis, diagnostics, compliance |
+| `foundry-nano` | Lightweight model (e.g., GPT-4o-mini, GPT-5-nano) | Arc Flash | Fast scanning, alerting |
 
 **Setup steps:**
 1. Create an Azure OpenAI resource (or AI Foundry project) in your preferred region
@@ -110,7 +110,7 @@ az webapp deploy \
   --type zip
 ```
 
-### Option B: Azure Pipelines
+### Option B: Azure Grid Dispatchs
 
 See `pipelines/azure-pipelines.yml`. Configure these variable groups:
 - `{PREFIX}-Staging` — staging environment variables

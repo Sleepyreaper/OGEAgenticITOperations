@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-// Ops Council — Ops Agent Infrastructure
+// Cloud Weather Ops — Ops Agent Infrastructure
 // ═══════════════════════════════════════════════════
 // Region       : West US 2
 // OpenAI       : Reuses existing Azure OpenAI account
@@ -10,13 +10,10 @@
 targetScope = 'resourceGroup'
 
 @description('Prefix for new resource names.')
-param prefix string = 'opscouncil'
+param prefix string = 'dteops'
 
 @description('Azure region for new resources.')
-param location string = 'westus2'
-
-@description('Resource ID of the existing App Service Plan to share.')
-param existingAppServicePlanId string
+param location string = 'eastus2'
 
 @description('Name of the existing Azure OpenAI account.')
 param openaiAccountName string
@@ -36,6 +33,12 @@ param deployerPrincipalId string = ''
 // ── Network ──
 module network 'modules/network.bicep' = {
   name: 'network'
+  params: { location: location, prefix: prefix }
+}
+
+// ── App Service Plan ──
+module appServicePlan 'modules/app-service-plan.bicep' = {
+  name: 'app-service-plan'
   params: { location: location, prefix: prefix }
 }
 
@@ -83,7 +86,7 @@ module webApp 'modules/web-app.bicep' = {
     location: location
     prefix: prefix
     webAppSubnetId: network.outputs.webAppSubnetId
-    existingAppServicePlanId: existingAppServicePlanId
+    existingAppServicePlanId: appServicePlan.outputs.planId
     managedIdentityId: identity.outputs.identityId
     managedIdentityClientId: identity.outputs.identityClientId
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString

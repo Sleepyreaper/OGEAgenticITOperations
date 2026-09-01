@@ -11,13 +11,13 @@ import json
 
 VM_SIZING_DATA = json.dumps({
     "resource": {
-        "name": "demo-sap-batch-vm01",
+        "name": "dte-scada-batch-vm01",
         "type": "Microsoft.Compute/virtualMachines",
         "resourceGroup": "SAP-Production-RG",
         "location": "eastus2",
         "sku": "Standard_D16s_v5",
         "tags": {
-            "support-owner": "sap-ops-team@contoso.com",
+            "support-owner": "sap-ops-team@dtenergy.com",
             "environment": "production",
             "application": "SAP-BatchProcessing",
             "cost-center": "CC-4820"
@@ -44,7 +44,7 @@ VM_SIZING_DATA = json.dumps({
     ]
 }, indent=2)
 
-VM_SIZING_QUESTION = "Why is demo-sap-batch-vm01 running on a D16s_v5? It seems oversized. Can we save money here?"
+VM_SIZING_QUESTION = "Why is dte-scada-batch-vm01 running on a D16s_v5? It seems oversized. Can we save money here?"
 
 
 # ─── Scenario 2: "My deployment failed" ──────────────────────────
@@ -55,7 +55,7 @@ DEPLOYMENT_FAILURE_DATA = json.dumps({
         "resourceGroup": "WebApp-Test-RG",
         "status": "Failed",
         "timestamp": "2026-03-11T14:32:18Z",
-        "initiatedBy": "svc-terraform-pipeline@contoso.com"
+        "initiatedBy": "svc-terraform-pipeline@dtenergy.com"
     },
     "activity_log_entries": [
         {
@@ -119,17 +119,17 @@ WASTE_ANALYSIS_DATA = json.dumps({
         "trend": "+4.0%"
     },
     "orphaned_disks": [
-        {"name": "migration-temp-disk01", "resourceGroup": "Legacy-Migration-RG", "sizeGB": 512, "sku": "Premium_LRS", "monthly_cost": 73.22, "unattached_days": 45, "tags": {"support-owner": "cloud-ops@contoso.com"}},
-        {"name": "dev-backup-osdisk", "resourceGroup": "Dev-Sandbox-RG", "sizeGB": 256, "sku": "Premium_LRS", "monthly_cost": 38.11, "unattached_days": 90, "tags": {"support-owner": "dev-team-alpha@contoso.com"}},
-        {"name": "old-sql-data-disk", "resourceGroup": "Data-Prod-RG", "sizeGB": 1024, "sku": "Premium_LRS", "monthly_cost": 135.17, "unattached_days": 30, "tags": {"support-owner": "data-platform@contoso.com"}}
+        {"name": "migration-temp-disk01", "resourceGroup": "Legacy-Migration-RG", "sizeGB": 512, "sku": "Premium_LRS", "monthly_cost": 73.22, "unattached_days": 45, "tags": {"support-owner": "cloud-ops@dtenergy.com"}},
+        {"name": "dev-backup-osdisk", "resourceGroup": "Dev-Sandbox-RG", "sizeGB": 256, "sku": "Premium_LRS", "monthly_cost": 38.11, "unattached_days": 90, "tags": {"support-owner": "dev-team-alpha@dtenergy.com"}},
+        {"name": "old-sql-data-disk", "resourceGroup": "Data-Prod-RG", "sizeGB": 1024, "sku": "Premium_LRS", "monthly_cost": 135.17, "unattached_days": 30, "tags": {"support-owner": "data-platform@dtenergy.com"}}
     ],
     "underutilized_app_service_plans": [
-        {"name": "api-staging-plan", "resourceGroup": "API-Staging-RG", "sku": "P2v3", "monthly_cost": 292.00, "cpu_avg_7d": 3.2, "memory_avg_7d": 18.5, "apps_hosted": 1, "tags": {"support-owner": "api-team@contoso.com"}},
-        {"name": "internal-tools-plan", "resourceGroup": "InternalTools-RG", "sku": "P1v3", "monthly_cost": 146.00, "cpu_avg_7d": 1.1, "memory_avg_7d": 8.3, "apps_hosted": 2, "tags": {"support-owner": "platform-eng@contoso.com"}}
+        {"name": "api-staging-plan", "resourceGroup": "API-Staging-RG", "sku": "P2v3", "monthly_cost": 292.00, "cpu_avg_7d": 3.2, "memory_avg_7d": 18.5, "apps_hosted": 1, "tags": {"support-owner": "api-team@dtenergy.com"}},
+        {"name": "internal-tools-plan", "resourceGroup": "InternalTools-RG", "sku": "P1v3", "monthly_cost": 146.00, "cpu_avg_7d": 1.1, "memory_avg_7d": 8.3, "apps_hosted": 2, "tags": {"support-owner": "platform-eng@dtenergy.com"}}
     ],
     "idle_application_gateway": {
         "name": "dr-appgw-eastus2", "resourceGroup": "DR-Infrastructure-RG", "sku": "WAF_v2", "monthly_cost": 350.00, "requests_7d": 0, "backend_health": "Healthy",
-        "tags": {"support-owner": "cloud-ops@contoso.com", "purpose": "disaster-recovery", "dr-tier": "tier-1"}
+        "tags": {"support-owner": "cloud-ops@dtenergy.com", "purpose": "disaster-recovery", "dr-tier": "tier-1"}
     },
     "unused_public_ips": [
         {"name": "legacy-api-pip", "resourceGroup": "Legacy-Migration-RG", "allocation": "Static", "monthly_cost": 3.65, "associated": None},
@@ -163,7 +163,7 @@ SCOUT_ALERT_DATA = json.dumps({
         ]
     },
     "resource_group_tags": {
-        "support-owner": "cloud-ops@contoso.com",
+        "support-owner": "cloud-ops@dtenergy.com",
         "environment": "production"
     }
 }, indent=2)
@@ -239,7 +239,7 @@ COMPLIANCE_DATA = json.dumps({
             "policyDefinitionName": "Secure transfer to storage accounts should be enabled",
             "policyDefinitionAction": "Audit",
             "complianceState": "NonCompliant",
-            "tags": {"support-owner": "data-platform@contoso.com", "environment": "production", "migration-phase": "3"},
+            "tags": {"support-owner": "data-platform@dtenergy.com", "environment": "production", "migration-phase": "3"},
             "detail": "HTTPS-only transfer is disabled. Account uses HTTP for legacy ETL pipeline from on-prem SFTP gateway.",
             "created": "2024-06-15",
             "last_policy_eval": "2026-03-17T05:42:00Z"
@@ -251,7 +251,7 @@ COMPLIANCE_DATA = json.dumps({
             "policyDefinitionName": "Key Vault should use a virtual network service endpoint",
             "policyDefinitionAction": "Audit",
             "complianceState": "NonCompliant",
-            "tags": {"support-owner": "dev-team-alpha@contoso.com", "environment": "development"},
+            "tags": {"support-owner": "dev-team-alpha@dtenergy.com", "environment": "development"},
             "detail": "Key Vault has no VNet service endpoint. Dev teams use public endpoint for local development.",
             "created": "2025-11-02",
             "last_policy_eval": "2026-03-17T05:42:00Z"
@@ -263,7 +263,7 @@ COMPLIANCE_DATA = json.dumps({
             "policyDefinitionName": "Azure SQL Database should have Azure Active Directory Only Authentication",
             "policyDefinitionAction": "Audit",
             "complianceState": "NonCompliant",
-            "tags": {"support-owner": "data-platform@contoso.com", "environment": "production", "application": "analytics-dwh"},
+            "tags": {"support-owner": "data-platform@dtenergy.com", "environment": "production", "application": "analytics-dwh"},
             "detail": "SQL Auth is enabled alongside AAD. Legacy analytics ETL uses SQL auth with a service account password rotated quarterly via Key Vault.",
             "created": "2023-09-10",
             "last_policy_eval": "2026-03-17T05:42:00Z"
@@ -275,7 +275,7 @@ COMPLIANCE_DATA = json.dumps({
             "policyDefinitionName": "Azure Kubernetes Service Clusters should have local authentication methods disabled",
             "policyDefinitionAction": "Audit",
             "complianceState": "NonCompliant",
-            "tags": {"support-owner": "platform-eng@contoso.com", "environment": "production", "application": "microservices"},
+            "tags": {"support-owner": "platform-eng@dtenergy.com", "environment": "production", "application": "microservices"},
             "detail": "Local accounts still enabled. Team filed exemption request 6 months ago citing CI/CD pipeline dependency. Exemption expired last month.",
             "created": "2024-03-20",
             "last_policy_eval": "2026-03-17T05:42:00Z"
@@ -287,7 +287,7 @@ COMPLIANCE_DATA = json.dumps({
             "policyDefinitionName": "Function apps should use the latest TLS version",
             "policyDefinitionAction": "Audit",
             "complianceState": "NonCompliant",
-            "tags": {"support-owner": "cloud-ops@contoso.com", "environment": "production"},
+            "tags": {"support-owner": "cloud-ops@dtenergy.com", "environment": "production"},
             "detail": "Running TLS 1.0. Function app is stopped (runtime deprecated) but still exists as a resource. Migration to new function app was completed Q4 2025 but old resource never deleted.",
             "created": "2022-08-01",
             "last_policy_eval": "2026-03-17T05:42:00Z"
@@ -343,7 +343,7 @@ COMPLIANCE_QUESTION = "Run a compliance scan. We need to know what's non-complia
 DEMO_SCENARIOS = {
     "vm_sizing": {
         "title": "Why is this VM so big?",
-        "subtitle": "🛢️ Barrel Counter vs 🔧 The Roughneck — the crew debates sizing",
+        "subtitle": "⚡ Meter Reader vs 🔌 The Lineman — the grid team debates sizing",
         "icon": "server",
         "question": VM_SIZING_QUESTION,
         "data": VM_SIZING_DATA,
@@ -351,7 +351,7 @@ DEMO_SCENARIOS = {
     },
     "deployment_failure": {
         "title": "My deployment failed",
-        "subtitle": "🔄 Turnaround diagnoses failures without elevated access",
+        "subtitle": "🌑 Blackout diagnoses failures without elevated access",
         "icon": "alert-triangle",
         "question": DEPLOYMENT_FAILURE_QUESTION,
         "data": DEPLOYMENT_FAILURE_DATA,
@@ -359,15 +359,15 @@ DEMO_SCENARIOS = {
     },
     "waste_analysis": {
         "title": "Where are we wasting money?",
-        "subtitle": "🛢️ Barrel Counter finds waste, 🔧 The Roughneck defends spending",
+        "subtitle": "⚡ Meter Reader finds waste, 🔌 The Lineman defends spending",
         "icon": "dollar-sign",
         "question": WASTE_QUESTION,
         "data": WASTE_ANALYSIS_DATA,
         "agents": ["cost_sentinel", "standards_architect"],
     },
     "scout_alert": {
-        "title": "🔥 Light the Flare Stack",
-        "subtitle": "Flare Stack scans for issues before they become incidents",
+        "title": "⚠️ Light the Arc Flash",
+        "subtitle": "Arc Flash scans for issues before they become incidents",
         "icon": "radar",
         "question": SCOUT_ALERT_QUESTION,
         "data": SCOUT_ALERT_DATA,
@@ -382,8 +382,8 @@ DEMO_SCENARIOS = {
         "agents": ["cost_sentinel", "standards_architect", "diagnostics_sre", "scout"],
     },
     "continuous_compliance": {
-        "title": "📋 Compliance inspection",
-        "subtitle": "The Inspector classifies violations — policy bugs vs workaround abuse",
+        "title": "📊 Compliance inspection",
+        "subtitle": "The Regulator classifies violations — policy bugs vs workaround abuse",
         "icon": "clipboard-check",
         "question": COMPLIANCE_QUESTION,
         "data": COMPLIANCE_DATA,

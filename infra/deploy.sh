@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════
-# Ops Council — Infrastructure Deployment
+# Cloud Weather Ops — Infrastructure Deployment
 # ═══════════════════════════════════════════════════
 # Region       : West US 2
 # OpenAI       : Reuses existing Azure OpenAI account
@@ -10,7 +10,7 @@ set -euo pipefail
 # Model        : foundry-gpt (foundry-gpt)
 # ═══════════════════════════════════════════════════
 
-RESOURCE_GROUP="${RESOURCE_GROUP:-{PREFIX}_RG}"
+RESOURCE_GROUP="${RESOURCE_GROUP:-DTE_RG}"
 LOCATION="${LOCATION:-westus2}"
 SENSITIVE_LOGGING="${SENSITIVE_LOGGING:-false}" # set to "true" to allow full resource name logging
 
@@ -33,7 +33,7 @@ redact() {
 }
 
 echo "========================================="
-echo " Ops Council — Deploy Infrastructure"
+echo " Cloud Weather Ops — Deploy Infrastructure"
 echo "========================================="
 echo "Resource Group : $(redact "$RESOURCE_GROUP")"
 echo "Location       : $LOCATION"

@@ -60,12 +60,12 @@ def call_agent(agent_config: AgentConfig, user_message: str,
 
     # Style instruction per agent personality
     style_hints = {
-        "Barrel Counter": "Respond like a sharp cost analyst reading numbers off a control room display. Lead with the dollar figure. 3-5 sentences, all business.",
-        "The Roughneck": "Respond like a grizzled field veteran. Blunt, confident, maybe a little salty. Lead with whether this is safe to touch or not. 3-5 sentences.",
-        "Turnaround": "Respond like a calm incident commander. Timeline first, then root cause, then fix. Structured and clinical. 3-5 sentences.",
-        "Flare Stack": "Respond like an alert system — short, punchy, severity-tagged. Use 🔴🟡🔵 severity indicators. 2-4 sentences max.",
-        "Pipeline": "Respond as a crisp executive readout. No debate recap — just the bottom line recommendation with key tradeoffs in 3-5 sentences.",
-        "The Inspector": "Respond like a regulatory inspector filing a citation. Lead with the violation, classify it (policy bug / misconfiguration / exemption / workaround abuse), then state the required fix. 3-5 sentences, by the book.",
+        "Meter Reader": "Respond like a sharp cost analyst reading numbers off a control room display. Lead with the dollar figure. 3-5 sentences, all business.",
+        "The Lineman": "Respond like a grizzled field veteran. Blunt, confident, maybe a little salty. Lead with whether this is safe to touch or not. 3-5 sentences.",
+        "Blackout": "Respond like a calm incident commander. Timeline first, then root cause, then fix. Structured and clinical. 3-5 sentences.",
+        "Arc Flash": "Respond like an alert system — short, punchy, severity-tagged. Use 🔴🟡🔵 severity indicators. 2-4 sentences max.",
+        "Grid Dispatch": "Respond as a crisp executive readout. No debate recap — just the bottom line recommendation with key tradeoffs in 3-5 sentences.",
+        "The Regulator": "Respond like a regulatory inspector filing a citation. Lead with the violation, classify it (policy bug / misconfiguration / exemption / workaround abuse), then state the required fix. 3-5 sentences, by the book.",
     }
     style = style_hints.get(agent_config.name, "Keep your response to 3-5 concise sentences.")
     messages.append({"role": "user", "content": user_message + f"\n\nSTYLE: {style}"})
@@ -93,11 +93,11 @@ def call_agent(agent_config: AgentConfig, user_message: str,
 
 def run_council(user_message: str, context_data: str = "",
                 agents_to_consult: list[str] = None) -> dict:
-    """Run the full Ops Council with debate: specialists → rebuttals → synthesis.
+    """Run the full Cloud Weather Ops with debate: specialists → rebuttals → synthesis.
 
     Round 1: Each specialist gives their independent analysis.
     Round 2: Each specialist sees the others' takes and can argue, agree, or refine.
-    Round 3: Pipeline synthesizes with full debate context.
+    Round 3: Grid Dispatch synthesizes with full debate context.
     """
     if agents_to_consult is None:
         agents_to_consult = ["cost_sentinel", "standards_architect",
@@ -127,7 +127,7 @@ def run_council(user_message: str, context_data: str = "",
             if not agent_cfg:
                 continue
 
-            rebuttal_prompt = f"""You've seen what the rest of the crew said in Round 1:
+            rebuttal_prompt = f"""You've seen what the rest of the grid team said in Round 1:
 {round1_summary}
 
 React in 2-3 sentences MAX. Call out disagreements by name, acknowledge good points, state your position. This is a quick crew huddle, not a report."""
@@ -135,7 +135,7 @@ React in 2-3 sentences MAX. Call out disagreements by name, acknowledge good poi
             rebuttal = call_agent(agent_cfg, rebuttal_prompt, context_data)
             rebuttal_outputs[agent_key] = rebuttal
 
-    # ── Round 3: Pipeline synthesizes the full debate ──
+    # ── Round 3: Grid Dispatch synthesizes the full debate ──
     synthesis_input = f"""User question: {user_message}
 
 Azure environment data:
@@ -201,7 +201,7 @@ def run_council_streaming(user_message: str, context_data: str = "",
             if not agent_cfg:
                 continue
 
-            rebuttal_prompt = f"""You've seen what the rest of the crew said in Round 1:
+            rebuttal_prompt = f"""You've seen what the rest of the grid team said in Round 1:
 {round1_summary}
 
 React in 2-3 sentences MAX. Call out disagreements by name, acknowledge good points, state your position. This is a quick crew huddle, not a report."""
@@ -210,7 +210,7 @@ React in 2-3 sentences MAX. Call out disagreements by name, acknowledge good poi
             rebuttal_outputs[agent_key] = rebuttal
             yield {"phase": "round2", "agent_key": agent_key, "result": rebuttal}
 
-    # ── Round 3: Pipeline synthesizes ──
+    # ── Round 3: Grid Dispatch synthesizes ──
     synthesis_input = f"""User question: {user_message}
 
 Azure environment data:

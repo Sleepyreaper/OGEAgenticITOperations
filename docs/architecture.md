@@ -1,4 +1,4 @@
-# Ops Council — Architecture
+# Cloud Weather Ops — Architecture
 
 ## Solution Overview
 
@@ -14,7 +14,7 @@ A multi-agent AI operations platform running on Azure, purpose-built for Cloud O
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                      Ops Council                         │
+│                      Cloud Weather Ops                         │
 │                                                              │
 │  ┌─────────────────┐    ┌──────────────────────────────────┐│
 │  │  Reliability     │    │  Ops Center                      ││
@@ -67,22 +67,22 @@ A multi-agent AI operations platform running on Azure, purpose-built for Cloud O
 
 | Agent | Foundry Deployment | Role | Token Cost/Call | Why This Model |
 |-------|-------------------|------|----------------|----------------|
-| Pipeline (coord) | foundry-gpt | General-purpose LLM | ~$0.008 | Broad knowledge, strong synthesis |
-| Barrel Counter (cost) | foundry-reasoning | Reasoning model | ~$0.015 | Deep reasoning over cost data |
-| The Roughneck (standards) | foundry-gpt | General-purpose LLM | ~$0.008 | Explains rationale, defends decisions |
-| Turnaround (diagnostics) | foundry-reasoning | Reasoning model | ~$0.015 | Complex multi-step root cause analysis |
-| Flare Stack (monitor) | foundry-nano | Lightweight model | ~$0.0005 | Lightweight, fast scanning |
-| The Inspector (compliance) | foundry-reasoning | Reasoning model | ~$0.015 | Deep reasoning for policy classification |
+| Grid Dispatch (coord) | foundry-gpt | General-purpose LLM | ~$0.008 | Broad knowledge, strong synthesis |
+| Meter Reader (cost) | foundry-reasoning | Reasoning model | ~$0.015 | Deep reasoning over cost data |
+| The Lineman (standards) | foundry-gpt | General-purpose LLM | ~$0.008 | Explains rationale, defends decisions |
+| Blackout (diagnostics) | foundry-reasoning | Reasoning model | ~$0.015 | Complex multi-step root cause analysis |
+| Arc Flash (monitor) | foundry-nano | Lightweight model | ~$0.0005 | Lightweight, fast scanning |
+| The Regulator (compliance) | foundry-reasoning | Reasoning model | ~$0.015 | Deep reasoning for policy classification |
 
 **Multi-endpoint routing**: Agents can route to different Azure OpenAI accounts based on model availability. Configure `AZURE_OPENAI_ENDPOINT` for your primary account and `AZURE_OPENAI_ENDPOINT_SECONDARY` for a secondary account if models are spread across regions. The Managed Identity needs Cognitive Services OpenAI User on all accounts.
 
 ## Data Flow: Full Debate (3 rounds)
 
 1. User asks question (or Morning Briefing triggers)
-2. Pipeline determines which crew members to consult
+2. Grid Dispatch determines which crew members to consult
 3. **Round 1**: Each specialist analyzes independently (parallel potential)
 4. **Round 2**: Each specialist sees others' responses, argues/agrees
-5. **Round 3**: Pipeline synthesizes — "Where they agreed, where they clashed, recommendation"
+5. **Round 3**: Grid Dispatch synthesizes — "Where they agreed, where they clashed, recommendation"
 6. User can click "Generate Terraform/CLI Fix" for remediation code
 
 Total per query: ~$0.06-0.12 in tokens. Scanning is free. Compliance scans ~$0.03-0.05.
@@ -116,7 +116,7 @@ Beyond basic Advisor recommendations, the system runs cross-resource correlation
 
 ## Phase 2: Azure DevOps Integration
 
-Phase 2 adds a closed-loop workflow: The Inspector classifies policy violations → proposes ADO actions → human reviews and approves → ADO work items or PRs are created automatically.
+Phase 2 adds a closed-loop workflow: The Regulator classifies policy violations → proposes ADO actions → human reviews and approves → ADO work items or PRs are created automatically.
 
 ### Phase 2 Data Flow
 
@@ -126,13 +126,13 @@ Phase 2 adds a closed-loop workflow: The Inspector classifies policy violations 
 │                                                              │
 │  1. Policy Scan         2. Inspector           3. Proposal   │
 │  ┌─────────────┐       ┌──────────────┐       ┌───────────┐ │
-│  │ Azure Policy │──────▶│ The Inspector│──────▶│ Proposal  │ │
+│  │ Azure Policy │──────▶│ The Regulator│──────▶│ Proposal  │ │
 │  │ Insights API │       │ classifies   │       │ (pending) │ │
 │  └─────────────┘       └──────────────┘       └─────┬─────┘ │
 │                                                     │       │
 │                         4. Human Review             │       │
 │                         ┌──────────────┐            │       │
-│                         │  Ops Council │◀───────────┘       │
+│                         │  Cloud Weather Ops │◀───────────┘       │
 │                         │  Dashboard   │                     │
 │                         │  ✅ Approve  │                     │
 │                         │  ❌ Reject   │                     │
@@ -170,9 +170,9 @@ Phase 2 adds a closed-loop workflow: The Inspector classifies policy violations 
 | `/api/ado/proposals/{id}/approve` | POST | Human approves → generates ADO payload |
 | `/api/ado/proposals/{id}/reject` | POST | Human rejects with reason |
 
-### ADO Pipeline (CI/CD)
+### ADO Grid Dispatch (CI/CD)
 
-The project includes an Azure Pipelines YAML definition (`pipelines/azure-pipelines.yml`) with three stages:
+The project includes an Azure Grid Dispatchs YAML definition (`pipelines/azure-pipelines.yml`) with three stages:
 
 1. **Build & Test** — Install deps, compile check, run tests (auto on every push/PR)
 2. **Deploy Staging** — Auto-deploy to staging App Service on main merge

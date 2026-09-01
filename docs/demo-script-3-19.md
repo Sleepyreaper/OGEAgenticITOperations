@@ -1,4 +1,4 @@
-# Ops Council — Demo Script for 3/19
+# Cloud Weather Ops — Demo Script for 3/19
 
 > **Audience**: Customer leadership
 > **Duration**: ~20 minutes
@@ -43,7 +43,7 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 **Say**: "Same data, different lens. This is what Christopher's team uses day-to-day."
 
 **Point out**:
-- Flare Stack Live Scan findings (orphaned disks, public IPs, insecure storage, architecture smells)
+- Arc Flash Live Scan findings (orphaned disks, public IPs, insecure storage, architecture smells)
 - Each finding has an "Investigate" button
 - Auto-refresh timestamp updating every 60 seconds
 
@@ -51,30 +51,30 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 
 ## Act 3: Meet the Crew (2 minutes)
 
-**Do**: Click **The Crew** tab. Walk through quickly.
+**Do**: Click **The Grid Team** tab. Walk through quickly.
 
-- ⚡ **Pipeline** — coordinates everything
-- 🛢️ **Barrel Counter** — every dollar is a barrel
-- 🔧 **The Roughneck** — knows why things are built this way
-- 🔄 **Turnaround** — diagnoses issues at 3 AM without anyone needing admin access
-- 🔥 **Flare Stack** — early warning system
-- 📋 **The Inspector** — **NEW** — continuous compliance, classifies violations, recommends PR or PBI
+- ⚡ **Grid Dispatch** — coordinates everything
+- ⚡ **Meter Reader** — every dollar is a kilowatt-hour
+- 🔌 **The Lineman** — knows why things are built this way
+- 🌑 **Blackout** — diagnoses issues at 3 AM without anyone needing admin access
+- ⚠️ **Arc Flash** — early warning system
+- 📊 **The Regulator** — **NEW** — continuous compliance, classifies violations, recommends PR or PBI
 
-**Say**: "The tension between Barrel Counter and The Roughneck is the whole point. One wants to save money. The other knows why you spent it. Pipeline makes sure you see both sides. And The Inspector — our newest crew member — is the direct response to what Rick and Shane asked for: continuous compliance intelligence."
+**Say**: "The tension between Meter Reader and The Lineman is the whole point. One wants to save money. The other knows why you spent it. Grid Dispatch makes sure you see both sides. And The Regulator — our newest crew member — is the direct response to what Rick and Shane asked for: continuous compliance intelligence."
 
 ---
 
 ## Act 4: The Debate (4 minutes)
 
-**Do**: Click **"Why is this VM so big?"** demo scenario. Watch the crew debate in real-time.
+**Do**: Click **"Why is this VM so big?"** demo scenario. Watch the grid team debate in real-time.
 
 **Point out as messages stream in**:
-1. Barrel Counter leads with the dollar figure
-2. The Roughneck pushes back — "this VM peaks at 94% for SAP batch"
+1. Meter Reader leads with the dollar figure
+2. The Lineman pushes back — "this VM peaks at 94% for SAP batch"
 3. Round 2 rebuttals fly back and forth
-4. Pipeline synthesizes with tradeoffs
+4. Grid Dispatch synthesizes with tradeoffs
 
-**After synthesis**: Click **"🔧 Generate Terraform / CLI Fix"**
+**After synthesis**: Click **"🔌 Generate Terraform / CLI Fix"**
 
 **Say**: "That's not just a recommendation — that's production-ready Terraform following organizational standards. From 'why is this big?' to 'here's the code to fix it' in under a minute."
 
@@ -82,18 +82,18 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 
 ## Act 5: Compliance Inspection (3 minutes) — RICK/SHANE'S ASK
 
-**Do**: Click the **"📋 Compliance inspection"** demo scenario.
+**Do**: Click the **"📊 Compliance inspection"** demo scenario.
 
-**Say**: "This is what Rick and Shane asked about — continuous compliance. The Inspector scans Azure Policy state, finds non-compliant resources, and classifies every violation."
+**Say**: "This is what Rick and Shane asked about — continuous compliance. The Regulator scans Azure Policy state, finds non-compliant resources, and classifies every violation."
 
 **Point out as messages stream in**:
-1. The Inspector leads — classifies each violation: policy bug, misconfiguration, valid exemption, or workaround abuse
-2. The Roughneck pushes back on one — "that storage account needs HTTP for the legacy SFTP gateway, the policy doesn't account for that pattern"
-3. Barrel Counter quantifies the cost of remediating vs the risk of not remediating
+1. The Regulator leads — classifies each violation: policy bug, misconfiguration, valid exemption, or workaround abuse
+2. The Lineman pushes back on one — "that storage account needs HTTP for the legacy SFTP gateway, the policy doesn't account for that pattern"
+3. Meter Reader quantifies the cost of remediating vs the risk of not remediating
 
 **After synthesis**: 
 
-**Say**: "Watch what Pipeline did: for the storage account, he classified it as a **policy bug** — the built-in policy doesn't handle the SFTP gateway pattern. Fix: create a custom policy with an exemption tag. For the AKS cluster with the expired exemption, he classified it as **workaround abuse** — the CI/CD pipeline should have moved to workload identity six months ago. Fix: create a PBI, priority high, this sprint."
+**Say**: "Watch what Grid Dispatch did: for the storage account, he classified it as a **policy bug** — the built-in policy doesn't handle the SFTP gateway pattern. Fix: create a custom policy with an exemption tag. For the AKS cluster with the expired exemption, he classified it as **workaround abuse** — the CI/CD pipeline should have moved to workload identity six months ago. Fix: create a PBI, priority high, this sprint."
 
 **Key message**: "This is what you asked for: an AI that doesn't just flag non-compliance — it REASONS about whether the policy is wrong or the resource is wrong. That's the difference between a compliance dashboard and an AI compliance inspector."
 
@@ -103,7 +103,7 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 
 **Do**: Go back to **Ops Center**. Click **"💥 Do Something Stupid"**.
 
-**Say**: "I'm about to open SSH to the entire internet on a real NSG. This is the kind of mistake that happens with a fat-fingered Terraform apply or a compromised service principal. Watch how fast the Ops Council catches it."
+**Say**: "I'm about to open SSH to the entire internet on a real NSG. This is the kind of mistake that happens with a fat-fingered Terraform apply or a compromised service principal. Watch how fast the Cloud Weather Ops catches it."
 
 **Wait 10 seconds.** Badge flashes "⚡ CHANGE DETECTED". Crew auto-dispatches with security analysis.
 
@@ -117,7 +117,7 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 
 **Do**: Click **"☀️ Morning Briefing"**.
 
-**Say**: "Every morning, the crew scans overnight and delivers a briefing: what's the top priority, what's on the watch list, what's clear. No dashboards to check. No tickets to review. The crew already did it."
+**Say**: "Every morning, the grid team scans overnight and delivers a briefing: what's the top priority, what's on the watch list, what's clear. No dashboards to check. No tickets to review. The crew already did it."
 
 ---
 
@@ -126,13 +126,13 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 **Say**: "Let's go back to those three asks."
 
 **Ask #1: Diagnosing without elevated access.**
-"Turnaround just diagnosed a deployment failure from Activity Logs and Resource Health — the team never needed more than Reader. The Managed Identity reads on their behalf. Zero access changes."
+"Blackout just diagnosed a deployment failure from Activity Logs and Resource Health — the team never needed more than Reader. The Managed Identity reads on their behalf. Zero access changes."
 
 **Ask #2: AI that reinforces standards and governance.**
-"Barrel Counter wanted to downsize that VM. The Roughneck said no — it peaks at 94% on month-end batch. The system didn't just give an answer, it gave you both sides and let you decide. That IS governance reinforcement."
+"Meter Reader wanted to downsize that VM. The Lineman said no — it peaks at 94% on month-end batch. The system didn't just give an answer, it gave you both sides and let you decide. That IS governance reinforcement."
 
 **Ask #3: Continuous compliance with policy reasoning.**
-"The Inspector classified five violations in under a minute. Two were policy bugs — the built-in definitions don't account for your architecture patterns. One was an expired exemption that's now workaround abuse. He didn't just flag red — he told you WHY and WHAT to do: PR for the policy fix, PBI for the workaround."
+"The Regulator classified five violations in under a minute. Two were policy bugs — the built-in definitions don't account for your architecture patterns. One was an expired exemption that's now workaround abuse. He didn't just flag red — he told you WHY and WHAT to do: PR for the policy fix, PBI for the workaround."
 
 **Close**: "ServiceNow automates your help desk. Kiro writes your code. This gives your Cloud Ops team a crew of AI specialists that know your environment, respect your standards, debate each other, and produce remediation code — all without anyone needing more access than they have today. And we built the compliance scenario you asked about in your email — it's live, right now, at that URL."
 
@@ -145,12 +145,12 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 | "What does this cost?" | ~$0.15-0.75/day. Scanning is free (Resource Graph). Reasoning models cost a few cents per query. The token cost is visible on every interaction. |
 | "What access does it need?" | 5 read-only roles on 1 Managed Identity. Zero write permissions. Zero changes to anyone's existing access. See the RBAC guide. |
 | "Can this scale to all our subscriptions?" | Yes — grant the 3 Reader roles per subscription. Resource Graph queries across all subs natively. |
-| "Can we feed it our Terraform standards?" | Yes — The Roughneck's system prompt is where org knowledge lives. Ground it with your naming conventions, module library, tagging standards. |
+| "Can we feed it our Terraform standards?" | Yes — The Lineman's system prompt is where org knowledge lives. Ground it with your naming conventions, module library, tagging standards. |
 | "How does this compare to Azure Copilot Agents?" | Copilot Agents require tenant-scope preview enablement (Mandy's team). This runs today, no preview needed. Complementary if the preview becomes available. |
 | "Can it take action?" | By design, it recommends but never acts — governance first. Phase 2 could add approval workflows (Terraform PR → normal change process). |
-| "How does the compliance piece connect to ADO?" | The Inspector classifies violations and outputs the exact PR or PBI content. Phase 2 connects to Azure DevOps APIs to create the branch/PR automatically for policy bug fixes, or create the PBI for workaround abuse. The reasoning is the hard part — the plumbing is straightforward. |
-| "Can it handle custom policies, not just built-in?" | Yes. The Inspector reads whatever Azure Policy is assigned — built-in, custom, or initiative. If you have custom policy definitions in a repo, we can ground it with your policy-as-code patterns. |
-| "What happens when an exemption expires?" | The Inspector checks exemption status as part of every scan. Expired exemptions are flagged as workaround abuse with a recommendation to either renew with justification or remediate the underlying issue. |
+| "How does the compliance piece connect to ADO?" | The Regulator classifies violations and outputs the exact PR or PBI content. Phase 2 connects to Azure DevOps APIs to create the branch/PR automatically for policy bug fixes, or create the PBI for workaround abuse. The reasoning is the hard part — the plumbing is straightforward. |
+| "Can it handle custom policies, not just built-in?" | Yes. The Regulator reads whatever Azure Policy is assigned — built-in, custom, or initiative. If you have custom policy definitions in a repo, we can ground it with your policy-as-code patterns. |
+| "What happens when an exemption expires?" | The Regulator checks exemption status as part of every scan. Expired exemptions are flagged as workaround abuse with a recommendation to either renew with justification or remediate the underlying issue. |
 | "What about the RBAC role classification Christopher mentioned?" | Great Phase 2 candidate. The architecture supports it — add a new crew member that specializes in RBAC analysis. |
 | "How fast does it detect changes?" | Resource Graph: 5-15 seconds. Activity Log: 1-2 minutes. Advisor: ~24 hours. Our chaos demo proves the speed live. |
 | "Is the executive score real?" | Yes — calculated from Resource Health, Service Health, security drift, tagging compliance, architecture analysis. All sourced from Azure APIs, not AI opinions. |
