@@ -2,15 +2,15 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════
-# Cloud Weather Ops — Infrastructure Deployment
+# Reusable multi-agent Azure operations platform — Infrastructure Deployment
 # ═══════════════════════════════════════════════════
-# Region       : West US 2
-# OpenAI       : Reuses existing Azure OpenAI account
-# App Service  : Reuses existing <YOUR_APP_SERVICE_PLAN> (P0v3)
-# Model        : foundry-gpt (foundry-gpt)
+# OpenAI       : Reuses one or more existing Azure OpenAI accounts
+# App Service  : Reuses an existing App Service Plan
+# Parameters   : main.bicepparam (generate with `python3 ../scripts/configure.py`,
+#                or copy main.bicepparam.example and edit it by hand)
 # ═══════════════════════════════════════════════════
 
-RESOURCE_GROUP="${RESOURCE_GROUP:-DTE_RG}"
+RESOURCE_GROUP="${RESOURCE_GROUP:-{PREFIX}_RG}"
 LOCATION="${LOCATION:-westus2}"
 SENSITIVE_LOGGING="${SENSITIVE_LOGGING:-false}" # set to "true" to allow full resource name logging
 
@@ -33,7 +33,7 @@ redact() {
 }
 
 echo "========================================="
-echo " Cloud Weather Ops — Deploy Infrastructure"
+echo " Deploy Infrastructure"
 echo "========================================="
 echo "Resource Group : $(redact "$RESOURCE_GROUP")"
 echo "Location       : $LOCATION"
@@ -41,6 +41,13 @@ echo ""
 
 # ── Pre-flight checks ──
 command -v az >/dev/null 2>&1 || { echo "ERROR: Azure CLI not found."; exit 1; }
+
+if [[ ! -f main.bicepparam ]]; then
+  echo "ERROR: infra/main.bicepparam not found."
+  echo "  Generate it with: python3 ../scripts/configure.py"
+  echo "  or copy the template: cp main.bicepparam.example main.bicepparam && edit it."
+  exit 1
+fi
 
 echo "→ Checking Azure CLI login..."
 az account show --query "{Subscription:name, SubscriptionId:id}" -o table 2>/dev/null || {

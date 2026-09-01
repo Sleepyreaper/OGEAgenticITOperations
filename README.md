@@ -1,41 +1,59 @@
-# DTE Cloud Weather Ops
+<p align="center">
+  <img src="static/oge-logo.png" alt="Americas Enterprise — US Oil, Gas & Energy" width="480">
+</p>
 
-**Multi-agent operational intelligence for Azure Cloud Operations — Microsoft DTE Energy**
+<h1 align="center">OGE Ops Council</h1>
 
-Six AI specialists — each named after energy operations concepts — debate, disagree, and synthesize to deliver balanced, transparent recommendations. Built for DTE Energy teams that need operational answers without elevated access.
+<p align="center"><strong>Multi-agent operational intelligence for Azure Cloud Operations — Microsoft Oil, Gas & Energy</strong></p>
+
+---
+
+> This is a **reusable, open-source (MIT licensed) product**: a generic multi-agent Azure
+> operations app you can deploy for any customer, with your own branding, agent
+> personalities/prompts, and per-agent model routing — no code changes required. This repo
+> ships pre-configured with the **"oge"** profile shown below (Microsoft Oil, Gas & Energy
+> branding/personas) as the default, plus a neutral **"generic"** profile to start a new
+> customer deployment from. See [BRANDING.md](BRANDING.md) and [DEPLOYMENT.md](DEPLOYMENT.md) for the full
+> configuration/deployment workflow, including the setup wizard (`scripts/configure.py`).
+
+Six AI specialists — each named after cloud operations concepts — debate, disagree, and synthesize to deliver balanced, transparent recommendations. Built for teams that need operational answers without elevated access.
 
 **Two views, one platform:**
 - **Reliability** — Executive dashboard with reliability scores, pillar assessments, and service health (Rick's view)
 - **Ops Center** — Operational findings, chaos testing, remediation code, and deep intelligence (Christopher/Shane's view)
 
-## The Grid Team
+## The Crew (default "oge" profile)
 
 | | Agent | Role | Model | What They Do |
 |--|-------|------|-------|-------------|
-| ⚡ | **Grid Dispatch** | Coordinator | foundry-gpt | Routes requests, synthesizes the grid team's takes, delivers exec-ready summaries |
-| ⚡ | **Meter Reader** | Cost | foundry-reasoning | Finds waste, recommends rightsizing, shows the math — every dollar is a kilowatt-hour |
-| 🔌 | **The Lineman** | Standards | foundry-gpt | Knows *why* things are built the way they are. Writes Terraform remediation. |
-| 🌑 | **Blackout** | Diagnostics | foundry-reasoning | Root cause analysis without users needing elevated access |
-| ⚠️ | **Arc Flash** | Monitoring | foundry-nano | Proactive scanning — surfaces problems before they become incidents |
-| 📊 | **The Regulator** | Compliance | foundry-reasoning | Classifies policy violations as definition bugs, misconfigurations, exemptions, or workaround abuse |
+| ⚡ | **Pipeline** | Coordinator | foundry-gpt | Routes requests, synthesizes the crew's takes, delivers exec-ready summaries |
+| 🛢️ | **Barrel Counter** | Cost | foundry-reasoning | Finds waste, recommends rightsizing, shows the math — every dollar is a barrel |
+| 🔧 | **The Roughneck** | Standards | foundry-gpt | Knows *why* things are built the way they are. Writes Terraform remediation. |
+| 🔄 | **Turnaround** | Diagnostics | foundry-reasoning | Root cause analysis without users needing elevated access |
+| 🔥 | **Flare Stack** | Monitoring | foundry-nano | Proactive scanning — surfaces problems before they become incidents |
+| 📋 | **The Inspector** | Compliance | foundry-reasoning | Classifies policy violations as definition bugs, misconfigurations, exemptions, or workaround abuse |
+
+Every name, role, model deployment, endpoint, and system prompt above is defined in
+`profiles/oge/` and is entirely swappable via the profile system — see
+[BRANDING.md](BRANDING.md).
 
 ## How It Works
 
 ```
-User Question  /  ⚠️ Arc Flash Alert  /  ☀️ Morning Briefing
+User Question  /  🔥 Flare Stack Alert  /  ☀️ Morning Briefing
          │
          ▼
-    ⚡ Grid Dispatch (routes to crew)
+    ⚡ Pipeline (routes to crew)
          │
    ┌─────┼──────────┬──────────┬──────────┐
    ▼     ▼          ▼          ▼          ▼
- ⚡      🔌         🌑         ⚠️         📊
+ 🛢️      🔧         🔄         🔥         📋
 Barrel  Rough-    Turn-     Flare     The
 Counter neck      around    Stack     Inspector
    │     │          │          │
    └─────┴──────────┘          │
         ▼  (Round 2: Debate)   │
-   ⚡ Grid Dispatch ◄───────────────┘
+   ⚡ Pipeline ◄───────────────┘
         │
         ▼
   Streamed live: each crew member
@@ -46,9 +64,9 @@ Counter neck      around    Stack     Inspector
 
 **Round 1**: Each specialist gives their styled take (3-5 sentences).
 **Round 2**: Each specialist sees the others' takes and argues back (2-3 sentences).
-**Round 3**: Grid Dispatch delivers a crisp executive readout.
+**Round 3**: Pipeline delivers a crisp executive readout.
 
-All responses stream via Server-Sent Events — you watch the grid team debate live.
+All responses stream via Server-Sent Events — you watch the crew debate live.
 
 ## Key Features
 
@@ -57,7 +75,7 @@ All responses stream via Server-Sent Events — you watch the grid team debate l
 - Four pillar assessments: Security, Governance, Resilience, Cost Efficiency — each with score bars
 - Azure Service Health events — clickable for "which of MY resources are affected?"
 - Prioritized action cards (HIGH / MED / LOW)
-- "Ask Grid Dispatch for Executive Summary" button
+- "Ask Pipeline for Executive Summary" button
 
 ### Ops Center
 - Real-time findings: orphaned disks, public IPs, insecure storage, NSG drift
@@ -67,11 +85,11 @@ All responses stream via Server-Sent Events — you watch the grid team debate l
 - Auto-refresh every 60 seconds in Live mode (Resource Graph queries are free)
 - Change detection — badge flashes "⚡ CHANGE DETECTED" when environment changes
 - 💥 "Do Something Stupid" chaos demo — creates real security problem, detected in ~10 seconds
-- ☀️ Morning Briefing — overnight digest from the grid team
+- ☀️ Morning Briefing — overnight digest from the crew
 
-### Cloud Weather Ops Chat
+### Ops Council Chat
 - Streaming multi-agent debate with custom-styled personalities
-- 🔌 Generate Terraform / CLI Fix button after every analysis
+- 🔧 Generate Terraform / CLI Fix button after every analysis
 - 📊 Executive Summary button for leadership-ready output
 - Token cost ticker — transparency on every interaction (pennies per query)
 - Dynamic suggested questions that update based on real environment scan
@@ -96,11 +114,16 @@ All responses stream via Server-Sent Events — you watch the grid team debate l
 
 ## Quick Start
 
-1. Edit `infra/main.bicepparam` with your values
-2. `cd infra && bash deploy.sh`
-3. Grant Reader + Log Analytics Reader + Monitoring Reader to the MI
-4. Zip deploy: `curl -X POST .../api/zipdeploy` with app code
-5. Open the URL and toggle to Live
+1. `python3 scripts/configure.py` — interactive setup wizard; generates `.env` and
+   `infra/main.bicepparam` (both git-ignored) from your answers
+2. Deploy your model deployments in Azure AI Foundry (see [DEPLOYMENT.md](DEPLOYMENT.md))
+3. `cd infra && bash deploy.sh` — deploys the Bicep infrastructure
+4. Grant Reader + Log Analytics Reader + Monitoring Reader to the Managed Identity
+   (see [DEPLOYMENT.md](DEPLOYMENT.md) / `docs/rbac-implementation-guide.md`)
+5. Zip deploy the app code, open the URL, and toggle to Live
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the full step-by-step guide, and
+[BRANDING.md](BRANDING.md) to customize branding/agents/prompts before deploying.
 
 ## RBAC Summary
 
@@ -119,7 +142,7 @@ All responses stream via Server-Sent Events — you watch the grid team debate l
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/health` | GET | Health check with agent status |
+| `/api/health` | GET | Safe configuration-readiness check (profile, agent deployment names, booleans — never endpoint URLs/subscription IDs) |
 | `/api/scan/overview` | GET | Full scan (Resource Graph + Health + Advisor + Deep) |
 | `/api/scan/security` | GET | Quick security drift scan |
 | `/api/scan/compliance` | GET | Azure Policy compliance scan + violation classification |
@@ -130,6 +153,21 @@ All responses stream via Server-Sent Events — you watch the grid team debate l
 | `/api/chaos/create` | POST | Create chaos NSG rule |
 | `/api/chaos/cleanup` | POST | Remove chaos NSG rule |
 
+## Configuration & Customization
+
+Branding, agent names/personalities, prompts, model deployments, and per-agent Azure OpenAI
+endpoint routing are all controlled by the **profile system** (`profiles/<id>/`) plus
+environment variables — no code changes needed. See [BRANDING.md](BRANDING.md) for the full
+guide. Quick reference:
+
+| Want to... | Do this |
+|---|---|
+| Rebrand for a new customer | `python3 scripts/configure.py` → create a new profile (clones `profiles/generic/`) |
+| Change an agent's name/role/model | Edit `profiles/<id>/profile.json` |
+| Change an agent's system prompt | Edit `profiles/<id>/prompts/<agent_key>.txt` |
+| Route one agent to a different endpoint/deployment | Set `AGENT_<KEY>_ENDPOINT` / `AGENT_<KEY>_DEPLOYMENT` (env var), or `agentOverrides` (Bicep) |
+| Switch which profile is active | Set `APP_PROFILE` (env var) / `appProfile` (Bicep param) |
+
 ## Project Structure
 
 ```
@@ -138,11 +176,20 @@ All responses stream via Server-Sent Events — you watch the grid team debate l
 │   │   ├── demos.py          # 6 demo scenarios with realistic data
 │   │   └── runner.py         # Debate system, SSE streaming, remediation
 │   ├── azure_data.py         # Resource Graph, Health APIs, Advisor, deep analysis
-│   ├── config.py             # Agent configs, custom-styled system prompts
+│   ├── config.py             # Settings/AgentConfig, profile + env var resolution
+│   ├── profiles.py           # Profile loading/validation (stdlib only)
 │   └── main.py               # Flask app, all API endpoints
+├── profiles/                 # Branding + per-agent config + prompts, one dir per profile
+│   ├── oge/                  # Default profile — this app's original branding/agents
+│   └── generic/              # Neutral starting point for a new customer profile
+├── scripts/configure.py      # Setup wizard — generates .env + infra/main.bicepparam
 ├── infra/                    # Bicep IaC (VNet, KV, identity, web app)
+│   ├── main.bicepparam.example  # Checked-in template (copy or use the wizard)
+│   └── main.bicepparam       # Your local deployment values (git-ignored)
 ├── templates/index.html      # Executive + Ops views
 ├── docs/                     # RBAC guide, demo script, architecture, decisions
+├── tests/                    # Config/profile/ADO integration tests (stdlib unittest)
+├── .env.example               # Checked-in template for local .env
 ├── requirements.txt
 ├── wsgi.py
 └── startup.sh
@@ -150,4 +197,5 @@ All responses stream via Server-Sent Events — you watch the grid team debate l
 
 ## License
 
-Internal use. Not for redistribution.
+[MIT](LICENSE) — free to use, fork, rebrand, and redistribute. See [BRANDING.md](BRANDING.md)
+for how to build your own branded deployment on top of this project.

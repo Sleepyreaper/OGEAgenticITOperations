@@ -897,17 +897,21 @@
         const resp = await fetch('/api/health');
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
-        const healthy = data && data.status === 'healthy';
-        dot.className = healthy
+        const configured = data && (data.status === 'ok' || data.status === 'healthy');
+        dot.className = configured
           ? 'pulse-dot w-2 h-2 bg-green-400 rounded-full inline-block'
           : 'w-2 h-2 bg-amber-400 rounded-full inline-block';
-        const agentCount = Array.isArray(data && data.agents) ? data.agents.length : null;
-        const models = (data && Array.isArray(data.models)) ? data.models
-          : (data && data.profile && Array.isArray(data.profile.models)) ? data.profile.models : null;
-        let label = agentCount ? `${agentCount} agents online` : (healthy ? 'Platform online' : 'Platform status unknown');
-        if (models && models.length) label += ` · ${models.length} model${models.length === 1 ? '' : 's'}`;
+        const agentKeys = Array.isArray(data && data.agents)
+          ? data.agents
+          : (data && data.agents && typeof data.agents === 'object' ? Object.keys(data.agents) : null);
+        const deployments = data && data.agents && !Array.isArray(data.agents)
+          ? [...new Set(Object.values(data.agents).map(agent => agent && agent.deployment).filter(Boolean))]
+          : [];
+        const agentCount = agentKeys ? agentKeys.length : null;
+        let label = agentCount ? `${agentCount} agents configured` : (configured ? 'Platform configured' : 'Platform status unknown');
+        if (deployments.length) label += ` · ${deployments.length} model${deployments.length === 1 ? '' : 's'}`;
         text.textContent = label;
-        updateCrewStatusDots(Array.isArray(data && data.agents) ? data.agents : null, healthy);
+        updateCrewStatusDots(agentKeys, configured);
       } catch (e) {
         dot.className = 'w-2 h-2 bg-red-400 rounded-full inline-block';
         text.textContent = 'Platform status unavailable';

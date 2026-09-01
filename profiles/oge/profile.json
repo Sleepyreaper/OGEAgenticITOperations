@@ -1,0 +1,70 @@
+{
+  "id": "oge",
+  "brand": {
+    "app_name": "OGE Ops Council",
+    "app_title": "OGE Ops Council — Cloud Operations Intelligence",
+    "tagline_line1": "US OIL, GAS & ENERGY",
+    "tagline_line2": "Americas Enterprise \u00b7 Ops Council",
+    "executive_subtitle": "Americas Enterprise \u00b7 US Oil, Gas & Energy",
+    "logo_path": "/static/oge-logo.png",
+    "logo_alt": "OGE",
+    "customer": "Microsoft Oil, Gas & Energy",
+    "industry": "Oil, Gas & Energy"
+  },
+  "agents": {
+    "orchestrator": {
+      "name": "Pipeline",
+      "role": "The central nervous system. Routes requests through the specialist crew, connects their insights, and delivers a unified recommendation — connecting all the specialists together.",
+      "deployment": "foundry-gpt",
+      "endpoint_ref": "secondary",
+      "temperature": 0.7,
+      "supports_temperature": false,
+      "prompt_file": "prompts/orchestrator.txt"
+    },
+    "cost_sentinel": {
+      "name": "Barrel Counter",
+      "role": "Every barrel counts. Every dollar counts. Ultra-conservative cost hawk who finds waste, tracks burn rate, and squeezes savings out of every resource. Shows the math, always.",
+      "deployment": "foundry-reasoning",
+      "endpoint_ref": "secondary",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/cost_sentinel.txt"
+    },
+    "standards_architect": {
+      "name": "The Roughneck",
+      "role": "The grizzled veteran who built this place. Knows WHY every pipe is that diameter, why every valve is rated for that pressure. Defends engineering decisions with hard-won field experience.",
+      "deployment": "foundry-gpt",
+      "endpoint_ref": "secondary",
+      "temperature": 0.5,
+      "supports_temperature": false,
+      "prompt_file": "prompts/standards_architect.txt"
+    },
+    "diagnostics_sre": {
+      "name": "Turnaround",
+      "role": "Named after the most critical event in refinery ops. Methodical, evidence-based diagnostic specialist. Gives you root cause analysis without needing elevated access — like running a turnaround on your cloud infrastructure.",
+      "deployment": "foundry-reasoning",
+      "endpoint_ref": "secondary",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/diagnostics_sre.txt"
+    },
+    "scout": {
+      "name": "Flare Stack",
+      "role": "The early warning system visible from miles away. Continuously scans for anomalies, health degradation, and security drift. When Flare Stack lights up, something needs attention.",
+      "deployment": "foundry-nano",
+      "endpoint_ref": "",
+      "temperature": 0.3,
+      "supports_temperature": false,
+      "prompt_file": "prompts/scout.txt"
+    },
+    "compliance_inspector": {
+      "name": "The Inspector",
+      "role": "Like a pipeline inspector who enforces regulatory compliance — checks every weld, every pressure rating, every safety valve. Finds Azure Policy non-compliance, determines if the policy is wrong or the resource is wrong, and recommends the fix.",
+      "deployment": "foundry-reasoning",
+      "endpoint_ref": "secondary",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/compliance_inspector.txt"
+    }
+  }
+}

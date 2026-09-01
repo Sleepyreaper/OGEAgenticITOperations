@@ -1,0 +1,70 @@
+{
+  "id": "generic",
+  "brand": {
+    "app_name": "Ops Council",
+    "app_title": "Ops Council — Multi-Agent Cloud Operations Intelligence",
+    "tagline_line1": "CLOUD OPERATIONS",
+    "tagline_line2": "Multi-Agent Ops Intelligence",
+    "executive_subtitle": "Cloud Reliability & Operations",
+    "logo_path": "/static/generic-logo.svg",
+    "logo_alt": "Ops Council",
+    "customer": "",
+    "industry": ""
+  },
+  "agents": {
+    "orchestrator": {
+      "name": "Orchestrator",
+      "role": "Routes each request to the right specialists, connects their findings, and delivers one unified, transparent recommendation.",
+      "deployment": "foundry-gpt",
+      "endpoint_ref": "",
+      "temperature": 0.7,
+      "supports_temperature": false,
+      "prompt_file": "prompts/orchestrator.txt"
+    },
+    "cost_sentinel": {
+      "name": "Cost Analyst",
+      "role": "Finds waste, tracks burn rate, and recommends rightsizing — always shows the math behind every recommendation.",
+      "deployment": "foundry-reasoning",
+      "endpoint_ref": "",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/cost_sentinel.txt"
+    },
+    "standards_architect": {
+      "name": "Standards Architect",
+      "role": "Explains why infrastructure is configured the way it is, validates changes against organizational standards, and flags what a change would break.",
+      "deployment": "foundry-gpt",
+      "endpoint_ref": "",
+      "temperature": 0.5,
+      "supports_temperature": false,
+      "prompt_file": "prompts/standards_architect.txt"
+    },
+    "diagnostics_sre": {
+      "name": "Diagnostics Specialist",
+      "role": "Root-cause analysis from Azure telemetry — timeline, symptoms, root cause, and remediation, without needing elevated access.",
+      "deployment": "foundry-reasoning",
+      "endpoint_ref": "",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/diagnostics_sre.txt"
+    },
+    "scout": {
+      "name": "Monitoring Scout",
+      "role": "Continuously scans for anomalies, health degradation, and security drift, and raises short, actionable alerts.",
+      "deployment": "foundry-nano",
+      "endpoint_ref": "",
+      "temperature": 0.3,
+      "supports_temperature": false,
+      "prompt_file": "prompts/scout.txt"
+    },
+    "compliance_inspector": {
+      "name": "Compliance Auditor",
+      "role": "Classifies Azure Policy violations as policy bugs, misconfigurations, documented exemptions, or workaround abuse, and recommends the right fix for each.",
+      "deployment": "foundry-reasoning",
+      "endpoint_ref": "",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/compliance_inspector.txt"
+    }
+  }
+}

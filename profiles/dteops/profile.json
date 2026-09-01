@@ -1,0 +1,70 @@
+{
+  "id": "dteops",
+  "brand": {
+    "app_name": "DTE Cloud Weather Ops",
+    "app_title": "DTE Cloud Weather Ops - Cloud Operations Intelligence",
+    "tagline_line1": "DTE ENERGY",
+    "tagline_line2": "Cloud Weather Operations",
+    "executive_subtitle": "DTE Energy - Cloud Weather Operations",
+    "logo_path": "/static/dte-logo.png",
+    "logo_alt": "DTE Energy",
+    "customer": "DTE Energy",
+    "industry": "Utilities and Energy"
+  },
+  "agents": {
+    "orchestrator": {
+      "name": "Grid Dispatch",
+      "role": "Coordinates the grid team, connects specialist findings, and delivers a unified operational recommendation.",
+      "deployment": "gpt-5.6-sol",
+      "endpoint_ref": "hallofjustice",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/orchestrator.txt"
+    },
+    "cost_sentinel": {
+      "name": "Meter Reader",
+      "role": "Finds cloud waste, tracks burn rate, and quantifies savings with utility-grade precision.",
+      "deployment": "gpt-5.6-terra",
+      "endpoint_ref": "hallofjustice",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/cost_sentinel.txt"
+    },
+    "standards_architect": {
+      "name": "The Lineman",
+      "role": "Defends reliability and engineering standards while identifying safe opportunities to simplify and optimize.",
+      "deployment": "gpt-5.6-terra",
+      "endpoint_ref": "hallofjustice",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/standards_architect.txt"
+    },
+    "diagnostics_sre": {
+      "name": "Blackout",
+      "role": "Performs evidence-based incident diagnosis, correlates telemetry, and produces root-cause and recovery guidance.",
+      "deployment": "gpt-5.6-sol",
+      "endpoint_ref": "hallofjustice",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/diagnostics_sre.txt"
+    },
+    "scout": {
+      "name": "Arc Flash",
+      "role": "Rapidly scans for health degradation, security drift, capacity pressure, and emerging operational risk.",
+      "deployment": "gpt-5.6-luna",
+      "endpoint_ref": "hallofjustice",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/scout.txt"
+    },
+    "compliance_inspector": {
+      "name": "The Regulator",
+      "role": "Classifies policy findings and separates policy defects, valid exemptions, misconfiguration, and workaround abuse.",
+      "deployment": "gpt-5.6-terra",
+      "endpoint_ref": "hallofjustice",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/compliance_inspector.txt"
+    }
+  }
+}

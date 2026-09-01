@@ -1,0 +1,73 @@
+// ═══════════════════════════════════════════════════
+// Deployment Parameters — EXAMPLE / TEMPLATE
+// ═══════════════════════════════════════════════════
+// Copy this file to `main.bicepparam` (git-ignored — never commit real
+// values) and fill in your environment, or run:
+//
+//   python3 scripts/configure.py
+//
+// which generates `main.bicepparam` for you interactively or from CLI
+// flags/an answers file. This example file is never modified by that
+// script or by deploying — only the generated `main.bicepparam` is.
+// ═══════════════════════════════════════════════════
+
+using './main.bicep'
+
+param prefix = 'opscouncil'
+param location = 'westus2'
+
+// Checked-in profile (profiles/<id>/) this deployment should load.
+// Ships with "oge" (this template's original branding/agents) and
+// "generic" (a neutral starting point for a new customer).
+param appProfile = 'oge'
+
+// Existing App Service Plan — provide the full resource ID.
+// Example: /subscriptions/<SUB_ID>/resourceGroups/<RG>/providers/Microsoft.Web/serverfarms/<PLAN_NAME>
+param existingAppServicePlanId = '<YOUR_APP_SERVICE_PLAN_RESOURCE_ID>'
+
+// Azure subscription the agents monitor (surfaced to the app as AZURE_SUBSCRIPTION_ID).
+param subscriptionId = '<YOUR_SUBSCRIPTION_ID>'
+
+// Existing Azure OpenAI account (primary).
+param openaiAccountName = '<YOUR_OPENAI_ACCOUNT_NAME>'
+param openaiResourceGroup = '<YOUR_OPENAI_RESOURCE_GROUP>'
+param openaiEndpoint = 'https://<YOUR_OPENAI_ACCOUNT_NAME>.openai.azure.com/'
+
+// Default model deployment name and API version used when an agent
+// doesn't specify its own (see agentOverrides below).
+param openaiDeploymentName = '<YOUR_GPT_DEPLOYMENT_NAME>'
+param openaiApiVersion = '2025-01-01-preview'
+
+// Optional additional Azure OpenAI accounts for per-agent endpoint
+// routing beyond the primary account above. Key = logical endpoint name,
+// surfaced as AZURE_OPENAI_ENDPOINT_<NAME UPPERCASED>. Leave accountName/
+// resourceGroup empty on an entry to skip automatic RBAC assignment.
+param additionalOpenAiAccounts = {
+  // secondary: {
+  //   endpoint: 'https://<SECOND_ACCOUNT>.openai.azure.com/'
+  //   accountName: '<SECOND_ACCOUNT_NAME>'
+  //   resourceGroup: '<SECOND_ACCOUNT_RESOURCE_GROUP>'
+  // }
+}
+
+// Optional per-agent overrides. Keys must be one of: orchestrator,
+// cost_sentinel, standards_architect, diagnostics_sre, scout,
+// compliance_inspector (matching the Python agent keys exactly). Each
+// value may set any subset of: deployment, endpoint, temperature,
+// supportsTemperature, apiVersion, name, role, promptFile. Omitted
+// fields fall back to the loaded profile's own defaults.
+param agentOverrides = {
+  // cost_sentinel: {
+  //   deployment: 'foundry-reasoning'
+  //   endpoint: 'secondary'
+  // }
+}
+
+// Whether the web app is reachable directly over the public internet.
+// 'Disabled' (default) requires access via the VNet/private networking
+// this template provisions. Set to 'Enabled' for a simpler standalone
+// public demo deployment (weaker isolation — see DEPLOYMENT.md).
+param publicNetworkAccess = 'Disabled'
+
+// Deployer's Azure AD object ID — retrieve with: az ad signed-in-user show --query id -o tsv
+param deployerPrincipalId = ''
