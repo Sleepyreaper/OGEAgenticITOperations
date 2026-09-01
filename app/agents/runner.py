@@ -16,7 +16,7 @@ import os
 from app.config import settings, AgentConfig
 
 
-def _get_client(deployment: str, endpoint: str = "") -> tuple[AzureOpenAI, str]:
+def _get_client(deployment: str, endpoint: str = "", api_version: str = "") -> tuple[AzureOpenAI, str]:
     """Get an AzureOpenAI client configured for the given deployment.
 
     If endpoint is provided, uses that instead of the default.
@@ -38,7 +38,7 @@ def _get_client(deployment: str, endpoint: str = "") -> tuple[AzureOpenAI, str]:
     client = AzureOpenAI(
         azure_endpoint=azure_endpoint,
         azure_ad_token_provider=token_provider,
-        api_version="2025-01-01-preview",
+        api_version=api_version or settings.openai_api_version,
     )
     return client, deployment
 
@@ -46,7 +46,9 @@ def _get_client(deployment: str, endpoint: str = "") -> tuple[AzureOpenAI, str]:
 def call_agent(agent_config: AgentConfig, user_message: str,
                context_data: str = "") -> dict:
     """Call a single specialist agent and return its response."""
-    client, deployment = _get_client(agent_config.deployment, agent_config.endpoint)
+    client, deployment = _get_client(
+        agent_config.deployment, agent_config.endpoint, agent_config.api_version
+    )
 
     messages = [
         {"role": "system", "content": agent_config.system_prompt},
@@ -72,9 +74,10 @@ def call_agent(agent_config: AgentConfig, user_message: str,
 
     kwargs = {"model": deployment, "messages": messages}
 
-    # These models only support default temperature (1.0)
-    fixed_temp_models = ("foundry-gpt", "foundry-reasoning", "foundry-nano")
-    if agent_config.deployment not in fixed_temp_models:
+    # Some deployments (e.g. o-series/GPT-5-style reasoning models) only
+    # accept the default temperature and error on any other value — each
+    # agent declares whether its deployment supports a custom temperature.
+    if agent_config.supports_temperature:
         kwargs["temperature"] = agent_config.temperature
 
     response = client.chat.completions.create(**kwargs)

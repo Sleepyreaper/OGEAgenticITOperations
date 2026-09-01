@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OGE Ops Council — Cloud Operations Intelligence</title>
+  <title>{{ brand.app_title }}</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -56,10 +56,10 @@
     <div class="max-w-full mx-auto px-6 py-3 flex items-center justify-between">
       <div class="flex items-center gap-4">
         <div class="flex items-center gap-3">
-          <img src="/static/oge-logo.png" alt="OGE" class="h-10 w-auto">
+          <img src="{{ brand.logo_path }}" alt="{{ brand.logo_alt }}" class="h-10 w-auto">
           <div>
-            <div class="text-sm font-bold tracking-wide">US OIL, GAS & ENERGY</div>
-            <div class="text-xs text-brand-gray-300">Americas Enterprise · Ops Council</div>
+            <div class="text-sm font-bold tracking-wide">{{ brand.tagline_line1 }}</div>
+            <div class="text-xs text-brand-gray-300">{{ brand.tagline_line2 }}</div>
           </div>
         </div>
         <div class="h-8 w-px bg-brand-gray-700 mx-2"></div>
@@ -110,7 +110,7 @@
       <div class="max-w-6xl mx-auto px-6 py-6">
         <div class="flex items-center justify-between">
           <div>
-            <div class="text-xs text-brand-gray-400 uppercase tracking-widest">Americas Enterprise · US Oil, Gas & Energy</div>
+            <div class="text-xs text-brand-gray-400 uppercase tracking-widest">{{ brand.executive_subtitle }}</div>
             <h1 class="text-xl font-bold mt-1">Business Continuity & Cloud Reliability</h1>
           </div>
           <div class="text-right">
@@ -536,8 +536,8 @@
               <span class="text-sm">⚡</span>
             </div>
             <div class="bg-brand-gray-50 rounded-xl rounded-tl-none px-4 py-3 max-w-2xl">
-              <div class="text-xs font-bold text-brand-red mb-1">Pipeline</div>
-              <p class="text-sm text-brand-gray-600">Welcome to the OGE Ops Council. I'm <strong>Pipeline</strong> — I route your questions through the crew and deliver a unified take. The crew's on shift and ready:</p>
+              <div class="text-xs font-bold text-brand-red mb-1">{{ agents.orchestrator.name }}</div>
+              <p class="text-sm text-brand-gray-600">Welcome to the {{ brand.app_name }}. I'm <strong>{{ agents.orchestrator.name }}</strong> — I route your questions through the crew and deliver a unified take. The crew's on shift and ready:</p>
               <p class="text-sm text-brand-gray-500 mt-2">🛢️ <strong>Barrel Counter</strong> counts every dollar · 🔧 <strong>The Roughneck</strong> knows why things are built this way · 🔄 <strong>Turnaround</strong> diagnoses issues · 🔥 <strong>Flare Stack</strong> watches the horizon · 📋 <strong>The Inspector</strong> enforces compliance</p>
               <p class="text-sm text-brand-gray-600 mt-2">Try asking:</p>
               <div id="suggested-questions">

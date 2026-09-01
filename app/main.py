@@ -1,8 +1,14 @@
-"""OGE Ops Council — Flask application."""
+"""Reusable multi-agent Azure operations platform — Flask application.
+
+Branding and agent identity are profile-driven (see app/config.py); the
+public API surface (routes, request/response shapes, agent keys) is
+unchanged regardless of which profile is loaded.
+"""
 
 from flask import Flask, render_template, request, jsonify, Response
 import json
 import traceback
+from app import __version__ as APP_VERSION
 from app.agents.runner import run_council, run_council_streaming, call_agent
 from app.agents.demos import DEMO_SCENARIOS
 from app.config import settings
@@ -21,7 +27,12 @@ def create_app():
 
     @app.route("/")
     def index():
-        return render_template("index.html", demos=DEMO_SCENARIOS)
+        return render_template(
+            "index.html",
+            demos=DEMO_SCENARIOS,
+            brand=settings.brand,
+            agents=settings.agents,
+        )
 
     # ─── API ────────────────────────────────────────────────
 
@@ -364,11 +375,34 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
 
     @app.route("/api/health", methods=["GET"])
     def health():
+        """Safe configuration-readiness check.
+
+        Reports booleans, deployment names, and profile/version info only —
+        never raw endpoint URLs, subscription IDs, or other secrets. This
+        endpoint checks *configuration presence*, not live dependency
+        health (no calls are made to Azure OpenAI, Key Vault, etc. here).
+        """
+        agents_status = {
+            key: {
+                "name": cfg.name,
+                "deployment": cfg.deployment,
+                "endpoint_configured": bool(cfg.endpoint or settings.openai_endpoint),
+                "supports_temperature": cfg.supports_temperature,
+            }
+            for key, cfg in settings.agents.items()
+        }
         return jsonify({
-            "status": "healthy",
-            "agents": list(settings.agents.keys()),
-            "openai_endpoint": settings.openai_endpoint,
-            "subscription_id": settings.subscription_id,
+            "status": "ok",
+            "version": APP_VERSION,
+            "profile": settings.profile_id,
+            "agents": agents_status,
+            "config": {
+                "openai_primary_endpoint_configured": bool(settings.openai_endpoint),
+                "openai_secondary_endpoint_configured": bool(settings.openai_endpoint_eastus2),
+                "subscription_configured": bool(settings.subscription_id),
+                "key_vault_configured": bool(settings.key_vault_uri),
+                "log_analytics_configured": bool(settings.log_analytics_workspace_id),
+            },
         })
 
     # ─── Chaos Demo ─────────────────────────────────────────
@@ -464,7 +498,8 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
             }, default=str)
 
             def generate():
-                yield f"data: {json.dumps({'phase': 'round1', 'agent_key': 'scout', 'result': {'agent': 'Flare Stack', 'role': 'Overnight scan', 'model': 'digest', 'response': '🔥 **Daily Digest — scanning overnight findings...**', 'usage': {'prompt_tokens': 0, 'completion_tokens': 0}}})}\n\n"
+                scout_name = settings.agents["scout"].name
+                yield f"data: {json.dumps({'phase': 'round1', 'agent_key': 'scout', 'result': {'agent': scout_name, 'role': 'Overnight scan', 'model': 'digest', 'response': '🔥 **Daily Digest — scanning overnight findings...**', 'usage': {'prompt_tokens': 0, 'completion_tokens': 0}}})}\n\n"
 
                 for agent_key in ["scout", "cost_sentinel", "standards_architect"]:
                     agent_cfg = settings.agents.get(agent_key)
@@ -473,7 +508,7 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                     result = call_agent(agent_cfg, f"Generate a daily morning briefing. What should the ops team address TODAY based on this overnight scan data? Prioritize by risk and impact.\n\nOvernight scan results:\n{digest_context}")
                     yield f"data: {json.dumps({'phase': 'round1', 'agent_key': agent_key, 'result': result}, default=str)}\n\n"
 
-                # Pipeline summary
+                # Orchestrator summary
                 orchestrator_cfg = settings.agents["orchestrator"]
                 summary = call_agent(orchestrator_cfg, f"Create a crisp morning briefing from the crew's overnight findings. Format as: TOP PRIORITY (1 item), WATCH LIST (2-3 items), ALL CLEAR (what's fine). Data:\n{digest_context}")
                 yield f"data: {json.dumps({'phase': 'synthesis', 'agent_key': 'orchestrator', 'result': summary}, default=str)}\n\n"

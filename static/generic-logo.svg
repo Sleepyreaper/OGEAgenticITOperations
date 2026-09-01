@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Ops Council logo">
+  <circle cx="32" cy="12" r="7" fill="#2563EB"/>
+  <circle cx="12" cy="46" r="7" fill="#2563EB"/>
+  <circle cx="52" cy="46" r="7" fill="#2563EB"/>
+  <path d="M32 19 L15 41 M32 19 L49 41 M17 46 L47 46" stroke="#1E3A8A" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <circle cx="32" cy="32" r="6" fill="#0F172A"/>
+</svg>
