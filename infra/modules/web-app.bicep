@@ -22,7 +22,10 @@ param openaiApiVersion string = '2025-01-01-preview'
 param subscriptionId string = ''
 
 @description('Checked-in profile (profiles/<id>/) the app should load.')
-param appProfile string = 'oge'
+param appProfile string = 'power'
+
+@description('OpenTelemetry service.name. Empty (default) falls back to "ops-council-<appProfile>" at app startup — a short, profile-safe default that never leaks a customer brand string unless you set this explicitly. Only used when appInsightsConnectionString/APPLICATIONINSIGHTS_CONNECTION_STRING is non-empty; see docs/TELEMETRY.md.')
+param otelServiceName string = ''
 
 @description('Additional Azure OpenAI accounts for per-agent endpoint routing (see main.bicep). Only .endpoint is used here, surfaced as AZURE_OPENAI_ENDPOINT_<NAME>.')
 param additionalOpenAiAccounts object = {}
@@ -41,6 +44,7 @@ var webAppName = '${prefix}-app-${take(uniqueString(resourceGroup().id), 6)}'
 // settings this template previously omitted).
 var baseAppSettings = [
   { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
+  { name: 'OTEL_SERVICE_NAME', value: otelServiceName }
   { name: 'AZURE_CLIENT_ID', value: managedIdentityClientId }
   { name: 'KEY_VAULT_URI', value: keyVaultUri }
   { name: 'AZURE_OPENAI_ENDPOINT', value: openaiEndpoint }
@@ -70,6 +74,11 @@ var agentOverrideFieldSuffixes = {
   supportsTemperature: 'SUPPORTS_TEMPERATURE'
   apiVersion: 'API_VERSION'
   promptFile: 'PROMPT_FILE'
+  maxCompletionTokens: 'MAX_COMPLETION_TOKENS'
+  maxContextChars: 'MAX_CONTEXT_CHARS'
+  responseInstruction: 'RESPONSE_INSTRUCTION'
+  inputCostPerMillion: 'INPUT_COST_PER_MILLION'
+  outputCostPerMillion: 'OUTPUT_COST_PER_MILLION'
 }
 
 // Nested for-loops aren't supported directly for variable construction, so

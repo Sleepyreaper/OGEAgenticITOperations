@@ -65,27 +65,48 @@ A multi-agent AI operations platform running on Azure, purpose-built for Cloud O
 
 ## Agent Architecture
 
-| Agent | Foundry Deployment | Role | Token Cost/Call | Why This Model |
-|-------|-------------------|------|----------------|----------------|
-| Pipeline (coord) | foundry-gpt | General-purpose LLM | ~$0.008 | Broad knowledge, strong synthesis |
-| Barrel Counter (cost) | foundry-reasoning | Reasoning model | ~$0.015 | Deep reasoning over cost data |
-| The Roughneck (standards) | foundry-gpt | General-purpose LLM | ~$0.008 | Explains rationale, defends decisions |
-| Turnaround (diagnostics) | foundry-reasoning | Reasoning model | ~$0.015 | Complex multi-step root cause analysis |
-| Flare Stack (monitor) | foundry-nano | Lightweight model | ~$0.0005 | Lightweight, fast scanning |
-| The Inspector (compliance) | foundry-reasoning | Reasoning model | ~$0.015 | Deep reasoning for policy classification |
+Agent names, deployments, and per-agent token/cost controls are entirely
+profile-driven (`profiles/<id>/profile.json` — see
+[BRANDING.md](../BRANDING.md) and
+[MODEL_CONFIGURATION.md](MODEL_CONFIGURATION.md)). The six fixed agent
+**keys** the orchestration logic is wired to, and the default ("power")
+profile's recommended GPT-5.6 model mapping:
+
+| Agent key | Default ("power") display name | Model tier | Why this tier |
+|-------|-------------------|------|----------------|
+| `orchestrator` | Grid Coordinator | GPT-5.6 Sol (deep/flagship) | Synthesizes every specialist's output into one recommendation |
+| `cost_sentinel` | Cost & Capacity Analyst | GPT-5.6 Terra (balanced) | Structured cost/rightsizing analysis |
+| `standards_architect` | Reliability Engineer | GPT-5.6 Terra (balanced) | Explains rationale, defends decisions |
+| `diagnostics_sre` | Incident Investigator | GPT-5.6 Sol (deep/flagship) | Complex multi-step root cause analysis |
+| `scout` | Operations Monitor | GPT-5.6 Luna (fast/efficient) | High-throughput scanning/alerting |
+| `compliance_inspector` | Compliance Advisor | GPT-5.6 Terra (balanced) | Deep-enough reasoning for policy classification |
+
+The legacy `oge` profile maps these same six keys onto its original
+`foundry-gpt` / `foundry-reasoning` / `foundry-nano` deployments and persona
+names (Pipeline, Barrel Counter, The Roughneck, Turnaround, Flare Stack, The
+Inspector) — see `profiles/oge/profile.json`.
 
 **Multi-endpoint routing**: Agents can route to different Azure OpenAI accounts based on model availability. Configure `AZURE_OPENAI_ENDPOINT` for your primary account and `AZURE_OPENAI_ENDPOINT_SECONDARY` for a secondary account if models are spread across regions. The Managed Identity needs Cognitive Services OpenAI User on all accounts.
 
 ## Data Flow: Full Debate (3 rounds)
 
 1. User asks question (or Morning Briefing triggers)
-2. Pipeline determines which crew members to consult
+2. The orchestrator determines which crew members to consult
 3. **Round 1**: Each specialist analyzes independently (parallel potential)
 4. **Round 2**: Each specialist sees others' responses, argues/agrees
-5. **Round 3**: Pipeline synthesizes — "Where they agreed, where they clashed, recommendation"
+5. **Round 3**: The orchestrator synthesizes — "Where they agreed, where they clashed, recommendation"
 6. User can click "Generate Terraform/CLI Fix" for remediation code
 
 Total per query: ~$0.06-0.12 in tokens. Scanning is free. Compliance scans ~$0.03-0.05.
+
+## Telemetry
+
+Azure Monitor OpenTelemetry (optional — activates only when
+`APPLICATIONINSIGHTS_CONNECTION_STRING` is set, which `infra/main.bicep`
+wires automatically) instruments every agent OpenAI call as a custom span
+landing in `AppDependencies`, alongside the Flask-request telemetry the
+distro already provides in `AppRequests`. See
+[TELEMETRY.md](TELEMETRY.md) for the full architecture and KQL reference.
 
 ## Deep Intelligence Queries
 

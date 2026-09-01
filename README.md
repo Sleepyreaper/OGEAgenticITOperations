@@ -1,20 +1,25 @@
 <p align="center">
-  <img src="static/oge-logo.png" alt="Americas Enterprise — US Oil, Gas & Energy" width="480">
+  <img src="static/power-logo.svg" alt="Ops Council" width="160">
 </p>
 
-<h1 align="center">OGE Ops Council</h1>
+<h1 align="center">Ops Council</h1>
 
-<p align="center"><strong>Multi-agent operational intelligence for Azure Cloud Operations — Microsoft Oil, Gas & Energy</strong></p>
+<p align="center"><strong>Multi-agent operational intelligence for Azure Cloud Operations</strong></p>
 
 ---
 
 > This is a **reusable, open-source (MIT licensed) product**: a generic multi-agent Azure
 > operations app you can deploy for any customer, with your own branding, agent
 > personalities/prompts, and per-agent model routing — no code changes required. This repo
-> ships pre-configured with the **"oge"** profile shown below (Microsoft Oil, Gas & Energy
-> branding/personas) as the default, plus a neutral **"generic"** profile to start a new
-> customer deployment from. See [BRANDING.md](BRANDING.md) and [DEPLOYMENT.md](DEPLOYMENT.md) for the full
-> configuration/deployment workflow, including the setup wizard (`scripts/configure.py`).
+> ships with the **"power"** profile shown below (a generic power & utilities reference
+> deployment on a GPT-5.6 Sol/Terra/Luna model tier — see
+> [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md)) as the default, a neutral
+> **"generic"** profile to start a new customer deployment from, and the original
+> **"oge"** (Microsoft Oil, Gas & Energy) branding/personas kept as a selectable
+> legacy/example profile. See [BRANDING.md](BRANDING.md) and [DEPLOYMENT.md](DEPLOYMENT.md)
+> for the full configuration/deployment workflow, including the setup wizard
+> (`scripts/configure.py`), and [docs/TELEMETRY.md](docs/TELEMETRY.md) for the optional
+> Azure Monitor OpenTelemetry integration.
 
 Six AI specialists — each named after cloud operations concepts — debate, disagree, and synthesize to deliver balanced, transparent recommendations. Built for teams that need operational answers without elevated access.
 
@@ -22,38 +27,40 @@ Six AI specialists — each named after cloud operations concepts — debate, di
 - **Reliability** — Executive dashboard with reliability scores, pillar assessments, and service health (Rick's view)
 - **Ops Center** — Operational findings, chaos testing, remediation code, and deep intelligence (Christopher/Shane's view)
 
-## The Crew (default "oge" profile)
+## The Crew (default "power" profile)
 
 | | Agent | Role | Model | What They Do |
 |--|-------|------|-------|-------------|
-| ⚡ | **Pipeline** | Coordinator | foundry-gpt | Routes requests, synthesizes the crew's takes, delivers exec-ready summaries |
-| 🛢️ | **Barrel Counter** | Cost | foundry-reasoning | Finds waste, recommends rightsizing, shows the math — every dollar is a barrel |
-| 🔧 | **The Roughneck** | Standards | foundry-gpt | Knows *why* things are built the way they are. Writes Terraform remediation. |
-| 🔄 | **Turnaround** | Diagnostics | foundry-reasoning | Root cause analysis without users needing elevated access |
-| 🔥 | **Flare Stack** | Monitoring | foundry-nano | Proactive scanning — surfaces problems before they become incidents |
-| 📋 | **The Inspector** | Compliance | foundry-reasoning | Classifies policy violations as definition bugs, misconfigurations, exemptions, or workaround abuse |
+| ⚡ | **Grid Coordinator** | Coordinator | GPT-5.6 Sol | Routes requests, synthesizes the crew's takes, delivers exec-ready summaries |
+| 💰 | **Cost & Capacity Analyst** | Cost | GPT-5.6 Terra | Finds waste, recommends rightsizing, shows the math |
+| 🔧 | **Reliability Engineer** | Standards | GPT-5.6 Terra | Knows *why* things are built the way they are. Writes Terraform remediation. |
+| 🔄 | **Incident Investigator** | Diagnostics | GPT-5.6 Sol | Root cause analysis without users needing elevated access |
+| 🛰️ | **Operations Monitor** | Monitoring | GPT-5.6 Luna | Proactive scanning — surfaces problems before they become incidents |
+| 📋 | **Compliance Advisor** | Compliance | GPT-5.6 Terra | Classifies policy violations as definition bugs, misconfigurations, exemptions, or workaround abuse |
 
 Every name, role, model deployment, endpoint, and system prompt above is defined in
-`profiles/oge/` and is entirely swappable via the profile system — see
-[BRANDING.md](BRANDING.md).
+`profiles/power/` and is entirely swappable via the profile system — see
+[BRANDING.md](BRANDING.md) and [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md)
+for why agents map to the Sol/Terra/Luna tiers the way they do. The original OGE
+branding/personas remain available: set `APP_PROFILE=oge`.
 
 ## How It Works
 
 ```
-User Question  /  🔥 Flare Stack Alert  /  ☀️ Morning Briefing
+User Question  /  🔥 Monitor Alert  /  ☀️ Morning Briefing
          │
          ▼
-    ⚡ Pipeline (routes to crew)
+    ⚡ Coordinator (routes to crew)
          │
    ┌─────┼──────────┬──────────┬──────────┐
    ▼     ▼          ▼          ▼          ▼
- 🛢️      🔧         🔄         🔥         📋
-Barrel  Rough-    Turn-     Flare     The
-Counter neck      around    Stack     Inspector
+ 💰      🔧         🔄        🛰️         📋
+Cost    Reliab-   Diagnos-  Monitor    Compliance
+        ility     tics
    │     │          │          │
    └─────┴──────────┘          │
         ▼  (Round 2: Debate)   │
-   ⚡ Pipeline ◄───────────────┘
+   ⚡ Coordinator ◄─────────────┘
         │
         ▼
   Streamed live: each crew member
@@ -64,7 +71,7 @@ Counter neck      around    Stack     Inspector
 
 **Round 1**: Each specialist gives their styled take (3-5 sentences).
 **Round 2**: Each specialist sees the others' takes and argues back (2-3 sentences).
-**Round 3**: Pipeline delivers a crisp executive readout.
+**Round 3**: The orchestrator delivers a crisp executive readout.
 
 All responses stream via Server-Sent Events — you watch the crew debate live.
 
@@ -75,7 +82,7 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 - Four pillar assessments: Security, Governance, Resilience, Cost Efficiency — each with score bars
 - Azure Service Health events — clickable for "which of MY resources are affected?"
 - Prioritized action cards (HIGH / MED / LOW)
-- "Ask Pipeline for Executive Summary" button
+- "Ask the orchestrator for Executive Summary" button
 
 ### Ops Center
 - Real-time findings: orphaned disks, public IPs, insecure storage, NSG drift
@@ -109,6 +116,7 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 | Data | Resource Graph, Resource Health, Service Health, Advisor, Monitor | Environment intelligence |
 | Deep Analysis | Cross-resource ARG queries | Architecture smells, blast radius, correlation |
 | Security | VNet, Key Vault (PE), Managed Identity, RBAC | Zero passwords, least-privilege |
+| Telemetry | Azure Monitor OpenTelemetry (optional, see [docs/TELEMETRY.md](docs/TELEMETRY.md)) | Per-agent call spans, tokens, latency, estimated cost |
 
 **Daily cost: ~$0.15-0.75** (scanning is free; reasoning models cost more per query but deliver better output)
 
@@ -165,8 +173,10 @@ guide. Quick reference:
 | Rebrand for a new customer | `python3 scripts/configure.py` → create a new profile (clones `profiles/generic/`) |
 | Change an agent's name/role/model | Edit `profiles/<id>/profile.json` |
 | Change an agent's system prompt | Edit `profiles/<id>/prompts/<agent_key>.txt` |
+| Cap tokens/cost, set tone, or estimate spend per agent | `max_completion_tokens` / `max_context_chars` / `response_instruction` / pricing fields — see [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md) |
 | Route one agent to a different endpoint/deployment | Set `AGENT_<KEY>_ENDPOINT` / `AGENT_<KEY>_DEPLOYMENT` (env var), or `agentOverrides` (Bicep) |
 | Switch which profile is active | Set `APP_PROFILE` (env var) / `appProfile` (Bicep param) |
+| Enable/inspect telemetry | Set `APPLICATIONINSIGHTS_CONNECTION_STRING` — see [docs/TELEMETRY.md](docs/TELEMETRY.md) |
 
 ## Project Structure
 
@@ -178,16 +188,19 @@ guide. Quick reference:
 │   ├── azure_data.py         # Resource Graph, Health APIs, Advisor, deep analysis
 │   ├── config.py             # Settings/AgentConfig, profile + env var resolution
 │   ├── profiles.py           # Profile loading/validation (stdlib only)
+│   ├── telemetry.py          # Azure Monitor OpenTelemetry init + agent call spans
 │   └── main.py               # Flask app, all API endpoints
 ├── profiles/                 # Branding + per-agent config + prompts, one dir per profile
-│   ├── oge/                  # Default profile — this app's original branding/agents
-│   └── generic/              # Neutral starting point for a new customer profile
+│   ├── power/                 # Default profile — generic power-utility, GPT-5.6 Sol/Terra/Luna
+│   ├── generic/                # Neutral starting point for a new customer profile
+│   └── oge/                    # Legacy/example profile — this app's original branding/agents
 ├── scripts/configure.py      # Setup wizard — generates .env + infra/main.bicepparam
 ├── infra/                    # Bicep IaC (VNet, KV, identity, web app)
 │   ├── main.bicepparam.example  # Checked-in template (copy or use the wizard)
 │   └── main.bicepparam       # Your local deployment values (git-ignored)
 ├── templates/index.html      # Executive + Ops views
-├── docs/                     # RBAC guide, demo script, architecture, decisions
+├── docs/                     # RBAC guide, demo script, architecture, decisions,
+│                             # MODEL_CONFIGURATION.md, TELEMETRY.md
 ├── tests/                    # Config/profile/ADO integration tests (stdlib unittest)
 ├── .env.example               # Checked-in template for local .env
 ├── requirements.txt

@@ -5,7 +5,11 @@
 // App Service  : Reuses an existing App Service Plan
 // Branding/agents are controlled by the `appProfile` + `agentOverrides`
 // parameters below (see profiles/ and app/config.py). Defaults reproduce
-// this template's original single-account, six-agent "oge" behavior.
+// this template's recommended reference deployment: the checked-in
+// "power" profile (a generic power-utility example) on a GPT-5.6
+// Sol/Terra/Luna model mapping — see docs/MODEL_CONFIGURATION.md. Set
+// `appProfile = 'oge'` to keep this template's original single-account,
+// six-agent legacy/example branding instead.
 // ═══════════════════════════════════════════════════
 
 targetScope = 'resourceGroup'
@@ -20,7 +24,7 @@ param location string = 'westus2'
 param existingAppServicePlanId string
 
 @description('Checked-in profile (profiles/<id>/) the app should load. Controls branding and default per-agent names/models.')
-param appProfile string = 'oge'
+param appProfile string = 'power'
 
 @description('Azure subscription the agents monitor. Surfaced to the app as AZURE_SUBSCRIPTION_ID. Defaults to the subscription being deployed into.')
 param subscriptionId string = subscription().subscriptionId
@@ -56,12 +60,18 @@ Optional per-agent configuration overrides, keyed by agent key (orchestrator,
 cost_sentinel, standards_architect, diagnostics_sre, scout,
 compliance_inspector — matching the Python agent keys exactly). Each value
 may set any subset of: deployment, endpoint, temperature, supportsTemperature,
-apiVersion, name, role, promptFile. Omitted fields fall back to the loaded
-profile's defaults. `endpoint` may be "primary", "secondary", any other
-key present in additionalOpenAiAccounts, or a literal https:// URL.
+apiVersion, name, role, promptFile, maxCompletionTokens, maxContextChars,
+responseInstruction, inputCostPerMillion, outputCostPerMillion (see
+docs/MODEL_CONFIGURATION.md for what each of the last five controls).
+Omitted fields fall back to the loaded profile's defaults. `endpoint` may
+be "primary", "secondary", any other key present in
+additionalOpenAiAccounts, or a literal https:// URL.
 Example: { cost_sentinel: { deployment: 'foundry-reasoning', endpoint: 'secondary' } }
 ''')
 param agentOverrides object = {}
+
+@description('OpenTelemetry service.name reported to Application Insights. Empty (default) falls back to a profile-safe "ops-council-<appProfile>" at app startup — see docs/TELEMETRY.md. Only takes effect when Application Insights is provisioned (always true for this template).')
+param otelServiceName string = ''
 
 @description('Whether the web app is reachable directly over the public internet. "Disabled" (default) requires access via the VNet/private networking this template provisions. Set to "Enabled" for a simpler standalone public demo deployment (weaker isolation — see DEPLOYMENT.md).')
 @allowed(['Enabled', 'Disabled'])
@@ -146,6 +156,7 @@ module webApp 'modules/web-app.bicep' = {
     additionalOpenAiAccounts: additionalOpenAiAccounts
     agentOverrides: agentOverrides
     publicNetworkAccess: publicNetworkAccess
+    otelServiceName: otelServiceName
   }
 }
 

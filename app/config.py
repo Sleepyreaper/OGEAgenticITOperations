@@ -10,9 +10,10 @@ Configuration comes from three layers, each overriding the previous:
   3. Per-agent environment variables (``AGENT_<KEY>_<FIELD>``) — optional,
      surgical overrides for a single agent without forking a whole profile.
 
-``APP_PROFILE`` defaults to "oge", which reproduces this app's original
-hardcoded behavior exactly. Setting ``APP_PROFILE`` to another checked-in
-profile (e.g. "generic", or a customer's own profile copied from it)
+``APP_PROFILE`` defaults to "power" — a generic power-utility reference
+deployment (see profiles/power/ and docs/MODEL_CONFIGURATION.md). Setting
+``APP_PROFILE`` to another checked-in profile (e.g. "generic", the legacy
+"oge" profile, or a customer's own profile copied from "generic")
 re-brands the app and re-routes/renames agents without any code changes.
 
 Any malformed profile or invalid override raises ``ProfileError`` (a
@@ -73,6 +74,23 @@ class AgentConfig:
     supports_temperature: bool = False
     endpoint: str = ""  # resolved absolute endpoint URL ("" = use default endpoint)
     api_version: str = DEFAULT_API_VERSION
+    # Enforceable token/response/personality controls — see
+    # docs/MODEL_CONFIGURATION.md for the full convention and rationale.
+    # 0 (the default) means "provider default" — the max_completion_tokens
+    # argument is omitted from the chat.completions call entirely.
+    max_completion_tokens: int = 0
+    # 0 (the default) means "no truncation" of context_data. Character
+    # counts are an approximation of token counts (roughly 3-4 characters
+    # per token for English text), not exact token accounting.
+    max_context_chars: int = 0
+    # Appended as its own instruction message on every call (see
+    # app/agents/runner.py::call_agent). Empty string = no extra
+    # instruction beyond the profile's system_prompt.
+    response_instruction: str = ""
+    # Caller-maintained cost-per-million-token estimates for telemetry
+    # only — not billing truth. 0.0 means "don't estimate a cost".
+    input_cost_per_million: float = 0.0
+    output_cost_per_million: float = 0.0
 
 
 @dataclass
@@ -100,6 +118,27 @@ def _parse_bool(value: str, context: str) -> bool:
     if normalized in _FALSE_VALUES:
         return False
     raise ProfileError(f"{context}: expected a boolean (true/false/1/0/yes/no), got {value!r}.")
+
+
+def _parse_nonneg_int(value: str, context: str) -> int:
+    """Strictly parse a non-negative integer env var value (no floats, no signs beyond a bare number)."""
+    try:
+        parsed = int(value.strip())
+    except ValueError as exc:
+        raise ProfileError(f"{context}: expected a non-negative integer, got {value!r}.") from exc
+    if parsed < 0:
+        raise ProfileError(f"{context}: expected a non-negative integer, got {parsed}.")
+    return parsed
+
+
+def _parse_nonneg_float(value: str, context: str) -> float:
+    try:
+        parsed = float(value.strip())
+    except ValueError as exc:
+        raise ProfileError(f"{context}: expected a non-negative number, got {value!r}.") from exc
+    if parsed < 0:
+        raise ProfileError(f"{context}: expected a non-negative number, got {parsed}.")
+    return parsed
 
 
 def _build_endpoint_registry() -> dict:
@@ -253,6 +292,44 @@ class Settings:
                 or self.openai_api_version
             )
 
+            max_completion_tokens_raw = os.environ.get(f"{prefix}_MAX_COMPLETION_TOKENS", "").strip()
+            if max_completion_tokens_raw:
+                max_completion_tokens = _parse_nonneg_int(
+                    max_completion_tokens_raw, f"{context}: {prefix}_MAX_COMPLETION_TOKENS"
+                )
+            else:
+                max_completion_tokens = int(agent_doc.get("max_completion_tokens", 0))
+
+            max_context_chars_raw = os.environ.get(f"{prefix}_MAX_CONTEXT_CHARS", "").strip()
+            if max_context_chars_raw:
+                max_context_chars = _parse_nonneg_int(
+                    max_context_chars_raw, f"{context}: {prefix}_MAX_CONTEXT_CHARS"
+                )
+            else:
+                max_context_chars = int(agent_doc.get("max_context_chars", 0))
+
+            response_instruction_raw = os.environ.get(f"{prefix}_RESPONSE_INSTRUCTION", "").strip()
+            if response_instruction_raw:
+                response_instruction = response_instruction_raw
+            else:
+                response_instruction = str(agent_doc.get("response_instruction", "")).strip()
+
+            input_cost_raw = os.environ.get(f"{prefix}_INPUT_COST_PER_MILLION", "").strip()
+            if input_cost_raw:
+                input_cost_per_million = _parse_nonneg_float(
+                    input_cost_raw, f"{context}: {prefix}_INPUT_COST_PER_MILLION"
+                )
+            else:
+                input_cost_per_million = float(agent_doc.get("input_cost_per_million", 0.0))
+
+            output_cost_raw = os.environ.get(f"{prefix}_OUTPUT_COST_PER_MILLION", "").strip()
+            if output_cost_raw:
+                output_cost_per_million = _parse_nonneg_float(
+                    output_cost_raw, f"{context}: {prefix}_OUTPUT_COST_PER_MILLION"
+                )
+            else:
+                output_cost_per_million = float(agent_doc.get("output_cost_per_million", 0.0))
+
             prompt_file_override = os.environ.get(f"{prefix}_PROMPT_FILE", "").strip()
             if prompt_file_override:
                 prompt_path = Path(prompt_file_override)
@@ -281,6 +358,11 @@ class Settings:
                 supports_temperature=supports_temperature,
                 endpoint=endpoint,
                 api_version=api_version,
+                max_completion_tokens=max_completion_tokens,
+                max_context_chars=max_context_chars,
+                response_instruction=response_instruction,
+                input_cost_per_million=input_cost_per_million,
+                output_cost_per_million=output_cost_per_million,
             )
 
         self.agents = agents

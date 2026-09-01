@@ -1,0 +1,100 @@
+{
+  "id": "power",
+  "brand": {
+    "app_name": "Grid Ops Council",
+    "app_title": "Grid Ops Council \u2014 Power & Utility Cloud Operations Intelligence",
+    "tagline_line1": "POWER & UTILITIES",
+    "tagline_line2": "Grid Operations \u00b7 Ops Council",
+    "executive_subtitle": "Power & Utilities \u00b7 Cloud Reliability",
+    "logo_path": "/static/power-logo.svg",
+    "logo_alt": "Grid Ops Council",
+    "customer": "",
+    "industry": "Power & Utilities"
+  },
+  "agents": {
+    "orchestrator": {
+      "name": "Grid Coordinator",
+      "role": "Routes each request to the right specialists, connects their findings, and delivers one unified, transparent recommendation \u2014 the single point of coordination across the operations team.",
+      "deployment": "gpt-5.6-sol",
+      "endpoint_ref": "",
+      "temperature": 0.7,
+      "supports_temperature": false,
+      "prompt_file": "prompts/orchestrator.txt",
+      "max_completion_tokens": 1400,
+      "max_context_chars": 30000,
+      "response_instruction": "Deliver a crisp executive synthesis: lead with the recommendation, then the key tradeoffs and any specialist disagreement, in 4-6 sentences. Plain language suitable for a duty manager, not just engineers.",
+      "input_cost_per_million": 5.0,
+      "output_cost_per_million": 15.0
+    },
+    "cost_sentinel": {
+      "name": "Cost & Capacity Analyst",
+      "role": "Finds waste, tracks burn rate, and recommends rightsizing across generation, transmission, and distribution workloads \u2014 always shows the math behind every recommendation.",
+      "deployment": "gpt-5.6-terra",
+      "endpoint_ref": "",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/cost_sentinel.txt",
+      "max_completion_tokens": 900,
+      "max_context_chars": 20000,
+      "response_instruction": "Lead with the dollar figure and show your math. Keep it to 3-5 sentences, numbers-first and unambiguous.",
+      "input_cost_per_million": 1.5,
+      "output_cost_per_million": 6.0
+    },
+    "standards_architect": {
+      "name": "Reliability Engineer",
+      "role": "Explains why infrastructure is configured the way it is, validates changes against grid-reliability and organizational standards, and flags what a change would break.",
+      "deployment": "gpt-5.6-terra",
+      "endpoint_ref": "",
+      "temperature": 0.5,
+      "supports_temperature": false,
+      "prompt_file": "prompts/standards_architect.txt",
+      "max_completion_tokens": 800,
+      "max_context_chars": 20000,
+      "response_instruction": "State the engineering rationale first, then the recommendation. 3-5 sentences, grounded in reliability and standards language, not sales language.",
+      "input_cost_per_million": 1.5,
+      "output_cost_per_million": 6.0
+    },
+    "diagnostics_sre": {
+      "name": "Incident Investigator",
+      "role": "Root-cause analysis from Azure telemetry \u2014 timeline, symptoms, root cause, and remediation, without needing elevated access.",
+      "deployment": "gpt-5.6-sol",
+      "endpoint_ref": "",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/diagnostics_sre.txt",
+      "max_completion_tokens": 1500,
+      "max_context_chars": 30000,
+      "response_instruction": "Structure every answer as Timeline, then Root Cause, then Remediation. Evidence-based and methodical, 4-6 sentences.",
+      "input_cost_per_million": 5.0,
+      "output_cost_per_million": 15.0
+    },
+    "scout": {
+      "name": "Operations Monitor",
+      "role": "Continuously scans for anomalies, health degradation, and security drift, and raises short, actionable alerts.",
+      "deployment": "gpt-5.6-luna",
+      "endpoint_ref": "",
+      "temperature": 0.3,
+      "supports_temperature": false,
+      "prompt_file": "prompts/scout.txt",
+      "max_completion_tokens": 400,
+      "max_context_chars": 12000,
+      "response_instruction": "Alert format only: severity tag, affected resource, recommended action. 2-4 sentences max, no preamble.",
+      "input_cost_per_million": 0.15,
+      "output_cost_per_million": 0.6
+    },
+    "compliance_inspector": {
+      "name": "Compliance Advisor",
+      "role": "Classifies Azure Policy violations as policy bugs, misconfigurations, documented exemptions, or workaround abuse, and recommends the right fix for each.",
+      "deployment": "gpt-5.6-terra",
+      "endpoint_ref": "",
+      "temperature": 1.0,
+      "supports_temperature": false,
+      "prompt_file": "prompts/compliance_inspector.txt",
+      "max_completion_tokens": 850,
+      "max_context_chars": 20000,
+      "response_instruction": "Lead with the classification (policy bug / misconfiguration / valid exemption / workaround abuse), then the required fix. 3-5 sentences, formal register.",
+      "input_cost_per_million": 1.5,
+      "output_cost_per_million": 6.0
+    }
+  }
+}

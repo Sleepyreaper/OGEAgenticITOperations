@@ -81,8 +81,26 @@ cp infra/main.bicepparam.example infra/main.bicepparam
 ## 3. Deploy model deployments (Azure AI Foundry / Azure OpenAI)
 
 You need **3 model deployments** by default (the profile system lets you use
-more or fewer by editing `profiles/<id>/profile.json`, but the default "oge"
-and "generic" profiles both expect these three):
+more or fewer by editing `profiles/<id>/profile.json`; the number and naming
+differ per checked-in profile — pick the table matching the profile you're
+deploying):
+
+### Default profile: "power" (GPT-5.6 Sol / Terra / Luna)
+
+See [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md) for the full
+per-agent rationale. In short:
+
+| Deployment Name (example) | Model Tier | Used By | Purpose |
+|----------------|-----------|---------|---------|
+| `gpt-5.6-sol` | GPT-5.6 Sol (deep/flagship) | Grid Coordinator, Incident Investigator | Synthesis, multi-step root-cause analysis |
+| `gpt-5.6-terra` | GPT-5.6 Terra (balanced production) | Cost & Capacity Analyst, Reliability Engineer, Compliance Advisor | Structured, rules-based analysis |
+| `gpt-5.6-luna` | GPT-5.6 Luna (fast/efficient) | Operations Monitor | High-throughput scanning/alerting |
+
+> The Azure AI Foundry model catalog name for the mid tier is **"GPT-5.6
+> Terra"** — deployment names remain entirely customer-defined; the
+> `gpt-5.6-*` names above are illustrative examples, not requirements.
+
+### Legacy/example profiles: "oge" and "generic"
 
 | Deployment Name | Model Type | Used By (default profiles) | Purpose |
 |----------------|-----------|---------|---------|
@@ -92,7 +110,7 @@ and "generic" profiles both expect these three):
 
 **Setup steps:**
 1. Create an Azure OpenAI resource (or AI Foundry project) in your preferred region.
-2. Deploy the 3 models above with the exact deployment names shown (or your own
+2. Deploy the 3 models from the table matching your profile (or your own
    names — just make sure they match what you tell the setup wizard / put in
    `AZURE_OPENAI_DEPLOYMENT` / `AGENT_<KEY>_DEPLOYMENT`).
 3. If using a second account/region, note its endpoint — the wizard will ask
@@ -136,12 +154,13 @@ and in `infra/main.bicepparam.example`):
 
 | Parameter | Purpose | Default |
 |-----------|---------|---------|
-| `appProfile` | Which checked-in profile (`profiles/<id>/`) the app loads | `oge` |
+| `appProfile` | Which checked-in profile (`profiles/<id>/`) the app loads | `power` |
 | `subscriptionId` | Subscription the agents monitor (→ `AZURE_SUBSCRIPTION_ID`) | current subscription |
 | `additionalOpenAiAccounts` | Extra named Azure OpenAI accounts for per-agent routing, with optional automatic RBAC | `{}` |
-| `agentOverrides` | Per-agent deployment/endpoint/temperature/prompt overrides | `{}` |
+| `agentOverrides` | Per-agent deployment/endpoint/temperature/prompt/token/cost overrides — see [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md) | `{}` |
 | `publicNetworkAccess` | Whether the web app is reachable directly over the public internet | `Disabled` |
 | `openaiApiVersion` | Default Azure OpenAI API version | `2025-01-01-preview` |
+| `otelServiceName` | OpenTelemetry `service.name` reported to Application Insights — see [docs/TELEMETRY.md](docs/TELEMETRY.md) | `""` (derives `ops-council-<appProfile>`) |
 
 > **`publicNetworkAccess`**: the default (`Disabled`) requires the VNet/private
 > networking this template provisions — you'll need a VPN, private endpoint, or
@@ -207,16 +226,18 @@ IDs, or other secrets:
 ```json
 {
   "status": "ok",
-  "version": "1.1.0",
-  "profile": "oge",
-  "agents": { "orchestrator": { "name": "Pipeline", "deployment": "foundry-gpt", "endpoint_configured": true, "supports_temperature": false }, "...": "..." },
-  "config": { "openai_primary_endpoint_configured": true, "subscription_configured": true, "...": "..." }
+  "version": "1.2.0",
+  "profile": "power",
+  "agents": { "orchestrator": { "name": "Grid Coordinator", "deployment": "gpt-5.6-sol", "endpoint_configured": true, "supports_temperature": false, "max_completion_tokens": 1400, "max_context_chars": 30000, "response_instruction_configured": true, "pricing_configured": true }, "...": "..." },
+  "config": { "openai_primary_endpoint_configured": true, "subscription_configured": true, "telemetry_enabled": false, "...": "..." }
 }
 ```
 
 This checks *configuration presence*, not live dependency health — it doesn't
 call Azure OpenAI, Key Vault, etc. Use the Live scan (`/api/scan/overview`) or
 the Ops Council chat to confirm agents can actually reach Azure OpenAI.
+`config.telemetry_enabled` reports whether Azure Monitor OpenTelemetry is
+active — see [docs/TELEMETRY.md](docs/TELEMETRY.md).
 
 ## 8. Customize (any time)
 
@@ -237,9 +258,9 @@ If you forked this repo for a customer, pull upstream changes as a normal git
 merge/rebase. Your customizations live in `profiles/<your-id>/` (a new
 directory) and `.env`/`infra/main.bicepparam` (git-ignored, untouched by
 upstream), so they won't conflict with upstream changes to `app/`, `infra/`,
-or the `oge`/`generic` profiles. Re-run `python3 scripts/configure.py` after an
-upgrade if new configuration fields were added (it's safe to re-run — pass
-`--force` to regenerate the local files, or edit them by hand).
+or the `power`/`generic`/`oge` profiles. Re-run `python3 scripts/configure.py`
+after an upgrade if new configuration fields were added (it's safe to re-run
+— pass `--force` to regenerate the local files, or edit them by hand).
 
 ---
 
@@ -251,22 +272,28 @@ documents every variable inline.
 
 | Variable | Required | Description |
 |----------|----------|--------------|
-| `APP_PROFILE` | No (default `oge`) | Checked-in profile directory (`profiles/<id>/`) to load |
+| `APP_PROFILE` | No (default `power`) | Checked-in profile directory (`profiles/<id>/`) to load — `power`, `generic`, `oge` (legacy/example), or your own |
 | `AZURE_OPENAI_ENDPOINT` | Yes | Primary Azure OpenAI endpoint URL |
 | `AZURE_OPENAI_DEPLOYMENT` | No (default `foundry-gpt`) | Default deployment name used when an agent doesn't specify its own |
 | `AZURE_OPENAI_API_VERSION` | No (default `2025-01-01-preview`) | Default API version for chat completions calls |
 | `AZURE_OPENAI_ENDPOINT_SECONDARY` | If using 2+ accounts | Secondary endpoint; referenced as `endpoint_ref: "secondary"` or `AGENT_<KEY>_ENDPOINT=secondary` |
 | `AZURE_OPENAI_ENDPOINT_<NAME>` | No | Any additional named endpoint (e.g. `_TERTIARY`), referenced the same way |
-| `AGENT_<KEY>_NAME` / `_ROLE` / `_DEPLOYMENT` / `_ENDPOINT` / `_TEMPERATURE` / `_SUPPORTS_TEMPERATURE` / `_API_VERSION` / `_PROMPT_FILE` | No | Per-agent overrides. `KEY` is one of `ORCHESTRATOR`, `COST_SENTINEL`, `STANDARDS_ARCHITECT`, `DIAGNOSTICS_SRE`, `SCOUT`, `COMPLIANCE_INSPECTOR` |
+| `AGENT_<KEY>_NAME` / `_ROLE` / `_DEPLOYMENT` / `_ENDPOINT` / `_TEMPERATURE` / `_SUPPORTS_TEMPERATURE` / `_API_VERSION` / `_PROMPT_FILE` / `_MAX_COMPLETION_TOKENS` / `_MAX_CONTEXT_CHARS` / `_RESPONSE_INSTRUCTION` / `_INPUT_COST_PER_MILLION` / `_OUTPUT_COST_PER_MILLION` | No | Per-agent overrides — see [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md) for the last five. `KEY` is one of `ORCHESTRATOR`, `COST_SENTINEL`, `STANDARDS_ARCHITECT`, `DIAGNOSTICS_SRE`, `SCOUT`, `COMPLIANCE_INSPECTOR` |
 | `AZURE_CLIENT_ID` | Yes (Azure) | Managed Identity client ID |
 | `AZURE_SUBSCRIPTION_ID` | Yes | Target subscription to monitor |
 | `KEY_VAULT_URI` | Yes | Key Vault URI (e.g., `https://{prefix}-kv.vault.azure.net/`) |
 | `LOG_ANALYTICS_WORKSPACE_ID` | Yes | Log Analytics workspace customer ID |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | No | Enables Azure Monitor OpenTelemetry when set (see [docs/TELEMETRY.md](docs/TELEMETRY.md)) — a secret; already wired automatically by `infra/main.bicep` |
+| `OTEL_SERVICE_NAME` | No | OpenTelemetry `service.name` override (default: `ops-council-<APP_PROFILE>`) |
 | `ADO_ORG_URL` / `ADO_PROJECT` / `ADO_REPO` / `ADO_PAT` | Optional | Azure DevOps integration (Phase 2 proposals). `ADO_PAT` is a secret — never commit it |
 
 ## Model Selection Guide
 
-The deployment names are generic — map them to whichever models your Foundry account has:
+The deployment names are generic — map them to whichever models your Foundry account has.
+The recommended mapping for the default "power" profile (GPT-5.6 Sol/Terra/Luna) is
+documented in full, with per-agent rationale, in
+[docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md). For the legacy "oge"/"generic"
+profiles:
 
 | Deployment | Recommended Models | Notes |
 |-----------|-------------------|-------|
@@ -278,6 +305,17 @@ By default, no agent sends a custom `temperature` (some reasoning/GPT-5-style
 deployments reject anything but the default). If your deployment supports a
 custom temperature, set `AGENT_<KEY>_SUPPORTS_TEMPERATURE=true` (env var) or
 `supports_temperature: true` (`profiles/<id>/profile.json`).
+
+## Telemetry (optional)
+
+Application Insights is provisioned unconditionally by `infra/modules/monitoring.bicep`
+and its connection string is already wired into the web app's
+`APPLICATIONINSIGHTS_CONNECTION_STRING` app setting by `infra/modules/web-app.bicep` — no
+extra deployment step needed. The app only *activates* Azure Monitor OpenTelemetry when
+that connection string is non-empty (the normal state after this Bicep deployment); local
+`python3 wsgi.py` runs with telemetry off unless you set it in `.env`. See
+[docs/TELEMETRY.md](docs/TELEMETRY.md) for the full architecture, KQL query reference, and
+sampling/retention/cost-estimate caveats.
 
 ## Cost Estimate
 

@@ -19,7 +19,12 @@
       "endpoint_ref": "",
       "temperature": 0.7,
       "supports_temperature": false,
-      "prompt_file": "prompts/orchestrator.txt"
+      "prompt_file": "prompts/orchestrator.txt",
+      "max_completion_tokens": 900,
+      "max_context_chars": 20000,
+      "response_instruction": "Keep your response to 3-5 concise sentences.",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0
     },
     "cost_sentinel": {
       "name": "Cost Analyst",
@@ -28,7 +33,12 @@
       "endpoint_ref": "",
       "temperature": 1.0,
       "supports_temperature": false,
-      "prompt_file": "prompts/cost_sentinel.txt"
+      "prompt_file": "prompts/cost_sentinel.txt",
+      "max_completion_tokens": 700,
+      "max_context_chars": 16000,
+      "response_instruction": "Keep your response to 3-5 concise sentences.",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0
     },
     "standards_architect": {
       "name": "Standards Architect",
@@ -37,7 +47,12 @@
       "endpoint_ref": "",
       "temperature": 0.5,
       "supports_temperature": false,
-      "prompt_file": "prompts/standards_architect.txt"
+      "prompt_file": "prompts/standards_architect.txt",
+      "max_completion_tokens": 700,
+      "max_context_chars": 16000,
+      "response_instruction": "Keep your response to 3-5 concise sentences.",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0
     },
     "diagnostics_sre": {
       "name": "Diagnostics Specialist",
@@ -46,7 +61,12 @@
       "endpoint_ref": "",
       "temperature": 1.0,
       "supports_temperature": false,
-      "prompt_file": "prompts/diagnostics_sre.txt"
+      "prompt_file": "prompts/diagnostics_sre.txt",
+      "max_completion_tokens": 900,
+      "max_context_chars": 20000,
+      "response_instruction": "Keep your response to 3-5 concise sentences.",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0
     },
     "scout": {
       "name": "Monitoring Scout",
@@ -55,7 +75,12 @@
       "endpoint_ref": "",
       "temperature": 0.3,
       "supports_temperature": false,
-      "prompt_file": "prompts/scout.txt"
+      "prompt_file": "prompts/scout.txt",
+      "max_completion_tokens": 350,
+      "max_context_chars": 10000,
+      "response_instruction": "Keep your response to 3-5 concise sentences.",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0
     },
     "compliance_inspector": {
       "name": "Compliance Auditor",
@@ -64,7 +89,12 @@
       "endpoint_ref": "",
       "temperature": 1.0,
       "supports_temperature": false,
-      "prompt_file": "prompts/compliance_inspector.txt"
+      "prompt_file": "prompts/compliance_inspector.txt",
+      "max_completion_tokens": 700,
+      "max_context_chars": 16000,
+      "response_instruction": "Keep your response to 3-5 concise sentences.",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0
     }
   }
 }

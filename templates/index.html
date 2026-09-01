@@ -451,7 +451,7 @@
           </button>
 
           <div class="bg-brand-black rounded-xl p-4 text-white">
-            <p class="text-xs text-brand-gray-300 mb-3">Create a real security problem in Azure and watch Flare Stack detect it in seconds.</p>
+            <p class="text-xs text-brand-gray-300 mb-3">Create a real security problem in Azure and watch {{ agents.scout.name }} detect it in seconds.</p>
             <div class="flex gap-2">
               <button onclick="runChaos()" id="chaos-btn" class="flex-1 px-3 py-2 bg-brand-red text-white rounded-lg text-xs font-bold hover:bg-red-700">💥 Do Something Stupid</button>
               <button onclick="cleanupChaos()" id="cleanup-btn" class="px-3 py-2 bg-brand-gray-700 text-brand-gray-300 rounded-lg text-xs hover:bg-brand-gray-600">🧹 Clean Up</button>
@@ -484,30 +484,12 @@
           <!-- Crew status -->
           <h2 class="text-sm font-bold text-brand-gray-500 uppercase tracking-wider pt-2">The Crew</h2>
           <div class="bg-white rounded-xl border border-brand-gray-100 p-4 space-y-3">
+            {% for key, icon in [('orchestrator', '⚡'), ('cost_sentinel', '💰'), ('standards_architect', '🔧'), ('diagnostics_sre', '🔄'), ('scout', '🛰️'), ('compliance_inspector', '📋')] %}
             <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm">⚡ <strong>Pipeline</strong></span></div>
-              <span class="text-xs text-brand-gray-400">foundry-gpt</span>
+              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm">{{ icon }} <strong>{{ agents[key].name }}</strong></span></div>
+              <span class="text-xs text-brand-gray-400">{{ agents[key].deployment }}</span>
             </div>
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm">🛢️ <strong>Barrel Counter</strong></span></div>
-              <span class="text-xs text-brand-gray-400">foundry-reasoning</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm">🔧 <strong>The Roughneck</strong></span></div>
-              <span class="text-xs text-brand-gray-400">foundry-gpt</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm">🔄 <strong>Turnaround</strong></span></div>
-              <span class="text-xs text-brand-gray-400">foundry-reasoning</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm">🔥 <strong>Flare Stack</strong></span></div>
-              <span class="text-xs text-brand-gray-400">foundry-nano</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm">📋 <strong>The Inspector</strong></span></div>
-              <span class="text-xs text-brand-gray-400">foundry-reasoning</span>
-            </div>
+            {% endfor %}
           </div>
         </div>
       </div>
@@ -538,14 +520,14 @@
             <div class="bg-brand-gray-50 rounded-xl rounded-tl-none px-4 py-3 max-w-2xl">
               <div class="text-xs font-bold text-brand-red mb-1">{{ agents.orchestrator.name }}</div>
               <p class="text-sm text-brand-gray-600">Welcome to the {{ brand.app_name }}. I'm <strong>{{ agents.orchestrator.name }}</strong> — I route your questions through the crew and deliver a unified take. The crew's on shift and ready:</p>
-              <p class="text-sm text-brand-gray-500 mt-2">🛢️ <strong>Barrel Counter</strong> counts every dollar · 🔧 <strong>The Roughneck</strong> knows why things are built this way · 🔄 <strong>Turnaround</strong> diagnoses issues · 🔥 <strong>Flare Stack</strong> watches the horizon · 📋 <strong>The Inspector</strong> enforces compliance</p>
+              <p class="text-sm text-brand-gray-500 mt-2">{% for key, icon in [('cost_sentinel', '💰'), ('standards_architect', '🔧'), ('diagnostics_sre', '🔄'), ('scout', '🛰️'), ('compliance_inspector', '📋')] %}{{ icon }} <strong>{{ agents[key].name }}</strong>{{ ' · ' if not loop.last else '' }}{% endfor %}</p>
               <p class="text-sm text-brand-gray-600 mt-2">Try asking:</p>
               <div id="suggested-questions">
                 <ul class="text-sm text-brand-gray-500 mt-1 space-y-1">
                   <li class="cursor-pointer hover:text-brand-red" onclick="askCouncil('Why is demo-sap-batch-vm01 running on a D16s_v5? Can we save money?')">• "Why is this VM so big? Can we save money?"</li>
                   <li class="cursor-pointer hover:text-brand-red" onclick="askCouncil('Our Terraform deployment to WebApp-Test-RG failed. What happened?')">• "Our Terraform deployment failed. What happened?"</li>
                   <li class="cursor-pointer hover:text-brand-red" onclick="askCouncil('Where are we wasting money in our Azure subscription?')">• "Where are we wasting money?"</li>
-                  <li class="cursor-pointer hover:text-brand-red" onclick="askCouncil('Run a proactive environment scan.')">• "🔥 Light the Flare Stack — run a proactive scan."</li>
+                  <li class="cursor-pointer hover:text-brand-red" onclick="askCouncil('Run a proactive environment scan.')">• "🔥 Ask {{ agents.scout.name }} to run a proactive scan."</li>
                   <li class="cursor-pointer hover:text-brand-red" onclick="askCouncil('Run a compliance scan. What policies are being violated and are any exemptions expired?')">• "📋 Compliance inspection — policy bugs or workaround abuse?"</li>
                 </ul>
               </div>
@@ -587,7 +569,7 @@
       <p class="text-sm text-brand-gray-400 mb-6">Six AI specialists named after the backbone of cloud operations. They debate, disagree, and deliver balanced intelligence — just like a real ops crew.</p>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <!-- Pipeline -->
+        <!-- Orchestrator -->
         <div class="agent-card bg-white rounded-xl border border-brand-gray-100 p-5 md:col-span-2">
           <div class="flex items-start gap-4">
             <div class="w-12 h-12 rounded-xl bg-brand-black flex items-center justify-center flex-shrink-0">
@@ -595,27 +577,27 @@
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="font-bold">Pipeline</h3>
-                <span class="text-xs bg-brand-gray-100 text-brand-gray-500 px-2 py-0.5 rounded-full">foundry-gpt</span>
+                <h3 class="font-bold">{{ agents.orchestrator.name }}</h3>
+                <span class="text-xs bg-brand-gray-100 text-brand-gray-500 px-2 py-0.5 rounded-full">{{ agents.orchestrator.deployment }}</span>
                 <span class="text-xs bg-brand-red text-white px-2 py-0.5 rounded-full">Coordinator</span>
               </div>
-              <p class="text-sm text-brand-gray-500 mt-1">The central nervous system — named after the infrastructure that connects everything. Routes requests through the crew, synthesizes perspectives, and delivers a unified stream of intelligence. The tension between Barrel Counter and The Roughneck? That's a <em>feature</em>.</p>
+              <p class="text-sm text-brand-gray-500 mt-1">{{ agents.orchestrator.role }}</p>
             </div>
           </div>
         </div>
 
-        <!-- Barrel Counter -->
+        <!-- Cost -->
         <div class="agent-card bg-white rounded-xl border border-brand-gray-100 p-5">
           <div class="flex items-start gap-4">
             <div class="w-12 h-12 rounded-xl bg-green-600 flex items-center justify-center flex-shrink-0">
-              <span class="text-2xl">🛢️</span>
+              <span class="text-2xl">💰</span>
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="font-bold">Barrel Counter</h3>
-                <span class="text-xs bg-brand-gray-100 text-brand-gray-500 px-2 py-0.5 rounded-full">foundry-reasoning</span>
+                <h3 class="font-bold">{{ agents.cost_sentinel.name }}</h3>
+                <span class="text-xs bg-brand-gray-100 text-brand-gray-500 px-2 py-0.5 rounded-full">{{ agents.cost_sentinel.deployment }}</span>
               </div>
-              <p class="text-sm text-brand-gray-500 mt-1">Every barrel of crude matters. Every cloud dollar is a barrel. Tracks yield to the tenth of a percent, finds waste like a leaking valve, and always shows the math. Not mean about it — just precise.</p>
+              <p class="text-sm text-brand-gray-500 mt-1">{{ agents.cost_sentinel.role }}</p>
               <div class="mt-2 flex flex-wrap gap-1">
                 <span class="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">💰 Rightsizing</span>
                 <span class="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">🗑️ Orphaned resources</span>
@@ -625,7 +607,7 @@
           </div>
         </div>
 
-        <!-- The Roughneck -->
+        <!-- Standards -->
         <div class="agent-card bg-white rounded-xl border border-brand-gray-100 p-5">
           <div class="flex items-start gap-4">
             <div class="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
@@ -633,10 +615,10 @@
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="font-bold">The Roughneck</h3>
-                <span class="text-xs bg-brand-gray-100 text-brand-gray-500 px-2 py-0.5 rounded-full">foundry-gpt</span>
+                <h3 class="font-bold">{{ agents.standards_architect.name }}</h3>
+                <span class="text-xs bg-brand-gray-100 text-brand-gray-500 px-2 py-0.5 rounded-full">{{ agents.standards_architect.deployment }}</span>
               </div>
-              <p class="text-sm text-brand-gray-500 mt-1">Named after the toughest job on the drilling floor. The grizzled veteran who <em>built</em> this place. Knows why every pipe is that diameter. Not against saving money — against saving money <strong>stupidly</strong>.</p>
+              <p class="text-sm text-brand-gray-500 mt-1">{{ agents.standards_architect.role }}</p>
               <div class="mt-2 flex flex-wrap gap-1">
                 <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">📐 Sizing rationale</span>
                 <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">📋 Standards</span>
@@ -646,7 +628,7 @@
           </div>
         </div>
 
-        <!-- Turnaround -->
+        <!-- Diagnostics -->
         <div class="agent-card bg-white rounded-xl border border-brand-gray-100 p-5">
           <div class="flex items-start gap-4">
             <div class="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center flex-shrink-0">
@@ -654,10 +636,10 @@
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="font-bold">Turnaround</h3>
-                <span class="text-xs bg-brand-gray-100 text-brand-gray-500 px-2 py-0.5 rounded-full">foundry-reasoning</span>
+                <h3 class="font-bold">{{ agents.diagnostics_sre.name }}</h3>
+                <span class="text-xs bg-brand-gray-100 text-brand-gray-500 px-2 py-0.5 rounded-full">{{ agents.diagnostics_sre.deployment }}</span>
               </div>
-              <p class="text-sm text-brand-gray-500 mt-1">Named after the most critical event in refinery ops — shut down, inspect, diagnose, fix, restart. The person they call at 3 AM. Doesn't guess. Follows the evidence. <em>You</em> ARE their elevated access.</p>
+              <p class="text-sm text-brand-gray-500 mt-1">{{ agents.diagnostics_sre.role }}</p>
               <div class="mt-2 flex flex-wrap gap-1">
                 <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">🔍 Root cause</span>
                 <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">📊 Activity logs</span>
@@ -667,7 +649,7 @@
           </div>
         </div>
 
-        <!-- Flare Stack -->
+        <!-- Monitoring -->
         <div class="agent-card bg-white rounded-xl border border-brand-gray-100 p-5">
           <div class="flex items-start gap-4">
             <div class="w-12 h-12 rounded-xl bg-brand-red flex items-center justify-center flex-shrink-0">
@@ -675,10 +657,10 @@
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="font-bold">Flare Stack</h3>
-                <span class="text-xs bg-brand-gray-100 text-brand-gray-500 px-2 py-0.5 rounded-full">foundry-nano</span>
+                <h3 class="font-bold">{{ agents.scout.name }}</h3>
+                <span class="text-xs bg-brand-gray-100 text-brand-gray-500 px-2 py-0.5 rounded-full">{{ agents.scout.deployment }}</span>
               </div>
-              <p class="text-sm text-brand-gray-500 mt-1">The most visible safety system in a refinery. When Flare Stack lights up, everyone for miles knows something needs attention. Doesn't write essays — writes alerts. Fast, concise, actionable.</p>
+              <p class="text-sm text-brand-gray-500 mt-1">{{ agents.scout.role }}</p>
               <div class="mt-2 flex flex-wrap gap-1">
                 <span class="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded-full">🚨 Anomaly detection</span>
                 <span class="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded-full">📊 Quota alerts</span>
@@ -688,7 +670,7 @@
           </div>
         </div>
 
-        <!-- The Inspector -->
+        <!-- Compliance -->
         <div class="agent-card bg-white rounded-xl border border-brand-gray-100 p-5 md:col-span-2">
           <div class="flex items-start gap-4">
             <div class="w-12 h-12 rounded-xl bg-purple-600 flex items-center justify-center flex-shrink-0">
@@ -696,11 +678,11 @@
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="font-bold">The Inspector</h3>
-                <span class="text-xs bg-brand-gray-100 text-brand-gray-500 px-2 py-0.5 rounded-full">foundry-reasoning</span>
-                <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">NEW — Continuous Compliance</span>
+                <h3 class="font-bold">{{ agents.compliance_inspector.name }}</h3>
+                <span class="text-xs bg-brand-gray-100 text-brand-gray-500 px-2 py-0.5 rounded-full">{{ agents.compliance_inspector.deployment }}</span>
+                <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Continuous Compliance</span>
               </div>
-              <p class="text-sm text-brand-gray-500 mt-1">Named after the pipeline inspectors who walk every mile of line and check every weld certification. Methodical, regulation-minded, fair but firm. Classifies every violation: is it a <strong>policy bug</strong>, a <strong>misconfiguration</strong>, a <strong>valid exemption</strong>, or <strong>workaround abuse</strong>? Recommends the right fix — a PR to fix the policy definition, or a PBI to investigate the pattern.</p>
+              <p class="text-sm text-brand-gray-500 mt-1">{{ agents.compliance_inspector.role }}</p>
               <div class="mt-2 flex flex-wrap gap-1">
                 <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">📜 Policy compliance</span>
                 <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">🔍 Violation classification</span>
@@ -716,26 +698,24 @@
       <div class="mt-8 bg-white rounded-xl border border-brand-gray-100 p-6">
         <h2 class="font-bold mb-4">How the Crew Works</h2>
         <div class="bg-brand-gray-50 rounded-lg p-6 font-mono text-xs text-brand-gray-500 leading-relaxed">
-<pre>User Question or 🔥 Flare Stack Alert
+<pre>User Question or 🔥 Monitor Alert
          │
          ▼
     ┌─────────────┐
-    │ ⚡ Pipeline  │ ← foundry-gpt (routing + synthesis)
+    │ Coordinator │ ← orchestrator (routing + synthesis)
     └──────┬──────┘
-           │ routes to the crew
+           │ routes to specialists
      ┌─────┼──────────┬──────────┬──────────┐
      ▼     ▼          ▼          ▼          ▼
-  ┌──────┐ ┌────────┐ ┌───────┐ ┌────────┐ ┌──────────┐
-  │🛢️    │ │🔧      │ │🔄     │ │🔥      │ │📋        │
-  │Barrel│ │Rough-  │ │Turn-  │ │Flare   │ │The       │
-  │Countr│ │neck    │ │around │ │Stack   │ │Inspector │
-  │reason│ │foundry-gpt │ │reason│ │nano  │ │reason    │
-  └──┬───┘ └───┬────┘ └───┬───┘ └───┬────┘ └────┬─────┘
-     │         │           │         │           │
-     └─────────┴───────────┴─────────┘           │
-               ▼                                 │
+  ┌──────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌──────────┐
+  │ 💰   │ │  🔧    │ │  🔄    │ │  🛰️    │ │   📋     │
+  │ Cost │ │Standrds│ │ Diagns │ │Monitor │ │Compliance│
+  └──┬───┘ └───┬────┘ └───┬────┘ └───┬────┘ └────┬─────┘
+     │         │           │          │           │
+     └─────────┴───────────┴──────────┘           │
+               ▼                                  │
     ┌─────────────────┐                          │
-    │ ⚡ Pipeline      │◄─────────────────────────┘
+    │  Coordinator     │◄─────────────────────────┘
     │  (synthesize)   │
     └────────┬────────┘
              ▼
@@ -749,13 +729,19 @@
 
   <!-- ═══ JavaScript ═══ -->
   <script>
+    // Profile-driven display names — the color/icon per role stays fixed
+    // (keyed by agent key, not by persona name) so any checked-in or
+    // custom profile gets sensibly colored cards without a template edit.
+    const ORCHESTRATOR_NAME = {{ agents.orchestrator.name | tojson }};
+    const STANDARDS_NAME = {{ agents.standards_architect.name | tojson }};
+    const SCOUT_NAME = {{ agents.scout.name | tojson }};
     const AGENT_COLORS = {
-      'Barrel Counter': { bg: 'bg-green-600', text: '🛢️', border: 'border-green-500', light: 'bg-green-50' },
-      'The Roughneck': { bg: 'bg-blue-600', text: '🔧', border: 'border-blue-500', light: 'bg-blue-50' },
-      'Turnaround': { bg: 'bg-amber-500', text: '🔄', border: 'border-amber-400', light: 'bg-amber-50' },
-      'Flare Stack': { bg: 'bg-brand-red', text: '🔥', border: 'border-red-500', light: 'bg-red-50' },
-      'Pipeline': { bg: 'bg-brand-black', text: '⚡', border: 'border-brand-black', light: 'bg-brand-gray-50' },
-      'The Inspector': { bg: 'bg-purple-600', text: '📋', border: 'border-purple-500', light: 'bg-purple-50' },
+      {{ agents.cost_sentinel.name | tojson }}: { bg: 'bg-green-600', text: '💰', border: 'border-green-500', light: 'bg-green-50' },
+      {{ agents.standards_architect.name | tojson }}: { bg: 'bg-blue-600', text: '🔧', border: 'border-blue-500', light: 'bg-blue-50' },
+      {{ agents.diagnostics_sre.name | tojson }}: { bg: 'bg-amber-500', text: '🔄', border: 'border-amber-400', light: 'bg-amber-50' },
+      {{ agents.scout.name | tojson }}: { bg: 'bg-brand-red', text: '🛰️', border: 'border-red-500', light: 'bg-red-50' },
+      {{ agents.orchestrator.name | tojson }}: { bg: 'bg-brand-black', text: '⚡', border: 'border-brand-black', light: 'bg-brand-gray-50' },
+      {{ agents.compliance_inspector.name | tojson }}: { bg: 'bg-purple-600', text: '📋', border: 'border-purple-500', light: 'bg-purple-50' },
     };
 
     let currentMode = 'demo';
@@ -1045,7 +1031,7 @@
       let issuesHtml = '';
 
       // Build header showing this is live discovery
-      issuesHtml += '<div class="bg-brand-black text-white rounded-xl p-3 mb-3 text-center"><span class="text-xs font-bold uppercase tracking-wider">🔥 Flare Stack Live Scan — Things You May Not Have Known</span></div>';
+      issuesHtml += '<div class="bg-brand-black text-white rounded-xl p-3 mb-3 text-center"><span class="text-xs font-bold uppercase tracking-wider">🔥 ' + SCOUT_NAME + ' Live Scan — Things You May Not Have Known</span></div>';
 
       if (data.public_ips > 0) {
         issuesHtml += buildIssueCard('WARNING', `🔥 ${data.public_ips} Public IP addresses exposed`, 'These IPs are publicly routable from the internet. Should they be behind private endpoints?', 'We found ' + data.public_ips + ' public IP addresses in our subscription. Analyze each one — should any be moved behind private endpoints for security? What is the risk of leaving them public?');
@@ -1219,13 +1205,14 @@
       addMessage('user', '', '☀️ Run the morning briefing — what did the crew find overnight?');
       document.getElementById('send-btn').disabled = true;
       streamTotalTokens = 0;
+      streamTotalCost = 0;
       const panel = document.getElementById('agent-perspectives');
       panel.innerHTML = '';
 
       try {
         await streamCouncil('/api/digest', {});
       } catch (e) {
-        addMessage('assistant', 'Pipeline', '⚠️ Error: ' + e.message);
+        addMessage('assistant', ORCHESTRATOR_NAME, '⚠️ Error: ' + e.message);
       } finally {
         document.getElementById('send-btn').disabled = false;
       }
@@ -1250,11 +1237,11 @@
       }
       const topTypes = Object.entries(data.resources_by_type).slice(0, 1);
       if (topTypes.length) {
-        questions.push({ text: `🔥 Run a full Flare Stack scan on my environment`, q: `Run a full proactive scan of this Azure subscription. Check for security drift, orphaned resources, tagging compliance, and anything that looks off.` });
+        questions.push({ text: `🔥 Run a full ${SCOUT_NAME} scan on my environment`, q: `Run a full proactive scan of this Azure subscription. Check for security drift, orphaned resources, tagging compliance, and anything that looks off.` });
       }
 
       if (questions.length === 0) {
-        questions.push({ text: `🔥 Light the Flare Stack — scan my environment`, q: `Run a proactive environment scan of this Azure subscription.` });
+        questions.push({ text: `🔥 Ask ${SCOUT_NAME} to scan my environment`, q: `Run a proactive environment scan of this Azure subscription.` });
       }
 
       let html = '<ul class="text-sm text-brand-gray-500 mt-1 space-y-1">';
@@ -1286,7 +1273,7 @@
     // ─── Chat ───────────────────────────────────────
     function addMessage(role, agentName, content) {
       const chat = document.getElementById('chat-messages');
-      const colors = AGENT_COLORS[agentName] || AGENT_COLORS['Pipeline'];
+      const colors = AGENT_COLORS[agentName] || AGENT_COLORS[ORCHESTRATOR_NAME];
       const div = document.createElement('div');
       div.className = role === 'user' ? 'flex gap-3 justify-end fade-in' : 'flex gap-3 fade-in';
 
@@ -1323,7 +1310,7 @@
           <span class="text-sm">⚡</span>
         </div>
         <div class="bg-brand-gray-50 rounded-xl rounded-tl-none px-4 py-3">
-          <div class="text-xs font-bold text-brand-red mb-1">Pipeline</div>
+          <div class="text-xs font-bold text-brand-red mb-1">${ORCHESTRATOR_NAME}</div>
           <div class="flex items-center gap-2 text-sm text-brand-gray-400">
             <span>The crew is analyzing — this may take 30-60 seconds</span>
             <span class="typing-indicator"><span>●</span><span>●</span><span>●</span></span>
@@ -1354,6 +1341,7 @@
     }
 
     let streamTotalTokens = 0;
+    let streamTotalCost = 0;
     let lastSynthesisText = '';
 
     async function askCouncil(question) {
@@ -1361,6 +1349,7 @@
       addMessage('user', '', question);
       document.getElementById('send-btn').disabled = true;
       streamTotalTokens = 0;
+      streamTotalCost = 0;
 
       // Reset agent panel
       const panel = document.getElementById('agent-perspectives');
@@ -1368,10 +1357,10 @@
 
       if (currentMode === 'live') {
         const subCount = subScope === 'all' ? availableSubscriptions.length : (subScope === 'pick' ? selectedSubIds.length : 1);
-        addMessage('assistant', 'Pipeline', `🔵 **LIVE mode** — scanning ${subCount} subscription${subCount > 1 ? 's' : ''} for context...`);
+        addMessage('assistant', ORCHESTRATOR_NAME, `🔵 **LIVE mode** — scanning ${subCount} subscription${subCount > 1 ? 's' : ''} for context...`);
       }
 
-      addMessage('assistant', 'Pipeline', '⚡ Dispatching the crew... each will report as they finish.');
+      addMessage('assistant', ORCHESTRATOR_NAME, '⚡ Dispatching the crew... each will report as they finish.');
 
       try {
         const body = { question, mode: currentMode };
@@ -1382,7 +1371,7 @@
         }
         await streamCouncil('/api/ask/stream', body);
       } catch (e) {
-        addMessage('assistant', 'Pipeline', '⚠️ Connection error: ' + e.message);
+        addMessage('assistant', ORCHESTRATOR_NAME, '⚠️ Connection error: ' + e.message);
       } finally {
         document.getElementById('send-btn').disabled = false;
       }
@@ -1395,16 +1384,17 @@
       addMessage('user', '', demo.question || demo.title);
       document.getElementById('send-btn').disabled = true;
       streamTotalTokens = 0;
+      streamTotalCost = 0;
 
       const panel = document.getElementById('agent-perspectives');
       panel.innerHTML = '';
 
-      addMessage('assistant', 'Pipeline', '⚡ Dispatching the crew... each will report as they finish.');
+      addMessage('assistant', ORCHESTRATOR_NAME, '⚡ Dispatching the crew... each will report as they finish.');
 
       try {
         await streamCouncil('/api/demo/' + scenarioId + '/stream', {});
       } catch (e) {
-        addMessage('assistant', 'Pipeline', '⚠️ Connection error: ' + e.message);
+        addMessage('assistant', ORCHESTRATOR_NAME, '⚠️ Connection error: ' + e.message);
       } finally {
         document.getElementById('send-btn').disabled = false;
       }
@@ -1439,12 +1429,12 @@
           try { event = JSON.parse(jsonStr); } catch { continue; }
 
           if (event.phase === 'error') {
-            addMessage('assistant', 'Pipeline', '⚠️ Error: ' + event.error);
+            addMessage('assistant', ORCHESTRATOR_NAME, '⚠️ Error: ' + event.error);
             return;
           }
           if (event.phase === 'done') {
             // Add cost summary to panel
-            const totalCost = (streamTotalTokens * 0.000002).toFixed(4);
+            const totalCost = streamTotalCost.toFixed(4);
             const panel = document.getElementById('agent-perspectives');
             const summaryDiv = document.createElement('div');
             summaryDiv.className = 'bg-brand-gray-100 rounded-lg p-3 mt-3 fade-in';
@@ -1459,9 +1449,15 @@
 
           const agent = event.result;
           const agentName = agent.agent;
-          const colors = AGENT_COLORS[agentName] || AGENT_COLORS['Pipeline'];
+          const colors = AGENT_COLORS[agentName] || AGENT_COLORS[ORCHESTRATOR_NAME];
           const agentTokens = (agent.usage.prompt_tokens || 0) + (agent.usage.completion_tokens || 0);
           streamTotalTokens += agentTokens;
+          // Prefer the backend's real, pricing-based estimate
+          // (usage.estimated_cost_usd); only fall back to the flat
+          // per-token guess for older/partial responses that lack it.
+          streamTotalCost += typeof agent.usage.estimated_cost_usd === 'number'
+            ? agent.usage.estimated_cost_usd
+            : agentTokens * 0.000002;
 
           if (event.phase === 'round1') {
             // Add to chat as a message
@@ -1472,7 +1468,7 @@
           else if (event.phase === 'round2') {
             if (!round2Started) {
               round2Started = true;
-              addMessage('assistant', 'Pipeline', '🔥 **Round 2 — The crew has seen each other\'s takes. Now they debate.**');
+              addMessage('assistant', ORCHESTRATOR_NAME, '🔥 **Round 2 — The crew has seen each other\'s takes. Now they debate.**');
               // Panel header
               const panel = document.getElementById('agent-perspectives');
               const h = document.createElement('div');
@@ -1484,7 +1480,7 @@
             addAgentToPanel(agent, colors, agentTokens, 'round2');
           }
           else if (event.phase === 'synthesis') {
-            addMessage('assistant', 'Pipeline', agent.response);
+            addMessage('assistant', ORCHESTRATOR_NAME, agent.response);
             // Add remediation button after synthesis
             lastSynthesisText = agent.response;
             addRemediationButton();
@@ -1495,7 +1491,9 @@
 
     function addAgentToPanel(agent, colors, agentTokens, phase) {
       const panel = document.getElementById('agent-perspectives');
-      const estCost = (agentTokens * 0.000002).toFixed(4);
+      const estCost = (typeof agent.usage.estimated_cost_usd === 'number'
+        ? agent.usage.estimated_cost_usd
+        : agentTokens * 0.000002).toFixed(4);
       const borderClass = phase === 'round2' ? `border-2 ${colors.border} border-opacity-40` : `border ${colors.border} border-opacity-20`;
       const badge = phase === 'round2' ? '<span class="text-xs text-brand-red font-medium">REBUTTAL</span>' : '';
       const div = document.createElement('div');
@@ -1541,9 +1539,9 @@
         const scanData = await scanResp.json();
 
         if (scanData.count > 0) {
-          status.innerHTML = '🔴 <strong>DETECTED in ~10 seconds!</strong> Found ' + scanData.count + ' dangerous NSG rule(s). Click below to have Flare Stack analyze it.';
+          status.innerHTML = '🔴 <strong>DETECTED in ~10 seconds!</strong> Found ' + scanData.count + ' dangerous NSG rule(s). Click below to have ' + SCOUT_NAME + ' analyze it.';
           // Auto-ask the crew
-          askCouncil('URGENT: Flare Stack detected a security drift — an NSG rule was just created that opens SSH (port 22) to the entire internet (source: *) on ' + scanData.drift_findings[0].nsgName + ' in ' + scanData.drift_findings[0].resourceGroup + '. This was detected within 10 seconds of creation. Analyze the risk and recommend immediate remediation.');
+          askCouncil('URGENT: ' + SCOUT_NAME + ' detected a security drift — an NSG rule was just created that opens SSH (port 22) to the entire internet (source: *) on ' + scanData.drift_findings[0].nsgName + ' in ' + scanData.drift_findings[0].resourceGroup + '. This was detected within 10 seconds of creation. Analyze the risk and recommend immediate remediation.');
         } else {
           status.textContent = '⏳ Not detected yet — try scanning again in a few seconds.';
         }
@@ -1592,7 +1590,7 @@
       const btn = document.getElementById('remediate-btn');
       if (btn) { btn.disabled = true; btn.textContent = '🔧 Generating artifacts...'; }
 
-      addMessage('assistant', 'The Roughneck', '🔧 **Writing remediation artifacts...** Generating main.tf, variables.tf, remediate.sh, and RUNBOOK.md for your team to review and deploy through your normal pipeline.');
+      addMessage('assistant', STANDARDS_NAME, '🔧 **Writing remediation artifacts...** Generating main.tf, variables.tf, remediate.sh, and RUNBOOK.md for your team to review and deploy through your normal pipeline.');
 
       try {
         const resp = await fetch('/api/remediate', {
@@ -1616,18 +1614,18 @@
             let event;
             try { event = JSON.parse(line.slice(6).trim()); } catch { continue; }
             if (event.phase === 'remediation') {
-              addMessage('assistant', 'The Roughneck', event.result.response);
-              const colors = AGENT_COLORS['The Roughneck'];
+              addMessage('assistant', STANDARDS_NAME, event.result.response);
+              const colors = AGENT_COLORS[STANDARDS_NAME];
               const tokens = (event.result.usage.prompt_tokens || 0) + (event.result.usage.completion_tokens || 0);
               addAgentToPanel(event.result, colors, tokens, 'round1');
             }
             if (event.phase === 'error') {
-              addMessage('assistant', 'Pipeline', '⚠️ Error generating remediation: ' + event.error);
+              addMessage('assistant', ORCHESTRATOR_NAME, '⚠️ Error generating remediation: ' + event.error);
             }
           }
         }
       } catch (e) {
-        addMessage('assistant', 'Pipeline', '⚠️ Connection error: ' + e.message);
+        addMessage('assistant', ORCHESTRATOR_NAME, '⚠️ Connection error: ' + e.message);
       }
       if (btn) { btn.disabled = false; btn.textContent = '🔧 Generate Remediation Artifacts (Terraform + CLI + Runbook)'; }
     }
@@ -1635,13 +1633,14 @@
     // Legacy renderCouncilResponse kept for non-streaming fallback
     function renderCouncilResponse(data) {
       if (data.synthesis) {
-        addMessage('assistant', 'Pipeline', data.synthesis.response);
+        addMessage('assistant', ORCHESTRATOR_NAME, data.synthesis.response);
       }
 
       const panel = document.getElementById('agent-perspectives');
       panel.innerHTML = '';
 
       let totalTokens = 0;
+      let totalCost = 0;
 
       // Round 1: Initial analysis
       if (data.specialists && Object.keys(data.specialists).length > 0) {
@@ -1653,10 +1652,13 @@
 
       if (data.specialists) {
         for (const [key, agent] of Object.entries(data.specialists)) {
-          const colors = AGENT_COLORS[agent.agent] || AGENT_COLORS['Pipeline'];
+          const colors = AGENT_COLORS[agent.agent] || AGENT_COLORS[ORCHESTRATOR_NAME];
           const agentTokens = (agent.usage.prompt_tokens || 0) + (agent.usage.completion_tokens || 0);
           totalTokens += agentTokens;
-          const estCost = (agentTokens * 0.000002).toFixed(4);
+          const agentCost = typeof agent.usage.estimated_cost_usd === 'number'
+            ? agent.usage.estimated_cost_usd : agentTokens * 0.000002;
+          totalCost += agentCost;
+          const estCost = agentCost.toFixed(4);
           const div = document.createElement('div');
           div.className = `${colors.light} rounded-lg p-3 border ${colors.border} border-opacity-20 fade-in mb-2`;
           div.innerHTML = `
@@ -1681,10 +1683,13 @@
         panel.appendChild(r2Header);
 
         for (const [key, agent] of Object.entries(data.rebuttals)) {
-          const colors = AGENT_COLORS[agent.agent] || AGENT_COLORS['Pipeline'];
+          const colors = AGENT_COLORS[agent.agent] || AGENT_COLORS[ORCHESTRATOR_NAME];
           const agentTokens = (agent.usage.prompt_tokens || 0) + (agent.usage.completion_tokens || 0);
           totalTokens += agentTokens;
-          const estCost = (agentTokens * 0.000002).toFixed(4);
+          const agentCost = typeof agent.usage.estimated_cost_usd === 'number'
+            ? agent.usage.estimated_cost_usd : agentTokens * 0.000002;
+          totalCost += agentCost;
+          const estCost = agentCost.toFixed(4);
           const div = document.createElement('div');
           div.className = `${colors.light} rounded-lg p-3 border-2 ${colors.border} border-opacity-40 fade-in mb-2`;
           div.innerHTML = `
@@ -1705,16 +1710,17 @@
       // Add orchestrator tokens
       if (data.synthesis && data.synthesis.usage) {
         totalTokens += (data.synthesis.usage.prompt_tokens || 0) + (data.synthesis.usage.completion_tokens || 0);
+        totalCost += typeof data.synthesis.usage.estimated_cost_usd === 'number'
+          ? data.synthesis.usage.estimated_cost_usd : 0;
       }
 
       // Cost summary
-      const totalCost = (totalTokens * 0.000002).toFixed(4);
       const summaryDiv = document.createElement('div');
       summaryDiv.className = 'bg-brand-gray-100 rounded-lg p-3 mt-3 fade-in';
       summaryDiv.innerHTML = `
         <div class="flex justify-between items-center">
           <span class="text-xs font-bold text-brand-gray-500">Total for this query</span>
-          <span class="text-xs font-bold text-green-600">${totalTokens.toLocaleString()} tokens · ~$${totalCost}</span>
+          <span class="text-xs font-bold text-green-600">${totalTokens.toLocaleString()} tokens · ~$${totalCost.toFixed(4)}</span>
         </div>
         <div class="text-xs text-brand-gray-400 mt-1">6 agent calls · pennies per interaction</div>`;
       panel.appendChild(summaryDiv);

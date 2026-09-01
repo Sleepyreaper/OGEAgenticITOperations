@@ -17,9 +17,11 @@ param prefix = 'opscouncil'
 param location = 'westus2'
 
 // Checked-in profile (profiles/<id>/) this deployment should load.
-// Ships with "oge" (this template's original branding/agents) and
-// "generic" (a neutral starting point for a new customer).
-param appProfile = 'oge'
+// Ships with "power" (default — a generic power-utility reference
+// deployment on GPT-5.6 Sol/Terra/Luna, see docs/MODEL_CONFIGURATION.md),
+// "generic" (a neutral starting point for a new customer), and "oge"
+// (this template's original branding/agents, kept as a legacy/example).
+param appProfile = 'power'
 
 // Existing App Service Plan — provide the full resource ID.
 // Example: /subscriptions/<SUB_ID>/resourceGroups/<RG>/providers/Microsoft.Web/serverfarms/<PLAN_NAME>
@@ -54,14 +56,23 @@ param additionalOpenAiAccounts = {
 // cost_sentinel, standards_architect, diagnostics_sre, scout,
 // compliance_inspector (matching the Python agent keys exactly). Each
 // value may set any subset of: deployment, endpoint, temperature,
-// supportsTemperature, apiVersion, name, role, promptFile. Omitted
-// fields fall back to the loaded profile's own defaults.
+// supportsTemperature, apiVersion, name, role, promptFile,
+// maxCompletionTokens, maxContextChars, responseInstruction,
+// inputCostPerMillion, outputCostPerMillion (see
+// docs/MODEL_CONFIGURATION.md for the last five). Omitted fields fall
+// back to the loaded profile's own defaults.
 param agentOverrides = {
   // cost_sentinel: {
   //   deployment: 'foundry-reasoning'
   //   endpoint: 'secondary'
+  //   maxCompletionTokens: '900'
   // }
 }
+
+// OpenTelemetry service.name reported to Application Insights (see
+// docs/TELEMETRY.md). Leave blank to use the profile-safe default
+// ("ops-council-<appProfile>") the app derives at startup.
+param otelServiceName = ''
 
 // Whether the web app is reachable directly over the public internet.
 // 'Disabled' (default) requires access via the VNet/private networking

@@ -3,9 +3,18 @@
 These provide realistic Azure telemetry data for demo purposes while
 the real data integrations are being connected. In production, this
 data comes from azure_data.py queries.
+
+The `title`/`subtitle` labels below are the only UI-visible strings in
+this module that reference agent identity, so they're built from the
+loaded profile's own agent display names (`app.config.settings`) rather
+than a hardcoded persona name — this module works unchanged for any
+profile instead of only looking correct for the "oge" profile it was
+originally written for.
 """
 
 import json
+
+from app.config import settings
 
 # ─── Scenario 1: "Why is this VM so big?" ────────────────────────
 
@@ -343,7 +352,7 @@ COMPLIANCE_QUESTION = "Run a compliance scan. We need to know what's non-complia
 DEMO_SCENARIOS = {
     "vm_sizing": {
         "title": "Why is this VM so big?",
-        "subtitle": "🛢️ Barrel Counter vs 🔧 The Roughneck — the crew debates sizing",
+        "subtitle": f"💰 {settings.agents['cost_sentinel'].name} vs 🔧 {settings.agents['standards_architect'].name} — the crew debates sizing",
         "icon": "server",
         "question": VM_SIZING_QUESTION,
         "data": VM_SIZING_DATA,
@@ -351,7 +360,7 @@ DEMO_SCENARIOS = {
     },
     "deployment_failure": {
         "title": "My deployment failed",
-        "subtitle": "🔄 Turnaround diagnoses failures without elevated access",
+        "subtitle": f"🔄 {settings.agents['diagnostics_sre'].name} diagnoses failures without elevated access",
         "icon": "alert-triangle",
         "question": DEPLOYMENT_FAILURE_QUESTION,
         "data": DEPLOYMENT_FAILURE_DATA,
@@ -359,15 +368,15 @@ DEMO_SCENARIOS = {
     },
     "waste_analysis": {
         "title": "Where are we wasting money?",
-        "subtitle": "🛢️ Barrel Counter finds waste, 🔧 The Roughneck defends spending",
+        "subtitle": f"💰 {settings.agents['cost_sentinel'].name} finds waste, 🔧 {settings.agents['standards_architect'].name} defends spending",
         "icon": "dollar-sign",
         "question": WASTE_QUESTION,
         "data": WASTE_ANALYSIS_DATA,
         "agents": ["cost_sentinel", "standards_architect"],
     },
     "scout_alert": {
-        "title": "🔥 Light the Flare Stack",
-        "subtitle": "Flare Stack scans for issues before they become incidents",
+        "title": "🔥 Run a proactive scan",
+        "subtitle": f"{settings.agents['scout'].name} scans for issues before they become incidents",
         "icon": "radar",
         "question": SCOUT_ALERT_QUESTION,
         "data": SCOUT_ALERT_DATA,
@@ -383,7 +392,7 @@ DEMO_SCENARIOS = {
     },
     "continuous_compliance": {
         "title": "📋 Compliance inspection",
-        "subtitle": "The Inspector classifies violations — policy bugs vs workaround abuse",
+        "subtitle": f"{settings.agents['compliance_inspector'].name} classifies violations — policy bugs vs workaround abuse",
         "icon": "clipboard-check",
         "question": COMPLIANCE_QUESTION,
         "data": COMPLIANCE_DATA,

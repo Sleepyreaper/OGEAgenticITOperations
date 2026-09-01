@@ -19,7 +19,12 @@
       "endpoint_ref": "secondary",
       "temperature": 0.7,
       "supports_temperature": false,
-      "prompt_file": "prompts/orchestrator.txt"
+      "prompt_file": "prompts/orchestrator.txt",
+      "max_completion_tokens": 900,
+      "max_context_chars": 20000,
+      "response_instruction": "Respond as a crisp executive readout. No debate recap — just the bottom line recommendation with key tradeoffs in 3-5 sentences.",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0
     },
     "cost_sentinel": {
       "name": "Barrel Counter",
@@ -28,7 +33,12 @@
       "endpoint_ref": "secondary",
       "temperature": 1.0,
       "supports_temperature": false,
-      "prompt_file": "prompts/cost_sentinel.txt"
+      "prompt_file": "prompts/cost_sentinel.txt",
+      "max_completion_tokens": 700,
+      "max_context_chars": 16000,
+      "response_instruction": "Respond like a sharp cost analyst reading numbers off a control room display. Lead with the dollar figure. 3-5 sentences, all business.",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0
     },
     "standards_architect": {
       "name": "The Roughneck",
@@ -37,7 +47,12 @@
       "endpoint_ref": "secondary",
       "temperature": 0.5,
       "supports_temperature": false,
-      "prompt_file": "prompts/standards_architect.txt"
+      "prompt_file": "prompts/standards_architect.txt",
+      "max_completion_tokens": 700,
+      "max_context_chars": 16000,
+      "response_instruction": "Respond like a grizzled field veteran. Blunt, confident, maybe a little salty. Lead with whether this is safe to touch or not. 3-5 sentences.",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0
     },
     "diagnostics_sre": {
       "name": "Turnaround",
@@ -46,7 +61,12 @@
       "endpoint_ref": "secondary",
       "temperature": 1.0,
       "supports_temperature": false,
-      "prompt_file": "prompts/diagnostics_sre.txt"
+      "prompt_file": "prompts/diagnostics_sre.txt",
+      "max_completion_tokens": 900,
+      "max_context_chars": 20000,
+      "response_instruction": "Respond like a calm incident commander. Timeline first, then root cause, then fix. Structured and clinical. 3-5 sentences.",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0
     },
     "scout": {
       "name": "Flare Stack",
@@ -55,7 +75,12 @@
       "endpoint_ref": "",
       "temperature": 0.3,
       "supports_temperature": false,
-      "prompt_file": "prompts/scout.txt"
+      "prompt_file": "prompts/scout.txt",
+      "max_completion_tokens": 350,
+      "max_context_chars": 10000,
+      "response_instruction": "Respond like an alert system — short, punchy, severity-tagged. Use \ud83d\udd34\ud83d\udfe1\ud83d\udd35 severity indicators. 2-4 sentences max.",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0
     },
     "compliance_inspector": {
       "name": "The Inspector",
@@ -64,7 +89,12 @@
       "endpoint_ref": "secondary",
       "temperature": 1.0,
       "supports_temperature": false,
-      "prompt_file": "prompts/compliance_inspector.txt"
+      "prompt_file": "prompts/compliance_inspector.txt",
+      "max_completion_tokens": 700,
+      "max_context_chars": 16000,
+      "response_instruction": "Respond like a regulatory inspector filing a citation. Lead with the violation, classify it (policy bug / misconfiguration / exemption / workaround abuse), then state the required fix. 3-5 sentences, by the book.",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0
     }
   }
 }
