@@ -147,6 +147,23 @@ def _safe_iso(value, fallback: str) -> str:
 # impacting event and never demands executive attention on its own.
 _AUTHORIZED_STOP_REASON_TYPES = {"userinitiated"}
 
+# Live gap observed in at least one tenant: `reasonType` comes back
+# blank/absent on an "Unavailable" VM even though Resource Health's own
+# `title`/`summary` text is Azure's exact, documented wording for an
+# authorized stop/deallocate (see docs/AZURE_DATA_SOURCES.md). This is a
+# NARROW fallback -- an exact (case-insensitive) full-string match on
+# one of these two specific, known Azure-published strings, never a
+# loose substring check like "contains 'stopped'" -- so an arbitrary
+# Unavailable resource is never misclassified as authorized just
+# because its title/summary happens to mention being stopped for some
+# other, non-authorized reason. Only consulted when `reasonType` itself
+# is absent -- a populated (even unrecognized) `reasonType` always wins
+# and this fallback is never consulted.
+_AUTHORIZED_STOP_TITLE_EXACT = "stopped and deallocated"
+_AUTHORIZED_STOP_SUMMARY_EXACT = (
+    "this virtual machine is stopped and deallocated as requested by an authorized user or process."
+)
+
 
 def resource_health_findings(rows: list, *, subscription_id: str, now: Optional[datetime] = None) -> list:
     """Degraded/Unavailable Resource Health Findings from
@@ -164,6 +181,17 @@ def resource_health_findings(rows: list, *, subscription_id: str, now: Optional[
     downgraded to informational severity with no executive attention --
     it must never inflate reliability risk counts the way an actual
     platform-detected failure does.
+
+    Some tenants have been observed reporting `reasonType` blank/absent
+    on an authorized stop/deallocate (a live Resource Health data gap,
+    not a documented alternative state) -- when that happens, an EXACT
+    (case-insensitive) match of `title`/`summary` against Azure's own
+    published authorized-stop wording is used as a narrow fallback so
+    the Finding is still correctly downgraded (see
+    `_AUTHORIZED_STOP_TITLE_EXACT`/`_AUTHORIZED_STOP_SUMMARY_EXACT`
+    above) instead of surfacing as a false HIGH-severity platform
+    failure. This never broadens to "any Unavailable status that
+    mentions being stopped" -- only these two exact, documented phrases.
     """
     now = now or datetime.now(timezone.utc)
     evaluated_at = format_utc_iso(now)
@@ -177,13 +205,25 @@ def resource_health_findings(rows: list, *, subscription_id: str, now: Optional[
         rtype = row.get("type") or ""
         resource_id = _build_resource_id(subscription_id, rg, rtype, name)
         reason_type = str(row.get("reasonType") or "").strip().lower()
-        authorized_stop = status == "unavailable" and reason_type in _AUTHORIZED_STOP_REASON_TYPES
+        title_raw = row.get("title") or ""
+        summary_raw = row.get("summary") or ""
+        evidence_based_authorized_stop = (
+            status == "unavailable"
+            and not reason_type
+            and (
+                title_raw.strip().lower() == _AUTHORIZED_STOP_TITLE_EXACT
+                or summary_raw.strip().lower() == _AUTHORIZED_STOP_SUMMARY_EXACT
+            )
+        )
+        authorized_stop = (
+            status == "unavailable" and reason_type in _AUTHORIZED_STOP_REASON_TYPES
+        ) or evidence_based_authorized_stop
         if authorized_stop:
             severity = Severity.INFORMATIONAL
         else:
             severity = Severity.HIGH if status == "unavailable" else Severity.MEDIUM
-        title = row.get("title") or f"Resource health: {row.get('status')}"
-        summary = (row.get("summary") or f"{name or 'A monitored resource'} is reporting {row.get('status')}.")[:500]
+        title = title_raw or f"Resource health: {row.get('status')}"
+        summary = (summary_raw or f"{name or 'A monitored resource'} is reporting {row.get('status')}.")[:500]
         target = resource_id or name or rg or "a monitored resource"
 
         business_impact = (
@@ -227,6 +267,7 @@ def resource_health_findings(rows: list, *, subscription_id: str, now: Optional[
             metadata={
                 "resource_group": rg, "resource_type": rtype, "location": row.get("location", ""),
                 "subscription_id": subscription_id, "reason_type": row.get("reasonType", ""), "authorized_stop": authorized_stop,
+                "authorized_stop_evidence_fallback": evidence_based_authorized_stop,
             },
             discriminator=f"{subscription_id}|{rg}|{name}|{status}",
         ))

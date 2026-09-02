@@ -17,7 +17,7 @@ available (forecast_state = 'not_available').
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 from app.operations.collectors.http import (
     CredentialFactory,
@@ -117,6 +117,39 @@ def compute_exhaustion_forecast(history: list, *, limit: float, now: datetime) -
     if exhaustion_time <= now:
         exhaustion_time = now  # trend says the limit is already crossed
     return ForecastResult(state="available", exhaustion_at=format_utc_iso(exhaustion_time), slope_per_hour=round(slope, 6))
+
+
+def _filter_openai_items_by_name(items: list, name_filters: Optional[Sequence[str]]) -> list:
+    """Case-insensitive substring filter over each Cognitive Services
+    usages item's `name.value`/`name.localizedValue`, applied BEFORE
+    `_usages_to_capacity_summaries` normalizes anything -- so a filtered-
+    out quota never even produces a CapacitySummary/threshold
+    classification, let alone a Finding.
+
+    Exists because a shared Azure OpenAI/Cognitive Services account can
+    carry many unrelated model quotas (e.g. Claude/image models
+    provisioned for other teams) that are always fully allocated and
+    would otherwise dominate a capacity executive summary with noise
+    that has nothing to do with this deployment's own models. An empty/
+    None `name_filters` means "no filtering" -- every item is kept, the
+    correct default for a dedicated/generic account where every quota
+    is relevant. This is ONLY ever applied to Cognitive Services/Azure
+    OpenAI usages -- see collect_openai_capacity -- Compute usages are
+    never filtered by this or any name-based rule.
+    """
+    if not name_filters:
+        return items
+    lowered_filters = [f.strip().lower() for f in name_filters if f and f.strip()]
+    if not lowered_filters:
+        return items
+    kept = []
+    for item in items:
+        name_obj = item.get("name") or {}
+        name = str(name_obj.get("value") or name_obj.get("localizedValue") or "")
+        name_lower = name.lower()
+        if any(term in name_lower for term in lowered_filters):
+            kept.append(item)
+    return kept
 
 
 def _usages_to_capacity_summaries(
@@ -232,6 +265,7 @@ def collect_openai_capacity(
     *,
     warning_pct: float = 75.0,
     critical_pct: float = 90.0,
+    name_filters: Optional[Sequence[str]] = None,
     history_provider: Optional[HistoryProvider] = None,
     credential_factory: CredentialFactory = default_credential_factory,
     http_get: HttpGet = default_http_get,
@@ -243,6 +277,15 @@ def collect_openai_capacity(
     `locations`. This is a subscription+region aggregate (ARM's
     Microsoft.CognitiveServices "usages" endpoint), not a per-account or
     per-deployment breakdown -- see the module docstring.
+
+    `name_filters` (optional, case-insensitive substring match against
+    each quota's `name.value`/`localizedValue`) narrows results to
+    quotas relevant to this deployment BEFORE any threshold/forecast
+    normalization happens -- see `_filter_openai_items_by_name`. Empty/
+    None (the default) means no filtering, matching this function's
+    prior behavior exactly. NEVER applied to `collect_compute_capacity`
+    -- Compute usages are always returned in full regardless of this
+    parameter.
 
     `max_pages`/`max_records` bound how many `nextLink` pages/usage
     entries this call will ever follow/accumulate PER LOCATION (see
@@ -264,8 +307,9 @@ def collect_openai_capacity(
             max_pages=max_pages,
             max_records=max_records,
         )
+        filtered_items = _filter_openai_items_by_name(paged.items, name_filters)
         summaries.extend(_usages_to_capacity_summaries(
-            paged.items,
+            filtered_items,
             resource_scope=f"openai:{location}",
             source=OPENAI_SOURCE,
             warning_pct=warning_pct,

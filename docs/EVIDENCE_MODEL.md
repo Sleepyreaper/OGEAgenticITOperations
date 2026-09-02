@@ -324,6 +324,15 @@ fourteen total. Each envelope's `status` is one of:
 
 - `ok` — the source ran successfully (possibly with zero Findings — an
   empty, healthy environment is a valid `ok` result).
+  An `ok` envelope's optional `coverage_warning` field carries a
+  non-fatal, explicit caveat about incomplete coverage -- e.g.
+  `defender_assessments`' bounded `nextLink` pagination hitting a
+  transient failure on a LATER page (not the first): the assessments
+  already collected from earlier pages are still returned and normalized
+  normally, `status` stays `ok`, and `coverage_warning` names what was
+  missed instead of either silently dropping it or (the previous
+  defect) letting that page's own per-item normalization problem
+  escalate the entire source into `error`.
 - `error` — the source failed (auth, API, or malformed-config); `error`
   carries a human-readable message. **A failure in one source never
   removes or blanks another source's envelope** — each is computed
@@ -395,7 +404,24 @@ A `CollectionEnvelope` (`to_dict()` output) for a failed source:
   "collected_at": "2026-01-01T04:00:00.000Z",
   "findings": [],
   "summaries": [],
-  "error": "[azure_monitor_alert] /subscriptions/.../providers/Microsoft.AlertsManagement/alerts returned HTTP 500 (boom)"
+  "error": "[azure_monitor_alert] /subscriptions/.../providers/Microsoft.AlertsManagement/alerts returned HTTP 500 (boom)",
+  "coverage_warning": null
+}
+```
+
+An `ok`-status `CollectionEnvelope` with a non-fatal `coverage_warning`
+(a later Defender assessments page failed mid-pagination; the earlier
+page's assessments were still collected and normalized):
+
+```json
+{
+  "source": "defender_assessments",
+  "status": "ok",
+  "collected_at": "2026-01-01T04:00:00.000Z",
+  "findings": [ "...1 Finding from page 1..." ],
+  "summaries": [],
+  "error": null,
+  "coverage_warning": "[defender_assessment] .../providers/Microsoft.Security/assessments returned HTTP 503 (Service Unavailable)"
 }
 ```
 

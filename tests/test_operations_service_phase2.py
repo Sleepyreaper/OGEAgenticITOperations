@@ -267,6 +267,39 @@ backup_genuine_error_env = service.collect_backup_envelope(OperationsConfig(), q
 test("a genuine (non-missing-table) Log Analytics failure still classifies as error, never misreported as not_configured", backup_genuine_error_env.status == "error")
 
 
+print("\n\U0001f9ea Test 8: collect_defender_assessments_envelope -- a later-page failure surfaces as coverage_warning, status stays 'ok'")
+ASSESSMENTS_PAGE2_URL = "https://management.azure.com/subscriptions/sub1/providers/Microsoft.Security/assessments?api-version=x&page=2"
+ASSESSMENT_PAGE1 = {"value": [
+    {"id": "/subscriptions/sub1/.../assessments/a1", "name": "a1", "properties": {
+        "displayName": "Page 1 recommendation", "status": {"code": "Unhealthy"},
+        "metadata": {"severity": "High"},
+    }},
+], "nextLink": ASSESSMENTS_PAGE2_URL}
+
+
+def http_get_assessments_partial(url, *, headers, params=None, timeout=30):
+    if "Microsoft.Security/assessments" in url and "page=2" in url:
+        return FakeResponse({}, status_code=503, text="Service Unavailable")
+    if "Microsoft.Security/assessments" in url:
+        return FakeResponse(ASSESSMENT_PAGE1)
+    return FakeResponse({"value": []})
+
+
+partial_env = service.collect_defender_assessments_envelope(
+    ["sub1"], OperationsConfig(), credential_factory=FakeCredential, http_get=http_get_assessments_partial,
+)
+test("status stays 'ok' despite the later-page failure (never escalated to 'error')", partial_env.status == "ok")
+test("page 1's assessment Finding is still present, not discarded", len(partial_env.findings) == 1)
+test("coverage_warning is set with the page-2 failure's detail", bool(partial_env.coverage_warning))
+test("CollectionEnvelope.to_dict() exposes coverage_warning", partial_env.to_dict()["coverage_warning"] == partial_env.coverage_warning)
+
+full_success_env = service.collect_defender_assessments_envelope(
+    ["sub1"], OperationsConfig(), credential_factory=FakeCredential, http_get=make_http_get(),
+)
+test("coverage_warning is None when every page fetches successfully", full_success_env.coverage_warning is None)
+test("to_dict() reports coverage_warning: null when unset", full_success_env.to_dict()["coverage_warning"] is None)
+
+
 # ─── Summary ────────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
 print(f"  Results: {PASS} passed, {FAIL} failed")

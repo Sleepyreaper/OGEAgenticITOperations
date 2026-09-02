@@ -25,7 +25,7 @@ Finding categories -- never merged into one aggregate "score":
     Findings.)
 """
 
-from typing import Optional
+from typing import Callable, Optional
 
 from app.operations.collectors.http import (
     CredentialFactory,
@@ -80,6 +80,34 @@ def _severity_from_raw(raw: Optional[str], *, source: str, context: str) -> Seve
     if key not in _SEVERITY_MAP:
         raise OperationsCollectionError(source, f"{context}: unrecognized severity {raw!r}")
     return _SEVERITY_MAP[key]
+
+
+def _assessment_severity_from_raw(raw: Optional[str]) -> "tuple[Severity, bool]":
+    """Posture-assessment-only severity resolution -- DELIBERATELY more
+    lenient than `_severity_from_raw` above (which stays strict for
+    active alerts; see collect_active_alerts/normalize_alert, and
+    `_severity_from_raw`'s own test coverage, which is unchanged).
+
+    Some assessment types/tenants have been observed returning
+    `metadata.severity` missing/None or an unrecognized value entirely
+    (as opposed to an active alert, which always carries a real
+    platform-assigned severity). Raising OperationsCollectionError for
+    that -- as this collector used to -- aborts the ENTIRE
+    defender_assessments source (including every other, perfectly valid
+    assessment already collected in the same/earlier page), which is
+    disproportionate for what is, at worst, a posture recommendation
+    Azure itself didn't rate. Returns (severity, severity_unknown):
+    a missing/unrecognized severity maps to INFORMATIONAL with
+    severity_unknown=True -- never a guessed/invented HIGH -- so it can
+    never demand executive attention or inflate priority on its own;
+    a recognized value maps through exactly like `_severity_from_raw`
+    with severity_unknown=False.
+    """
+    key = (raw or "").strip().lower()
+    mapped = _SEVERITY_MAP.get(key)
+    if mapped is None:
+        return Severity.INFORMATIONAL, True
+    return mapped, False
 
 
 def _first_resource_id(resource_identifiers: list) -> Optional[str]:
@@ -207,6 +235,15 @@ def normalize_assessment(raw_assessment: dict, *, now: Optional[str] = None) -> 
     been Unhealthy" field. `first_seen`/`last_seen` are therefore both set
     to the collection time (`now`), matching how capacity.py's
     CapacitySummary treats ARM's equally timestamp-less "usages" API.
+
+    `metadata.severity` missing/unrecognized (observed in some tenants/
+    assessment types) NEVER raises here -- see
+    `_assessment_severity_from_raw` -- it downgrades to INFORMATIONAL
+    with `metadata.severity_unknown=True` on the resulting Finding
+    instead, so one assessment with no platform-assigned severity can
+    never abort collection of every other assessment in the same
+    source (unlike an active alert -- see `normalize_alert`, whose
+    severity handling is deliberately unchanged/still strict).
     """
     props = raw_assessment.get("properties") or {}
     assessment_id = raw_assessment.get("id") or raw_assessment.get("name") or ""
@@ -215,7 +252,7 @@ def normalize_assessment(raw_assessment: dict, *, now: Optional[str] = None) -> 
 
     status_obj = props.get("status") or {}
     metadata_obj = props.get("metadata") or {}
-    severity = _severity_from_raw(metadata_obj.get("severity"), source=ASSESSMENT_SOURCE, context=f"assessment {assessment_id}")
+    severity, severity_unknown = _assessment_severity_from_raw(metadata_obj.get("severity"))
 
     display_name = props.get("displayName") or "Microsoft Defender for Cloud recommendation"
     resource_details = props.get("resourceDetails") or {}
@@ -257,8 +294,15 @@ def normalize_assessment(raw_assessment: dict, *, now: Optional[str] = None) -> 
         evidence=evidence,
         recommended_action=(remediation or "Remediate this Microsoft Defender for Cloud recommendation.")[:500],
         approval_required=False,
-        executive_attention=severity == Severity.HIGH,
-        metadata={"categories": categories, "status_cause": status_obj.get("cause", ""), "assessment_name": raw_assessment.get("name", "")},
+        # severity_unknown is guaranteed non-HIGH (INFORMATIONAL) already,
+        # but spelled out explicitly here too so a future severity
+        # mapping change can never accidentally reintroduce executive
+        # attention for an assessment Azure never actually rated.
+        executive_attention=severity == Severity.HIGH and not severity_unknown,
+        metadata={
+            "categories": categories, "status_cause": status_obj.get("cause", ""),
+            "assessment_name": raw_assessment.get("name", ""), "severity_unknown": severity_unknown,
+        },
         discriminator=assessment_id,
     )
 
@@ -271,13 +315,28 @@ def collect_unhealthy_assessments(
     now: Optional[str] = None,
     max_pages: int = DEFAULT_MAX_PAGES,
     max_records: int = DEFAULT_MAX_RECORDS,
+    on_partial_result: Optional[Callable[[str], None]] = None,
 ) -> list:
     """Unhealthy (status.code == 'Unhealthy') Defender for Cloud
     assessments (posture recommendations) for one subscription.
 
     `max_pages`/`max_records` bound how many `nextLink` pages/assessments
     this call will ever follow/accumulate (see
-    app.operations.collectors.http.paginated_get)."""
+    app.operations.collectors.http.paginated_get).
+
+    `on_partial_result` (optional) is called with `paged.partial_error`'s
+    message when a LATER page (not the first) failed to fetch --
+    `paginated_get` already returns the items successfully collected
+    from earlier pages rather than raising/discarding them (see its own
+    docstring); this callback lets a caller (e.g.
+    app.operations.service.collect_defender_assessments_envelope)
+    surface that as an explicit coverage warning on the source's
+    envelope instead of it being silently dropped. Never called on a
+    bound-only truncation (max_pages/max_records reached with no
+    fetch failure) -- that case is already visible via
+    PagedListResult.truncated/the paginated_get warning log, not a
+    collection problem.
+    """
     if not subscription_id:
         raise ValueError("subscription_id is required")
 
@@ -290,6 +349,8 @@ def collect_unhealthy_assessments(
         max_pages=max_pages,
         max_records=max_records,
     )
+    if paged.partial_error and on_partial_result is not None:
+        on_partial_result(paged.partial_error)
 
     findings = []
     for raw_assessment in paged.items:

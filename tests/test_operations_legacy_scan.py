@@ -68,6 +68,47 @@ test("customer_impacting is False for an authorized stop", authorized_stop_findi
 test("metadata.authorized_stop is True", authorized_stop_finding.metadata["authorized_stop"] is True)
 
 
+print("\n\U0001f9ea Test 1c: resource_health_findings -- reasonType blank/absent falls back to an EXACT title/summary phrase match")
+evidence_fallback_rows = [
+    # Exact title match, reasonType absent entirely.
+    {"name": "vm5", "resourceGroup": "rg1", "type": "Microsoft.Compute/virtualMachines", "status": "Unavailable",
+     "summary": "", "title": "Stopped and deallocated", "location": "eastus"},
+    # Exact summary match (different casing), reasonType blank string.
+    {"name": "vm6", "resourceGroup": "rg1", "type": "Microsoft.Compute/virtualMachines", "status": "Unavailable",
+     "summary": "THIS VIRTUAL MACHINE IS STOPPED AND DEALLOCATED AS REQUESTED BY AN AUTHORIZED USER OR PROCESS.",
+     "title": "", "location": "eastus", "reasonType": ""},
+    # A merely SIMILAR (not exact) phrase must NOT trigger the fallback -- narrow match only.
+    {"name": "vm7", "resourceGroup": "rg1", "type": "Microsoft.Compute/virtualMachines", "status": "Unavailable",
+     "summary": "The virtual machine was stopped by the platform due to a host failure.", "title": "", "location": "eastus"},
+]
+evidence_fallback_findings = legacy_scan.resource_health_findings(evidence_fallback_rows, subscription_id="sub1", now=NOW)
+by_name = {f.metadata["resource_group"] + "|" + (f.resource_id or ""): f for f in evidence_fallback_findings}
+vm5_finding = next(f for f in evidence_fallback_findings if "vm5" in (f.resource_id or ""))
+vm6_finding = next(f for f in evidence_fallback_findings if "vm6" in (f.resource_id or ""))
+vm7_finding = next(f for f in evidence_fallback_findings if "vm7" in (f.resource_id or ""))
+test("an exact title match with reasonType absent is downgraded to informational", vm5_finding.severity == Severity.INFORMATIONAL.value)
+test("the exact-title fallback sets metadata.authorized_stop_evidence_fallback True", vm5_finding.metadata["authorized_stop_evidence_fallback"] is True)
+test("an exact (case-insensitive) summary match with reasonType blank is downgraded to informational", vm6_finding.severity == Severity.INFORMATIONAL.value)
+test("the exact-summary fallback sets metadata.authorized_stop_evidence_fallback True", vm6_finding.metadata["authorized_stop_evidence_fallback"] is True)
+test("a merely similar (non-exact) stopped-VM phrase does NOT trigger the fallback -- stays HIGH severity", vm7_finding.severity == Severity.HIGH.value)
+test("the non-matching row's metadata.authorized_stop_evidence_fallback is False", vm7_finding.metadata["authorized_stop_evidence_fallback"] is False)
+test("no executive_attention for either evidence-fallback-downgraded VM", vm5_finding.executive_attention is False and vm6_finding.executive_attention is False)
+test("no customer_impacting for either evidence-fallback-downgraded VM", vm5_finding.customer_impacting is False and vm6_finding.customer_impacting is False)
+
+print("\n\U0001f9ea Test 1d: resource_health_findings -- the evidence-based fallback is NEVER consulted when reasonType is populated with something else")
+populated_reason_rows = [
+    {"name": "vm8", "resourceGroup": "rg1", "type": "Microsoft.Compute/virtualMachines", "status": "Unavailable",
+     "summary": "This virtual machine is stopped and deallocated as requested by an authorized user or process.",
+     "title": "Stopped and deallocated", "location": "eastus", "reasonType": "PlatformInitiated"},
+]
+populated_reason_findings = legacy_scan.resource_health_findings(populated_reason_rows, subscription_id="sub1", now=NOW)
+test(
+    "a populated (even unrecognized) reasonType always wins -- the evidence fallback is never consulted, stays HIGH",
+    populated_reason_findings[0].severity == Severity.HIGH.value,
+)
+test("metadata.authorized_stop_evidence_fallback is False when reasonType was populated", populated_reason_findings[0].metadata["authorized_stop_evidence_fallback"] is False)
+
+
 # ─── service_health_findings ─────────────────────────────────────────────
 print("\n\U0001f9ea Test 2: service_health_findings -- active only, HealthAdvisory excluded")
 events = [

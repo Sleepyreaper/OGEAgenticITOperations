@@ -40,7 +40,7 @@ param additionalOpenAiAccounts object = {}
 @description('Per-agent configuration overrides. See main.bicep for the full field list.')
 param agentOverrides object = {}
 
-@description('Operations evidence layer settings (see main.bicep). Optional subset of: alertLookbackHours, changeLookbackHours, changeCorrelationWindowMinutes, capacityWarningPct, capacityCriticalPct, capacityLocations, sloDefinitionsPath, sloDefinitionsJson, enableDefenderAlerts, enableDefenderAssessments, costBudgetWarningPct, costBudgetCriticalPct, costTrendLookbackDays, costTrendGrowthPctThreshold, enableCostManagementBudget, enableCostManagementTrend, backupLookbackHours, backupStaleRecoveryPointDays, enableBackup, patchAssessmentStaleDays, enableUpdateManager, keyVaultExpiryWarningDays, keyVaultMonitorUris, keyVaultMaxItemsPerType, enableKeyVaultExpiry, automationLookbackHours, automationAccountIds, enableAutomation, telemetryMonitoredResourceTypes, telemetryCriticalResourceIds, telemetryMaxResources, telemetryHeartbeatLookbackHours, enableTelemetryCoverage, retirementWarningDays, enableRetirementAdvisories, operationsSnapshotCacheTtlSeconds, operationsStateDbPath (product API -- see docs/OPERATIONS_API.md). List-valued keys (capacityLocations, keyVaultMonitorUris, automationAccountIds, telemetryMonitoredResourceTypes, telemetryCriticalResourceIds) take a comma-separated string.')
+@description('Operations evidence layer settings (see main.bicep). Optional subset of: alertLookbackHours, changeLookbackHours, changeCorrelationWindowMinutes, capacityWarningPct, capacityCriticalPct, capacityLocations, openAiCapacityNameFilters, sloDefinitionsPath, sloDefinitionsJson, enableDefenderAlerts, enableDefenderAssessments, costBudgetWarningPct, costBudgetCriticalPct, costTrendLookbackDays, costTrendGrowthPctThreshold, enableCostManagementBudget, enableCostManagementTrend, backupLookbackHours, backupStaleRecoveryPointDays, enableBackup, patchAssessmentStaleDays, enableUpdateManager, keyVaultExpiryWarningDays, keyVaultMonitorUris, keyVaultMaxItemsPerType, enableKeyVaultExpiry, automationLookbackHours, automationAccountIds, enableAutomation, telemetryMonitoredResourceTypes, telemetryCriticalResourceIds, telemetryMaxResources, telemetryHeartbeatLookbackHours, enableTelemetryCoverage, retirementWarningDays, enableRetirementAdvisories, operationsSnapshotCacheTtlSeconds, operationsStateDbPath (product API -- see docs/OPERATIONS_API.md). List-valued keys (capacityLocations, openAiCapacityNameFilters, keyVaultMonitorUris, automationAccountIds, telemetryMonitoredResourceTypes, telemetryCriticalResourceIds) take a comma-separated string.')
 param operationsSettings object = {}
 
 @description('Whether the web app is reachable directly over the public internet.')
@@ -109,7 +109,7 @@ var agentOverrideSettings = filter(agentOverrideSettingsRaw, setting => !empty(s
 // Operations evidence layer settings -> env var names (see
 // app/operations/config.py). One object param instead of dozens of flat
 // params, same convention as agentOverrides above. List-valued settings
-// (capacityLocations, keyVaultMonitorUris, automationAccountIds,
+// (capacityLocations, openAiCapacityNameFilters, keyVaultMonitorUris, automationAccountIds,
 // telemetryMonitoredResourceTypes, telemetryCriticalResourceIds) take a
 // single comma-separated STRING value here, matching the env var format
 // app/operations/config.py's _parse_csv_list/_parse_capacity_locations
@@ -121,6 +121,7 @@ var operationsSettingFieldNames = {
   capacityWarningPct: 'CAPACITY_WARNING_PCT'
   capacityCriticalPct: 'CAPACITY_CRITICAL_PCT'
   capacityLocations: 'CAPACITY_LOCATIONS'
+  openAiCapacityNameFilters: 'OPENAI_CAPACITY_NAME_FILTERS'
   sloDefinitionsPath: 'SLO_DEFINITIONS_PATH'
   sloDefinitionsJson: 'SLO_DEFINITIONS_JSON'
   enableDefenderAlerts: 'ENABLE_DEFENDER_ALERTS'

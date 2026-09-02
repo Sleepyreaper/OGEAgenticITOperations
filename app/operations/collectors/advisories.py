@@ -46,6 +46,16 @@ SOURCE = EvidenceSource.SERVICE_HEALTH.value
 # datetime parsing to Python (ensure_utc_iso/parse_utc_iso in
 # normalize_advisory below, which already tolerates either shape) is
 # both simpler and removes the ARG-side type-coercion risk entirely.
+# `Priority` is projected as `advisoryPriority`, never the bare
+# `priority` -- live probing against a real subscription proved this
+# exact query otherwise succeeds right up until projecting an alias
+# literally named `priority`, which Azure Resource Graph's Kusto
+# dialect treats as reserved/problematic and rejects with a
+# `ParserFailure` (see docs/AZURE_DATA_SOURCES.md). Renaming only the
+# ARG-side extend/project alias -- normalize_advisory below reads the
+# row by this same `advisoryPriority` key -- avoids the collision
+# entirely without changing the Finding's own `metadata.priority`
+# output key.
 QUERY = (
     "ServiceHealthResources "
     "| where type =~ 'Microsoft.ResourceHealth/events' "
@@ -53,10 +63,10 @@ QUERY = (
     "| where eventType == 'HealthAdvisory' and status =~ 'Active' "
     "| extend eventSubType = tostring(properties.EventSubType), title = tostring(properties.Title), "
     "summaryText = tostring(properties.Summary), trackingId = tostring(properties.TrackingId), "
-    "priority = tostring(properties.Priority), "
+    "advisoryPriority = tostring(properties.Priority), "
     "impactStartTime = tostring(properties.ImpactStartTime), "
     "impactMitigationTime = tostring(properties.ImpactMitigationTime) "
-    "| project id, name, subscriptionId, eventSubType, title, summaryText, trackingId, priority, impactStartTime, impactMitigationTime"
+    "| project id, name, subscriptionId, eventSubType, title, summaryText, trackingId, advisoryPriority, impactStartTime, impactMitigationTime"
 )
 
 
@@ -121,7 +131,10 @@ def normalize_advisory(row: dict, *, warning_days: int, now: datetime) -> Findin
         metadata={
             "event_sub_type": event_sub_type,
             "tracking_id": tracking_id,
-            "priority": row.get("priority", ""),
+            # Metadata's own output key stays "priority" -- only the ARG
+            # extend/project alias needed to change (see QUERY's comment
+            # above); this reads the renamed "advisoryPriority" row key.
+            "priority": row.get("advisoryPriority", ""),
             "deadline": deadline,
             "impact_start": impact_start,
             "days_to_deadline": round(days_to_deadline, 1) if days_to_deadline is not None else None,

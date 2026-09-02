@@ -150,6 +150,19 @@ class OperationsConfig:
     # location slug (e.g. 'eastus2', 'westeurope') -- see
     # _parse_capacity_locations for accepted copy/paste variants.
     capacity_locations: Tuple[str, ...] = ()
+    # Profile-independent operations knob (not tied to any one profile's
+    # prompts/branding -- see app/profiles.py): a comma-separated,
+    # case-insensitive substring allowlist applied to Cognitive Services/
+    # Azure OpenAI quota names (app.operations.collectors.capacity.
+    # collect_openai_capacity's `name_filters`) BEFORE threshold
+    # normalization. A shared Cognitive Services account can carry many
+    # unrelated, always-fully-allocated model quotas (e.g. Claude/image
+    # models provisioned for other teams) that would otherwise dominate
+    # the capacity executive summary; this filters them out. An empty
+    # tuple (the default) means no filtering -- every quota is kept, the
+    # correct default for a dedicated/generic deployment. NEVER applied
+    # to Microsoft.Compute usages -- see collect_openai_capacity.
+    openai_capacity_name_filters: Tuple[str, ...] = ()
     # Exactly one of these configures workload SLOs; both empty (the
     # default) means "no SLOs configured" -- the SLO collector reports an
     # explicit not_configured state, never a fabricated uptime number.
@@ -359,6 +372,7 @@ class OperationsConfig:
             capacity_warning_pct=env_pct("CAPACITY_WARNING_PCT", 75.0),
             capacity_critical_pct=env_pct("CAPACITY_CRITICAL_PCT", 90.0),
             capacity_locations=env_capacity_locations("CAPACITY_LOCATIONS"),
+            openai_capacity_name_filters=env_list("OPENAI_CAPACITY_NAME_FILTERS"),
             slo_definitions_path=os.environ.get("SLO_DEFINITIONS_PATH", "").strip(),
             slo_definitions_json=os.environ.get("SLO_DEFINITIONS_JSON", "").strip(),
             enable_defender_alerts=env_bool("ENABLE_DEFENDER_ALERTS", True),

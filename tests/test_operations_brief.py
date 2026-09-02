@@ -38,7 +38,7 @@ def test(name, condition):
 NOW = datetime(2025, 6, 1, tzinfo=timezone.utc)
 
 
-def make_finding(disc, *, category=FindingCategory.SECURITY.value, severity=Severity.HIGH.value, exec_att=True, approval=False, resource_id=None):
+def make_finding(disc, *, category=FindingCategory.SECURITY.value, severity=Severity.HIGH.value, exec_att=True, approval=False, resource_id=None, metadata=None):
     return Finding(
         category=category, severity=severity, status=FindingStatus.OPEN.value,
         title=f"Finding {disc}", summary="s", business_impact="impact text",
@@ -46,6 +46,7 @@ def make_finding(disc, *, category=FindingCategory.SECURITY.value, severity=Seve
         source=EvidenceSource.RESOURCE_GRAPH.value, confidence=ConfidenceLevel.CONFIRMED.value, resource_id=resource_id,
         evidence=[EvidenceReference(source=EvidenceSource.RESOURCE_GRAPH.value, title="t", observed_at="2025-06-01T00:00:00Z", resource_id=resource_id)],
         executive_attention=exec_att, approval_required=approval, discriminator=disc,
+        metadata=metadata or {},
     )
 
 
@@ -141,6 +142,50 @@ snap6 = make_snapshot(wrapped, [])
 brief6 = build_brief(snap6, now=NOW)
 test("decisions_required is capped at 3", len(brief6["decisions_required"]) == 3)
 test("a snoozed approval-required item is excluded", findings[0].id not in {d["id"] for d in brief6["decisions_required"]})
+
+
+print("\n\U0001f9ea Test 6b: build_brief -- human approval alone is NOT an executive decision (tightened decisions_required)")
+low_severity_approval = make_finding(
+    "routine-disk-delete", category=FindingCategory.COST.value, severity=Severity.LOW.value,
+    exec_att=False, approval=True,
+)
+medium_severity_approval = make_finding(
+    "routine-policy-fix", category=FindingCategory.COMPLIANCE.value, severity=Severity.MEDIUM.value,
+    exec_att=False, approval=True,
+)
+high_severity_approval = make_finding(
+    "serious-nsg-change", category=FindingCategory.SECURITY.value, severity=Severity.HIGH.value,
+    exec_att=False, approval=True,
+)
+exec_attention_approval = make_finding(
+    "flagged-for-exec", category=FindingCategory.COST.value, severity=Severity.LOW.value,
+    exec_att=True, approval=True,
+)
+cost_commitment_approval = make_finding(
+    "cost-commitment", category=FindingCategory.COST.value, severity=Severity.MEDIUM.value,
+    exec_att=False, approval=True, metadata={"decision_required": "cost_commitment"},
+)
+non_approval_high_severity = make_finding(
+    "not-an-approval", category=FindingCategory.SECURITY.value, severity=Severity.HIGH.value,
+    exec_att=False, approval=False,
+)
+snap6b = make_snapshot([
+    wrap(low_severity_approval, customer_impact=False),
+    wrap(medium_severity_approval, customer_impact=False),
+    wrap(high_severity_approval, customer_impact=False),
+    wrap(exec_attention_approval, customer_impact=False),
+    wrap(cost_commitment_approval, customer_impact=False),
+    wrap(non_approval_high_severity, customer_impact=False),
+], [])
+brief6b = build_brief(snap6b, now=NOW)
+decisions_required_ids = {d["id"] for d in brief6b["decisions_required"]}
+test("a low-severity, non-executive approval (e.g. routine orphaned-disk deletion) is EXCLUDED", low_severity_approval.id not in decisions_required_ids)
+test("a medium-severity, non-executive approval is EXCLUDED (routine operational approval)", medium_severity_approval.id not in decisions_required_ids)
+test("a High-severity approval IS included", high_severity_approval.id in decisions_required_ids)
+test("an explicitly executive_attention approval IS included, regardless of severity", exec_attention_approval.id in decisions_required_ids)
+test("a metadata.decision_required=cost_commitment approval IS included, regardless of severity", cost_commitment_approval.id in decisions_required_ids)
+test("a High-severity Finding that does NOT require approval is still excluded (approval_required is the base gate)", non_approval_high_severity.id not in decisions_required_ids)
+test("exactly 3 findings qualify (high/exec/cost_commitment), never the 2 routine ones", len(decisions_required_ids) == 3)
 
 
 print("\n\U0001f9ea Test 7: build_brief -- data_freshness reflects age_seconds")

@@ -32,6 +32,7 @@ Cost Management budgets, and Compute/Cognitive Services usages).
 
 import json as _json
 import logging
+import time as _time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
@@ -49,10 +50,13 @@ __all__ = [
     "CredentialFactory",
     "HttpGet",
     "HttpPost",
+    "SleepFn",
     "PagedListResult",
     "default_credential_factory",
     "default_http_get",
     "default_http_post",
+    "default_sleep_fn",
+    "DEFAULT_ARM_POST_MAX_RETRIES",
     "arm_get",
     "arm_post",
     "scoped_get",
@@ -74,6 +78,55 @@ HttpGet = Callable[..., object]
 # (url, *, headers, json, timeout) -> a requests.Response-like object
 # with .status_code, .json(), and .text
 HttpPost = Callable[..., object]
+# (seconds) -> None -- injected in place of a real time.sleep so tests
+# never actually block; see arm_post's max_retries/sleep_fn.
+SleepFn = Callable[[float], None]
+
+
+def default_sleep_fn(seconds: float) -> None:
+    _time.sleep(seconds)
+
+
+# Bounded retry ceiling for arm_post's 429/transient-5xx backoff --
+# Azure Cost Management's Query API in particular throttles
+# aggressively under load (see docs/AZURE_DATA_SOURCES.md). A small
+# hard cap, mirroring _HARD_MAX_PAGES/_HARD_MAX_RECORDS above: retrying
+# is a mitigation for genuine transient throttling/server errors, never
+# a substitute for surfacing a persistent failure explicitly -- an
+# exhausted retry budget still raises OperationsCollectionError exactly
+# like an immediate, unretried failure would.
+DEFAULT_ARM_POST_MAX_RETRIES = 3
+_HARD_MAX_ARM_POST_RETRIES = 5
+# Base backoff (seconds), doubled per attempt (exponential backoff),
+# used only when a 429/5xx response carries no (or a malformed)
+# Retry-After header.
+_ARM_POST_BASE_BACKOFF_SECONDS = 1.0
+# 429 (throttled) and the transient 5xx codes ARM is documented to
+# raise for a genuinely transient server-side condition. Any OTHER 4xx
+# (400/401/403/404/...) is a real request/auth/not-found problem
+# retrying can never fix, so it is deliberately excluded and always
+# raises immediately, exactly as before this retry logic existed.
+_RETRYABLE_ARM_POST_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+def _arm_post_retry_after_seconds(response, *, default_seconds: float) -> float:
+    """Best-effort Retry-After (seconds) extraction from a 429/5xx ARM
+    response -- ARM/Cost Management's documented Retry-After form is a
+    plain integer/float seconds count, never the HTTP-date form, so
+    that's the only shape parsed here. Never raises on a missing/
+    malformed header -- it's a backoff HINT, not a contract -- falling
+    back to `default_seconds` (the caller's own exponential-backoff
+    value for this attempt)."""
+    headers = getattr(response, "headers", None)
+    raw = headers.get("Retry-After") if headers and hasattr(headers, "get") else None
+    if raw is None:
+        return default_seconds
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        return default_seconds
+    return seconds if seconds >= 0 else default_seconds
+
 
 # Absolute ceilings `paginated_get` never lets a caller-supplied
 # max_pages/max_records exceed, regardless of what a collector (or a
@@ -298,6 +351,8 @@ def arm_post(
     credential_factory: CredentialFactory = default_credential_factory,
     http_post: HttpPost = default_http_post,
     timeout: int = 30,
+    max_retries: int = DEFAULT_ARM_POST_MAX_RETRIES,
+    sleep_fn: SleepFn = default_sleep_fn,
 ) -> dict:
     """POST an ARM REST endpoint (e.g. Cost Management's Query API, which
     has no GET equivalent) and return the parsed JSON body.
@@ -305,7 +360,26 @@ def arm_post(
     Same error semantics as `arm_get`/`scoped_get`: always raises
     OperationsCollectionError -- never a success-shaped empty dict -- on
     token acquisition failure, a non-2xx response, or a non-JSON body.
+
+    Bounded retry/backoff on a 429 (throttled) or transient 5xx response
+    (see `_RETRYABLE_ARM_POST_STATUS_CODES`) -- Cost Management's Query
+    API in particular throttles aggressively under real load. Honors
+    the response's `Retry-After` header (seconds) when present, else a
+    doubling exponential backoff starting at
+    `_ARM_POST_BASE_BACKOFF_SECONDS`; `sleep_fn` is injectable so tests
+    never actually sleep. `max_retries` is clamped to a small hard
+    ceiling (`_HARD_MAX_ARM_POST_RETRIES`) regardless of what a caller
+    asks for -- never an unbounded retry loop. Any OTHER 4xx (400/401/
+    403/404/...) is NEVER retried -- it's a genuine request/auth
+    problem retrying can't fix. The first successful (2xx) response
+    returns normally at any attempt; exhausting every retry still
+    raises OperationsCollectionError, exactly as a single immediate
+    failure would -- there is no silent partial/degraded return. The
+    api-version (and every other query-string parameter) stays exactly
+    as the caller built it into `path` -- retries re-POST the identical
+    URL/body, never dropping or mutating it.
     """
+    max_retries = max(0, min(max_retries, _HARD_MAX_ARM_POST_RETRIES))
     url = path if path.startswith("http") else f"{ARM_BASE_URL}{path}"
 
     try:
@@ -314,22 +388,35 @@ def arm_post(
     except Exception as exc:
         raise OperationsCollectionError(source, "failed to acquire an Azure AD token", detail=str(exc)) from exc
 
-    try:
-        response = http_post(
-            url, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            json=json_body, timeout=timeout,
-        )
-    except requests.RequestException as exc:
-        raise OperationsCollectionError(source, f"request to {url} failed", detail=str(exc)) from exc
+    attempt = 0
+    while True:
+        try:
+            response = http_post(
+                url, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json=json_body, timeout=timeout,
+            )
+        except requests.RequestException as exc:
+            raise OperationsCollectionError(source, f"request to {url} failed", detail=str(exc)) from exc
 
-    status_code = getattr(response, "status_code", None)
-    if status_code is None or status_code < 200 or status_code >= 300:
+        status_code = getattr(response, "status_code", None)
+        if status_code is not None and 200 <= status_code < 300:
+            try:
+                return response.json()
+            except (ValueError, _json.JSONDecodeError) as exc:
+                raise OperationsCollectionError(source, f"{url} returned a non-JSON body", detail=str(exc)) from exc
+
+        if status_code in _RETRYABLE_ARM_POST_STATUS_CODES and attempt < max_retries:
+            backoff_seconds = _ARM_POST_BASE_BACKOFF_SECONDS * (2 ** attempt)
+            wait_seconds = _arm_post_retry_after_seconds(response, default_seconds=backoff_seconds)
+            _logger.warning(
+                "%s: %s returned HTTP %s (retry %d/%d) -- retrying after %.1fs.",
+                source, url, status_code, attempt + 1, max_retries, wait_seconds,
+            )
+            sleep_fn(wait_seconds)
+            attempt += 1
+            continue
+
         detail = getattr(response, "text", "")
         raise OperationsCollectionError(
             source, f"{url} returned HTTP {status_code}", detail=str(detail)[:500] if detail else None
         )
-
-    try:
-        return response.json()
-    except (ValueError, _json.JSONDecodeError) as exc:
-        raise OperationsCollectionError(source, f"{url} returned a non-JSON body", detail=str(exc)) from exc

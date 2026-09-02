@@ -123,6 +123,57 @@ try:
 except OperationsCollectionError:
     test("an unrecognized severity raises OperationsCollectionError", True)
 
+# ─── Posture-assessment-only severity leniency -- missing/None NEVER errors the source ──
+print("\n\U0001f9ea Test 3b: _assessment_severity_from_raw / normalize_assessment -- missing/unrecognized metadata.severity never raises")
+for raw, expected in [("High", "high"), ("Medium", "medium"), ("Low", "low"), ("Informational", "informational")]:
+    sev, unknown = defender._assessment_severity_from_raw(raw)
+    test(f"a recognized assessment severity {raw} -> {expected}, severity_unknown=False", sev.value == expected and unknown is False)
+
+for raw in (None, "", "None", "Extreme", "unrated"):
+    sev, unknown = defender._assessment_severity_from_raw(raw)
+    test(f"a missing/unrecognized assessment severity ({raw!r}) maps to informational, never raises", sev.value == "informational")
+    test(f"a missing/unrecognized assessment severity ({raw!r}) sets severity_unknown=True", unknown is True)
+
+MISSING_SEVERITY_ASSESSMENT = {
+    "id": "/subscriptions/s/.../assessments/z", "name": "z", "properties": {
+        "displayName": "Unrated recommendation", "status": {"code": "Unhealthy", "description": "not enabled"},
+        "metadata": {"severity": None, "categories": ["Data"]},
+        "resourceDetails": {"id": "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm3"},
+    },
+}
+unrated_finding = defender.normalize_assessment(MISSING_SEVERITY_ASSESSMENT, now="2026-01-10T00:00:00.000Z")
+test("a None metadata.severity never raises -- normalize_assessment still returns a Finding", unrated_finding.severity == "informational")
+test("metadata.severity_unknown is True on the resulting Finding", unrated_finding.metadata["severity_unknown"] is True)
+test("executive_attention is False for a severity-unknown assessment, never a guessed HIGH", unrated_finding.executive_attention is False)
+test("category is still compliance (normalization otherwise proceeds normally)", unrated_finding.category == "compliance")
+
+
+# ─── collect_unhealthy_assessments -- a later-page failure surfaces via on_partial_result, never raises ──
+print("\n\U0001f9ea Test 3c: collect_unhealthy_assessments -- a later-page failure calls on_partial_result instead of discarding earlier pages/raising")
+ASSESSMENTS_PAGE2_FAIL_URL = "https://management.azure.com/subscriptions/s/providers/Microsoft.Security/assessments?api-version=x&page=2"
+
+
+def http_get_assessments_fails_on_page2(url, *, headers, params=None, timeout=30):
+    if "page=2" in url:
+        return FakeResponse({}, status_code=503, text="Service Unavailable")
+    return FakeResponse({"value": ASSESSMENT_PAYLOAD["value"], "nextLink": ASSESSMENTS_PAGE2_FAIL_URL})
+
+
+partial_errors_seen = []
+partial_assessments = defender.collect_unhealthy_assessments(
+    "sub1", credential_factory=fake_credential_factory, http_get=http_get_assessments_fails_on_page2,
+    now="2026-01-10T00:00:00.000Z", on_partial_result=partial_errors_seen.append,
+)
+test("page 1's Unhealthy assessment is still returned despite the page-2 failure", len(partial_assessments) == 1)
+test("on_partial_result is called exactly once with the page-2 failure's message", len(partial_errors_seen) == 1 and bool(partial_errors_seen[0]))
+
+partial_errors_not_seen = []
+defender.collect_unhealthy_assessments(
+    "sub1", credential_factory=fake_credential_factory, http_get=http_get_assessments,
+    now="2026-01-10T00:00:00.000Z", on_partial_result=partial_errors_not_seen.append,
+)
+test("on_partial_result is never called when every page fetches successfully", partial_errors_not_seen == [])
+
 # ─── Explicit failure surfacing -- never an empty success-shaped list ──
 print("\n\U0001f9ea Test 4: a non-2xx response / auth failure raises OperationsCollectionError")
 
