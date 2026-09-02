@@ -40,7 +40,7 @@ param additionalOpenAiAccounts object = {}
 @description('Per-agent configuration overrides. See main.bicep for the full field list.')
 param agentOverrides object = {}
 
-@description('Operations evidence layer settings (see main.bicep). Optional subset of: alertLookbackHours, changeLookbackHours, changeCorrelationWindowMinutes, capacityWarningPct, capacityCriticalPct, capacityLocations, openAiCapacityNameFilters, sloDefinitionsPath, sloDefinitionsJson, enableDefenderAlerts, enableDefenderAssessments, costBudgetWarningPct, costBudgetCriticalPct, costTrendLookbackDays, costTrendGrowthPctThreshold, enableCostManagementBudget, enableCostManagementTrend, backupLookbackHours, backupStaleRecoveryPointDays, enableBackup, patchAssessmentStaleDays, enableUpdateManager, keyVaultExpiryWarningDays, keyVaultMonitorUris, keyVaultMaxItemsPerType, enableKeyVaultExpiry, automationLookbackHours, automationAccountIds, enableAutomation, telemetryMonitoredResourceTypes, telemetryCriticalResourceIds, telemetryMaxResources, telemetryHeartbeatLookbackHours, enableTelemetryCoverage, retirementWarningDays, enableRetirementAdvisories, operationsSnapshotCacheTtlSeconds, operationsStateDbPath (product API -- see docs/OPERATIONS_API.md). List-valued keys (capacityLocations, openAiCapacityNameFilters, keyVaultMonitorUris, automationAccountIds, telemetryMonitoredResourceTypes, telemetryCriticalResourceIds) take a comma-separated string.')
+@description('Operations evidence layer settings (see main.bicep). Optional subset of: alertLookbackHours, changeLookbackHours, changeCorrelationWindowMinutes, capacityWarningPct, capacityCriticalPct, capacityLocations, openAiCapacityNameFilters, sloDefinitionsPath, sloDefinitionsJson, enableDefenderAlerts, enableDefenderAssessments, costBudgetWarningPct, costBudgetCriticalPct, costTrendLookbackDays, costTrendGrowthPctThreshold, enableCostManagementBudget, enableCostManagementTrend, backupLookbackHours, backupStaleRecoveryPointDays, enableBackup, patchAssessmentStaleDays, enableUpdateManager, keyVaultExpiryWarningDays, keyVaultMonitorUris, keyVaultMaxItemsPerType, enableKeyVaultExpiry, automationLookbackHours, automationAccountIds, enableAutomation, telemetryMonitoredResourceTypes, telemetryCriticalResourceIds, telemetryMaxResources, telemetryHeartbeatLookbackHours, enableTelemetryCoverage, retirementWarningDays, enableRetirementAdvisories, operationsSnapshotCacheTtlSeconds, operationsCollectionMaxWorkers, operationsStateDbPath (product API -- see docs/OPERATIONS_API.md). List-valued keys (capacityLocations, openAiCapacityNameFilters, keyVaultMonitorUris, automationAccountIds, telemetryMonitoredResourceTypes, telemetryCriticalResourceIds) take a comma-separated string.')
 param operationsSettings object = {}
 
 @description('Whether the web app is reachable directly over the public internet.')
@@ -152,6 +152,7 @@ var operationsSettingFieldNames = {
   retirementWarningDays: 'RETIREMENT_WARNING_DAYS'
   enableRetirementAdvisories: 'ENABLE_RETIREMENT_ADVISORIES'
   operationsSnapshotCacheTtlSeconds: 'OPERATIONS_SNAPSHOT_CACHE_TTL_SECONDS'
+  operationsCollectionMaxWorkers: 'OPERATIONS_COLLECTION_MAX_WORKERS'
   operationsStateDbPath: 'OPERATIONS_STATE_DB'
 }
 

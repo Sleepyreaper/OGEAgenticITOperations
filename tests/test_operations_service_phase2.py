@@ -105,20 +105,23 @@ phase1_only = service.run_collection(
 test("run_collection() is unaffected by Phase 2 -- still exactly 4 envelopes", len(phase1_only) == 4)
 
 
-def _without_collected_at(envelope_dict: dict) -> dict:
+def _without_timing(envelope_dict: dict) -> dict:
     """Every envelope stamps its own real wall-clock collection time
-    (utc_now_iso()) -- comparing two SEPARATE run_collection()/
-    run_full_collection() invocations' `collected_at` values is
-    inherently flaky (millisecond-boundary-dependent), not a meaningful
-    assertion. Strip it so the comparison below is about the actual
-    envelope CONTENT (source/status/findings/summaries/error) matching,
-    which is the real guarantee this test is checking."""
-    return {k: v for k, v in envelope_dict.items() if k != "collected_at"}
+    (`collected_at`, via utc_now_iso()) AND its own real per-source
+    collection latency (`duration_ms`, see
+    app.operations.service._execute_source_task) -- comparing either of
+    those between two SEPARATE run_collection()/run_full_collection()
+    invocations is inherently flaky (millisecond-boundary-dependent),
+    not a meaningful assertion. Strip both so the comparison below is
+    about the actual envelope CONTENT
+    (source/status/findings/summaries/error) matching, which is the
+    real guarantee this test is checking."""
+    return {k: v for k, v in envelope_dict.items() if k not in ("collected_at", "duration_ms")}
 
 
 test(
     "run_full_collection's first 4 envelopes match a standalone run_collection() call byte-for-byte",
-    [_without_collected_at(e.to_dict()) for e in envelopes[:4]] == [_without_collected_at(e.to_dict()) for e in phase1_only],
+    [_without_timing(e.to_dict()) for e in envelopes[:4]] == [_without_timing(e.to_dict()) for e in phase1_only],
 )
 
 # ─── not_configured semantics -- disabled flags and empty required lists ──

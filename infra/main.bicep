@@ -100,7 +100,7 @@ telemetryMonitoredResourceTypes, telemetryCriticalResourceIds,
 telemetryMaxResources, telemetryHeartbeatLookbackHours,
 enableTelemetryCoverage, retirementWarningDays,
 enableRetirementAdvisories (Phase 2); operationsSnapshotCacheTtlSeconds,
-operationsStateDbPath (product API -- snapshot/brief/queue/workflow-state,
+operationsCollectionMaxWorkers, operationsStateDbPath (product API -- snapshot/brief/queue/workflow-state,
 see docs/OPERATIONS_API.md). List-valued keys
 (capacityLocations, openAiCapacityNameFilters, keyVaultMonitorUris, automationAccountIds,
 telemetryMonitoredResourceTypes, telemetryCriticalResourceIds) take a
@@ -120,6 +120,11 @@ one of sloDefinitionsPath/sloDefinitionsJson.
 operationsStateDbPath should point under /home (e.g.
 /home/data/operations.db) so finding workflow state survives app
 restarts/scale events on Azure App Service Linux.
+operationsCollectionMaxWorkers bounds how many independent evidence
+sources run_collection()/run_full_collection() collects concurrently
+per request (app/operations/service.py) -- default 6, hard-capped at
+12 regardless of this value (an out-of-range value raises at app
+startup, same as every other numeric setting here).
 Example: { capacityWarningPct: 80, capacityCriticalPct: 95 }
 ''')
 param operationsSettings object = {}

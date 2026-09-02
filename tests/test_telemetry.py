@@ -155,6 +155,42 @@ else:
 
     telemetry.reset_for_tests()
 
+    print("\n\U0001f9ea Test 4: collection_span records ops.collection.source/status -- never subscription ids or content")
+    exporter.clear()
+    telemetry._enabled = True
+    telemetry._tracer = provider.get_tracer("test")
+    telemetry._collection_call_counter = None
+    telemetry._collection_duration_histogram = None
+
+    with telemetry.collection_span(source="azure_monitor_alerts") as recorder:
+        recorder.set_status("ok")
+
+    collection_spans = exporter.get_finished_spans()
+    test("a span was recorded for the collection source", len(collection_spans) == 1)
+    if collection_spans:
+        attrs = collection_spans[0].attributes
+        test("ops.collection.source is recorded", attrs.get("ops.collection.source") == "azure_monitor_alerts")
+        test("ops.collection.status reflects the recorder's set_status call", attrs.get("ops.collection.status") == "ok")
+        test("no subscription id/credential/finding content attribute keys are present", not any(
+            "subscription" in key.lower() or "credential" in key.lower() for key in attrs.keys()
+        ))
+
+    print("\n\U0001f9ea Test 5: collection_span still works (no-op-safe) with an unexpected exception, and re-raises")
+    exporter.clear()
+    raised_collection = False
+    try:
+        with telemetry.collection_span(source="capacity"):
+            raise RuntimeError("simulated unexpected collector bug")
+    except RuntimeError:
+        raised_collection = True
+    test("exception propagates unchanged (never swallowed)", raised_collection)
+    collection_error_spans = exporter.get_finished_spans()
+    test("a span was still recorded for the failed collection call", len(collection_error_spans) == 1)
+    if collection_error_spans:
+        test("span status is ERROR", collection_error_spans[0].status.status_code.name == "ERROR")
+
+    telemetry.reset_for_tests()
+
 
 # ─── Summary ────────────────────────────────────────────────────────────
 print(f"\n{'='*50}")

@@ -17,6 +17,16 @@ parameter with a real default, so this doc's API versions/tables are the
 *only* place those assumptions need to be kept current when Azure ships
 a new version.
 
+**Concurrency/thread-safety**: `app.operations.service.run_collection`/
+`run_full_collection` run every source's collector concurrently (see
+those functions' docstrings and `docs/OPERATIONS_API.md`'s "Concurrency
+and collection performance" section) through a bounded thread pool. This
+is safe because every collector already instantiates its own Azure
+credential/client per call (`app.azure_data._credential()`,
+`ResourceGraphClient`, `LogsQueryClient` -- never a module-level shared,
+mutable SDK client) -- a pre-existing invariant this refactor depends on
+rather than changes.
+
 ## Quick reference
 
 | # | Source (`CollectionEnvelope.source`) | Phase | Domain | Mechanism | Can be `not_configured` | Can be `not_supported` |
