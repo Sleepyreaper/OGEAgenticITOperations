@@ -154,6 +154,14 @@ def _build_findings(now) -> dict:
         resource_id=f"{_DEMO_RG}/Web-Prod-RG/providers/Microsoft.Web/serverfarms/asp-checkout-prod",
         recommended_action="Roll back the last checkout-service deployment if the error rate doesn't recover within 30 minutes; page payments on-call if 5xx rate exceeds 5%.",
         approval_required=False, executive_attention=True,
+        # This narrative fixture IS the deterministic evidence: an
+        # elevated 5xx rate actively causing customer-visible failed
+        # checkout submissions right now -- exactly the kind of explicit,
+        # confirmed impact app.operations.priority.is_customer_impacting
+        # requires (never merely executive_attention/category/severity;
+        # see reliability_checkout below, which is a real risk but NOT
+        # yet an actual breach, and is deliberately customer_impacting=False).
+        customer_impacting=True,
         evidence=[ev(EvidenceSource.AZURE_MONITOR_ALERT.value, "5xx rate alert fired: 3.1% over 15m window (threshold 1.0%)",
                      now - timedelta(hours=20), f"{_DEMO_RG}/Web-Prod-RG/providers/Microsoft.Web/serverfarms/asp-checkout-prod")],
     )
@@ -168,6 +176,11 @@ def _build_findings(now) -> dict:
         metadata={"workload": "checkout-api"},
         recommended_action="Investigate the correlated checkout deployment/5xx incident as the likely burn driver before the SLO breaches.",
         approval_required=False, executive_attention=True,
+        # Deliberately customer_impacting=False (the default): the SLO
+        # is at_risk/burning fast but has NOT actually breached yet --
+        # "breaches ... within roughly 36 hours" is a forecast, not a
+        # confirmed breach. Contrast with incident_checkout above, which
+        # IS actively causing customer-visible failures right now.
         evidence=[ev(EvidenceSource.LOG_ANALYTICS_SLO.value, "checkout-api 30d SLO evaluation: 99.4% observed vs 99.9% objective",
                      now - timedelta(minutes=30))],
     )

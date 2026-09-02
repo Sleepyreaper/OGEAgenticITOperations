@@ -444,6 +444,41 @@ def collect_cost_trend_envelope(
     return _collect_envelope(source, _collect, classify_error=_classify_cost_trend_error)
 
 
+# A substring of a Log Analytics query's error message that -- per
+# Azure's own documented KQL semantic-error behavior (a query
+# referencing a table that doesn't exist in the workspace surfaces as
+# "...Failed to resolve table or column ... expression named 'X'",
+# nested under a SemanticError/BadArgumentError code -- see
+# docs/AZURE_DATA_SOURCES.md) -- indicates the OPTIONAL Log Analytics
+# table this source depends on (AddonAzureBackupJobs/CoreAzureBackup for
+# azure_backup, Heartbeat for telemetry_coverage) was never populated
+# because the diagnostic setting/agent that would send data to it isn't
+# configured, as opposed to a transient auth/network/throttling failure.
+# Best-effort text matching on the real Log Analytics error message, not
+# a fabricated classification -- mirrors _is_cost_not_supported_error's
+# convention for the exact same reason.
+_MISSING_LOG_ANALYTICS_TABLE_MARKERS = ("failed to resolve table",)
+
+
+def _is_missing_log_analytics_table_error(message: str) -> bool:
+    lowered = message.lower()
+    return any(marker in lowered for marker in _MISSING_LOG_ANALYTICS_TABLE_MARKERS)
+
+
+def _classify_log_analytics_table_error(exc: BaseException) -> str:
+    """Only an OperationsCollectionError's message can legitimately
+    signal 'not_configured' (the table this source's KQL query reads
+    doesn't exist yet in the workspace -- see
+    _is_missing_log_analytics_table_error). A ValueError/TypeError here
+    means data that WAS returned failed normalization, which is always a
+    plain 'error'; a genuine auth/network/throttling OperationsCollectionError
+    whose message doesn't match this marker also stays 'error' -- this
+    never reclassifies a real outage as 'not configured'."""
+    if isinstance(exc, OperationsCollectionError) and _is_missing_log_analytics_table_error(str(exc)):
+        return "not_configured"
+    return "error"
+
+
 def collect_backup_envelope(
     config: OperationsConfig,
     *,
@@ -465,7 +500,7 @@ def collect_backup_envelope(
         findings.extend(backup_collector.protected_item_findings(items, stale_days=config.backup_stale_recovery_point_days))
         return findings
 
-    return _collect_envelope(source, _collect)
+    return _collect_envelope(source, _collect, classify_error=_classify_log_analytics_table_error)
 
 
 def collect_update_manager_envelope(
@@ -623,7 +658,15 @@ def collect_telemetry_coverage_envelope(
             workspace_id=workspace_id, query_logs_fn=query_logs_fn,
         )
     except _EXPECTED_SOURCE_FAILURES as exc:
-        return CollectionEnvelope(source=source, status="error", collected_at=utc_now_iso(), error=str(exc))
+        # The Heartbeat table not existing yet (diagnostic Log Analytics
+        # agent never configured for any monitored resource) is the one
+        # failure here that legitimately means 'not_configured' rather
+        # than 'error' -- see _classify_log_analytics_table_error. The
+        # diagnostic-settings check (ARM REST, not Log Analytics) never
+        # raises this specific error shape, so applying the same
+        # classifier here is a no-op for that half of this source.
+        status = _classify_log_analytics_table_error(exc)
+        return CollectionEnvelope(source=source, status=status, collected_at=utc_now_iso(), error=str(exc))
 
     findings = diagnostic_findings + heartbeat_findings
     return CollectionEnvelope(

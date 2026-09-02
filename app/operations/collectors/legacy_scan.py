@@ -137,10 +137,34 @@ def _safe_iso(value, fallback: str) -> str:
 
 # ─── Resource Health (degraded/unavailable) ─────────────────────────────
 
+# Resource Health's `reasonType` property (see
+# app.azure_data.get_resource_health_statuses) is Azure's own documented
+# way to distinguish an authorized, customer-initiated resource state
+# (e.g. an owner stopping/deallocating a VM, which Resource Health then
+# reports as "Unavailable" because a powered-off VM can't be health-
+# probed) from a genuine platform-detected failure -- see
+# docs/AZURE_DATA_SOURCES.md. An authorized stop is never a customer-
+# impacting event and never demands executive attention on its own.
+_AUTHORIZED_STOP_REASON_TYPES = {"userinitiated"}
+
+
 def resource_health_findings(rows: list, *, subscription_id: str, now: Optional[datetime] = None) -> list:
     """Degraded/Unavailable Resource Health Findings from
     app.azure_data.get_resource_health_statuses's shape:
-    {name, resourceGroup, type, status, summary, title, location}."""
+    {name, resourceGroup, type, status, summary, title, location,
+    reasonType}.
+
+    Resource Health "Unavailable"/"Degraded" alone is an operational
+    risk signal, never definitionally customer impact (see
+    app.operations.priority.is_customer_impacting) -- this collector has
+    no evidence field confirming actual customer/workload impact, so
+    `customer_impacting` is never set True here. An "Unavailable" status
+    whose `reasonType` is Azure's documented "UserInitiated" value (an
+    authorized stop/deallocate, not a platform failure) is additionally
+    downgraded to informational severity with no executive attention --
+    it must never inflate reliability risk counts the way an actual
+    platform-detected failure does.
+    """
     now = now or datetime.now(timezone.utc)
     evaluated_at = format_utc_iso(now)
     findings = []
@@ -152,10 +176,28 @@ def resource_health_findings(rows: list, *, subscription_id: str, now: Optional[
         rg = row.get("resourceGroup") or ""
         rtype = row.get("type") or ""
         resource_id = _build_resource_id(subscription_id, rg, rtype, name)
-        severity = Severity.HIGH if status == "unavailable" else Severity.MEDIUM
+        reason_type = str(row.get("reasonType") or "").strip().lower()
+        authorized_stop = status == "unavailable" and reason_type in _AUTHORIZED_STOP_REASON_TYPES
+        if authorized_stop:
+            severity = Severity.INFORMATIONAL
+        else:
+            severity = Severity.HIGH if status == "unavailable" else Severity.MEDIUM
         title = row.get("title") or f"Resource health: {row.get('status')}"
         summary = (row.get("summary") or f"{name or 'A monitored resource'} is reporting {row.get('status')}.")[:500]
         target = resource_id or name or rg or "a monitored resource"
+
+        business_impact = (
+            f"{name or target} was intentionally stopped/deallocated (an authorized action) -- Resource Health "
+            "reports it Unavailable as an expected side effect, not a platform failure."
+            if authorized_stop else
+            f"{name or target} is {row.get('status')} -- dependent workloads may be impacted."
+        )
+        recommended_action = (
+            "No action required -- this is the expected Resource Health status for an intentionally stopped/"
+            "deallocated resource."
+            if authorized_stop else
+            "Review Resource Health details in the Azure portal and investigate the reported cause."
+        )
 
         findings.append(Finding(
             category=FindingCategory.RELIABILITY.value,
@@ -163,7 +205,7 @@ def resource_health_findings(rows: list, *, subscription_id: str, now: Optional[
             status=FindingStatus.OPEN.value,
             title=title,
             summary=summary,
-            business_impact=f"{name or target} is {row.get('status')} -- dependent workloads may be impacted.",
+            business_impact=business_impact,
             first_seen=evaluated_at,
             last_seen=evaluated_at,
             source=RESOURCE_HEALTH_SOURCE,
@@ -178,16 +220,37 @@ def resource_health_findings(rows: list, *, subscription_id: str, now: Optional[
                 reference=rtype or None,
                 raw_excerpt=summary or None,
             )],
-            recommended_action="Review Resource Health details in the Azure portal and investigate the reported cause.",
+            recommended_action=recommended_action,
             approval_required=False,
             executive_attention=severity == Severity.HIGH,
-            metadata={"resource_group": rg, "resource_type": rtype, "location": row.get("location", ""), "subscription_id": subscription_id},
+            customer_impacting=False,
+            metadata={
+                "resource_group": rg, "resource_type": rtype, "location": row.get("location", ""),
+                "subscription_id": subscription_id, "reason_type": row.get("reasonType", ""), "authorized_stop": authorized_stop,
+            },
             discriminator=f"{subscription_id}|{rg}|{name}|{status}",
         ))
     return findings
 
 
 # ─── Service Health (active incidents) ──────────────────────────────────
+
+# Service Health `eventType` values Azure's own REST API documentation
+# defines as an active, unplanned service problem -- "ServiceIssue" is
+# the officially documented value (as opposed to PlannedMaintenance/RCA/
+# EmergingIssues/SecurityAdvisory, or HealthAdvisory, already excluded
+# above); "Incident" is included too since some Azure API generations/
+# tenants have been observed to surface this eventType literally. See
+# docs/AZURE_DATA_SOURCES.md. Combined with status == 'active' AND this
+# event already being scoped to `subscription_id` (Service Health's
+# events API only returns events Azure has determined affect the
+# queried subscription), this is genuine, deterministic evidence of
+# real customer/workload impact -- see Finding.customer_impacting's
+# contract in app.operations.models. A resolved incident, or an active
+# PlannedMaintenance/RCA/EmergingIssues/SecurityAdvisory event, is real
+# but is NOT treated as current customer impact.
+_ACTIVE_INCIDENT_EVENT_TYPES = {"serviceissue", "incident"}
+
 
 def service_health_findings(events: list, *, subscription_id: str, now: Optional[datetime] = None) -> list:
     """Active Azure Service Health incidents from
@@ -247,6 +310,7 @@ def service_health_findings(events: list, *, subscription_id: str, now: Optional
             recommended_action="Review the Service Health event in the Azure portal for mitigation guidance and affected scope.",
             approval_required=False,
             executive_attention=severity == Severity.HIGH,
+            customer_impacting=event_type.lower() in _ACTIVE_INCIDENT_EVENT_TYPES,
             metadata={"event_type": event_type, "level": event.get("level", ""), "services": services, "regions": regions, "subscription_id": subscription_id},
             discriminator=f"{subscription_id}|{title}|{first_seen}|{','.join(services)}",
         ))

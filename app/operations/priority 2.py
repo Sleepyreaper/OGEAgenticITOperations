@@ -13,7 +13,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from app.operations.models import CONFIDENCE_RANK, SEVERITY_RANK, Finding, parse_utc_iso, utc_now
+from app.operations.models import CONFIDENCE_RANK, SEVERITY_RANK, Finding, FindingCategory, parse_utc_iso, utc_now
 
 __all__ = [
     "PriorityBand",
@@ -82,26 +82,17 @@ class PrioritizedFinding:
 
 
 def is_customer_impacting(finding: Finding) -> bool:
-    """Deterministic, not inferred: True ONLY when the Finding itself
-    carries `customer_impacting=True` -- i.e. the collector/adapter that
-    built it had explicit, deterministic evidence of real customer/
-    workload impact (see Finding.customer_impacting's docstring in
-    app.operations.models). Never derived from `executive_attention`, a
-    Finding's `severity`, or its `category` alone: an executive-
-    attention-worthy compliance/capacity/security/cost Finding, a
-    resource-health "Unavailable" status with no impact evidence (e.g.
-    an authorized VM stop/deallocate), and a merely `at_risk` (not yet
-    breached) SLO are all real operational risks that must NOT count as
-    customer impact just because they are severe or flagged for
-    executives -- conflating those was exactly the defect this function
-    used to have (inflating the executive brief's "active customer-
-    impacting issue" count with e.g. an authorized stopped VM, a policy
-    compliance gap, and a capacity/quota Finding). Exported (not just
-    used internally by prioritize_findings) so other product-facing
-    services -- e.g. app.operations.brief's business_impact section --
-    apply the exact same rule rather than re-deriving a slightly
-    different one."""
-    return bool(finding.customer_impacting)
+    """Deterministic, not inferred: True when the Finding is flagged for
+    executive attention, or its category is one where impact is
+    definitionally customer-facing (an active incident or a reliability/
+    SLO Finding). Exported (not just used internally by
+    prioritize_findings) so other product-facing services -- e.g.
+    app.operations.brief's business_impact section -- apply the exact
+    same deterministic rule rather than re-deriving a slightly different
+    one."""
+    if finding.executive_attention:
+        return True
+    return finding.category in (FindingCategory.INCIDENT.value, FindingCategory.RELIABILITY.value)
 
 
 def _priority_band(*, customer_impact: bool, severity_rank: int, slo_state_rank: int) -> PriorityBand:

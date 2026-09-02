@@ -229,44 +229,6 @@ test("azure_backup (unrelated source) is unaffected, still ok", bad_budget_by_so
 test("azure_monitor_alerts (Phase 1, unrelated) is unaffected, still ok", bad_budget_by_source["azure_monitor_alerts"].status == "ok")
 
 
-# ─── Optional Log Analytics table not present -- classified as
-# not_configured, never a false 'ok'/generic 'error' ───────────────────
-print("\n\U0001f9ea Test 7: a missing optional Log Analytics table (Backup/Heartbeat) classifies as not_configured, not error")
-
-
-def missing_table_query_logs(query, workspace_id, timespan):
-    # Mirrors the real azure-monitor-query HttpResponseError text for a
-    # KQL query referencing a table that doesn't exist in the workspace
-    # (a SemanticError nested under BadArgumentError) -- see
-    # docs/AZURE_DATA_SOURCES.md.
-    raise RuntimeError(
-        "(BadArgumentError) The request had some invalid properties\nInner error: "
-        "{\"code\": \"SemanticError\", \"message\": \"'where' operator: Failed to resolve table or "
-        f"column or scalar expression named '{query.split()[0]}'\"}}"
-    )
-
-
-backup_not_configured_env = service.collect_backup_envelope(OperationsConfig(), query_logs_fn=missing_table_query_logs)
-test("azure_backup classifies a missing-table KQL error as not_configured (not error)", backup_not_configured_env.status == "not_configured")
-test("the not_configured envelope still carries the underlying error message", "AddonAzureBackupJobs" in backup_not_configured_env.error)
-
-telemetry_not_configured_env = service.collect_telemetry_coverage_envelope(
-    ["sub1"], OperationsConfig(), credential_factory=FakeCredential, http_get=make_http_get(),
-    query_logs_fn=missing_table_query_logs, query_resource_graph_fn=fake_query_resource_graph,
-    extra_resource_ids=["/subscriptions/s/rg/vm1"],
-)
-test("telemetry_coverage classifies a missing Heartbeat table as not_configured (not error)", telemetry_not_configured_env.status == "not_configured")
-test("the not_configured envelope still carries the underlying error message", "Heartbeat" in telemetry_not_configured_env.error)
-
-
-def genuine_outage_query_logs(query, workspace_id, timespan):
-    raise RuntimeError("(GatewayTimeout) upstream Log Analytics query gateway timed out")
-
-
-backup_genuine_error_env = service.collect_backup_envelope(OperationsConfig(), query_logs_fn=genuine_outage_query_logs)
-test("a genuine (non-missing-table) Log Analytics failure still classifies as error, never misreported as not_configured", backup_genuine_error_env.status == "error")
-
-
 # ─── Summary ────────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
 print(f"  Results: {PASS} passed, {FAIL} failed")

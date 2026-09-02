@@ -224,21 +224,61 @@ def get_deep_analysis(subscription_id: str = None,
 
 # ─── Azure Advisor (platform-verified recommendations) ──────────
 
+_ADVISOR_API_VERSION = "2023-01-01"
+# Defense-in-depth only, mirrors app.operations.collectors.http.paginated_get's
+# hard ceiling: Advisor's own nextLink pagination has no documented upper
+# bound, so a misbehaving/very large tenant can never turn this into an
+# unbounded crawl.
+_ADVISOR_MAX_PAGES = 20
+
+
 def get_advisor_recommendations(subscription_id: str = None) -> list[dict]:
-    """Pull Azure Advisor recommendations — these are platform-verified, not AI guesses."""
-    from azure.mgmt.advisor import AdvisorManagementClient
-    cred = _credential()
+    """Pull Azure Advisor recommendations via the Microsoft.Advisor ARM
+    REST API directly (matching get_policy_compliance_summary's/
+    get_non_compliant_resources' pattern in this module) -- these are
+    platform-verified, not AI guesses.
+
+    Uses ARM REST rather than the azure-mgmt-advisor SDK: that package
+    is not a dependency of this project (see requirements.txt) and
+    importing it unconditionally previously crashed this function with
+    `No module named azure.mgmt.advisor`. The underlying
+    Microsoft.Advisor/recommendations REST API is stable/documented and
+    already reachable with the same bearer-token auth every other
+    azure_data.py REST call in this module uses, so this is the smaller,
+    more reliable fix over adding a new SDK dependency.
+    """
+    import requests
+
     sub = subscription_id or _subscription_id()
-    client = AdvisorManagementClient(cred, sub)
+    cred = _credential()
+    token = cred.get_token("https://management.azure.com/.default").token
+    headers = {"Authorization": f"******"}
+
     recs = []
-    for r in client.recommendations.list():
-        recs.append({
-            "category": r.category,
-            "impact": r.impact,
-            "problem": r.short_description.problem if r.short_description else "",
-            "solution": r.short_description.solution if r.short_description else "",
-            "resource": r.resource_metadata.resource_id if r.resource_metadata else "",
-        })
+    url = (
+        f"https://management.azure.com/subscriptions/{sub}"
+        f"/providers/Microsoft.Advisor/recommendations?api-version={_ADVISOR_API_VERSION}&$top=200"
+    )
+    for _ in range(_ADVISOR_MAX_PAGES):
+        if not url:
+            break
+        resp = requests.get(url, headers=headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        for r in data.get("value", []):
+            props = r.get("properties") or {}
+            short_description = props.get("shortDescription") or {}
+            resource_metadata = props.get("resourceMetadata") or {}
+            recs.append({
+                "category": props.get("category", ""),
+                "impact": props.get("impact", ""),
+                "problem": short_description.get("problem", ""),
+                "solution": short_description.get("solution", ""),
+                "resource": resource_metadata.get("resourceId", ""),
+            })
+        # nextLink is already a full, ready-to-call URL with its own
+        # query string (standard Azure REST pagination convention).
+        url = data.get("nextLink")
     return recs
 
 
@@ -314,6 +354,14 @@ def get_resource_health_statuses(subscription_id: str = None) -> list[dict]:
             "summary": props.get("summary", ""),
             "title": props.get("title", ""),
             "location": item.get("location", ""),
+            # "reasonType" (e.g. "UserInitiated" for an authorized
+            # stop/deallocate) is what distinguishes an intentional,
+            # customer-authorized resource state from a platform
+            # failure -- see app.operations.collectors.legacy_scan.
+            # resource_health_findings, which reads it to avoid
+            # treating "you stopped this VM" as an operational
+            # incident/customer-impacting event.
+            "reasonType": props.get("reasonType", ""),
         })
     return results
 
@@ -407,7 +455,14 @@ def query_logs(query: str, workspace_id: str = None, timespan: timedelta = None)
     rows = []
     if hasattr(response, "tables"):
         for table in response.tables:
-            columns = [col.name for col in table.columns]
+            # azure-monitor-query's LogsTable.columns is documented as
+            # List[str] (plain column-name strings) as of the installed
+            # SDK version, but earlier/other versions have returned a
+            # list of column objects exposing a `.name` attribute
+            # instead. Support both shapes rather than assuming one --
+            # `col.name` alone raised `'str' object has no attribute
+            # 'name'` against the plain-string shape.
+            columns = [getattr(col, "name", col) for col in table.columns]
             for row in table.rows:
                 rows.append(dict(zip(columns, row)))
     return rows
@@ -482,6 +537,24 @@ def get_vm_metrics_summary(resource_id: str, metric: str = "Percentage CPU",
 
 # ─── Azure Policy Compliance ────────────────────────────────────
 
+def compute_policy_compliance_pct(total_resources: int, non_compliant_resources: int):
+    """(compliant_resources, compliance_pct) computed from Policy
+    Insights' summarize() counts, or (None, None) when those counts
+    can't produce a meaningful percentage -- `total_resources <= 0`
+    (Policy Insights has been observed returning `nonCompliantResources
+    > 0` while `totalResources == 0`, presumably a summarize() lag/
+    quirk) or `non_compliant_resources > total_resources` (internally
+    inconsistent counts). Never divides by a fabricated denominator
+    (the previous `max(totalResources, 1)` produced nonsensical results
+    like -5000.0% when totalResources was 0) and never reports a
+    negative/impossible percentage -- an unknown percentage is reported
+    as None, with the raw counts still returned as-is."""
+    if total_resources <= 0 or non_compliant_resources > total_resources:
+        return None, None
+    compliant_resources = total_resources - non_compliant_resources
+    return compliant_resources, round(compliant_resources / total_resources * 100, 1)
+
+
 def get_policy_compliance_summary(subscription_id: str = None) -> dict:
     """Get subscription-level policy compliance summary."""
     import requests
@@ -518,15 +591,17 @@ def get_policy_compliance_summary(subscription_id: str = None) -> dict:
                 "nonCompliantPolicies": pd_results.get("nonCompliantPolicies", 0),
             })
 
+    total_resources = results.get("totalResources", 0) or 0
+    non_compliant_resources = results.get("nonCompliantResources", 0) or 0
+    compliant_resources, compliance_pct = compute_policy_compliance_pct(total_resources, non_compliant_resources)
+
     return {
         "total_policies": results.get("totalPoliciesCount", 0),
         "non_compliant_policies": results.get("nonCompliantPolicies", 0),
-        "non_compliant_resources": results.get("nonCompliantResources", 0),
-        "compliant_resources": results.get("totalResources", 0) - results.get("nonCompliantResources", 0),
-        "total_resources": results.get("totalResources", 0),
-        "compliance_pct": round(
-            (1 - results.get("nonCompliantResources", 0) / max(results.get("totalResources", 1), 1)) * 100, 1
-        ),
+        "non_compliant_resources": non_compliant_resources,
+        "compliant_resources": compliant_resources,
+        "total_resources": total_resources,
+        "compliance_pct": compliance_pct,
         "top_non_compliant_assignments": policy_details,
     }
 

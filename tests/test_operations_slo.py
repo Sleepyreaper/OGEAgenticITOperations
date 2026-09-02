@@ -171,6 +171,19 @@ test("all SLO Findings use category reliability", all(f.category == FindingCateg
 test("confidence is derived (deterministic math over platform query results)", all(f.confidence == ConfidenceLevel.DERIVED.value for f in findings))
 test("a breached customer-facing SLO demands executive attention", any(f.executive_attention for f in findings if "breached" in f.title))
 
+breached_finding = next(f for f in findings if "breached" in f.title)
+at_risk_finding = next(f for f in findings if "at_risk" in f.title)
+test("a breached customer-facing SLO IS customer_impacting -- an actual SLO breach, not merely at_risk", breached_finding.customer_impacting is True)
+test("an at_risk (not yet breached) SLO is NOT customer_impacting", at_risk_finding.customer_impacting is False)
+
+print("\n\U0001f9ea Test 10b: slo_summaries_to_findings -- a breached NON-customer-facing SLO is not customer_impacting")
+internal_breached_def = make_definition(workload="internal-batch", criticality="internal", objective_pct=99.9, at_risk_burn_rate=2.0)
+internal_breached_summary = slo.evaluate_slo(internal_breached_def, query_logs_fn=rows_fn([{"good": 9900, "total": 10000}]))
+test("sanity: this summary is indeed breached", internal_breached_summary.state == "breached")
+internal_breached_finding = slo.slo_summaries_to_findings([internal_breached_summary])[0]
+test("a breached internal-criticality SLO is NOT customer_impacting (only customer_facing breaches count)", internal_breached_finding.customer_impacting is False)
+test("it still demands no less severity (high) even though it isn't customer_impacting", internal_breached_finding.severity == "high")
+
 
 # ─── Summary ────────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
