@@ -8,6 +8,7 @@ corresponding environment variable names.
 """
 
 import os
+import re
 from dataclasses import dataclass
 from typing import Tuple
 
@@ -68,6 +69,42 @@ def _parse_csv_list(value: str) -> Tuple[str, ...]:
     return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
+# Azure Resource Manager's Microsoft.Compute/Microsoft.CognitiveServices
+# "usages" REST APIs (see app.operations.collectors.capacity) take the
+# region's short, canonical slug (e.g. 'eastus2', 'westeurope') as a raw
+# URL path segment -- never URL-encoded/escaped by that collector, so a
+# display string with spaces (e.g. 'East US 2') would produce a broken
+# request. Slugs are lowercase ASCII letters/digits, starting with a
+# letter (every published Azure region name matches this).
+_AZURE_LOCATION_SLUG_RE = re.compile(r"^[a-z][a-z0-9]*$")
+
+
+def _parse_capacity_locations(value: str, env_name: str) -> Tuple[str, ...]:
+    """CAPACITY_LOCATIONS: like _parse_csv_list, but each entry is also
+    normalized/validated into the canonical ARM location slug
+    (app.operations.collectors.capacity's `locations` input). Common
+    copy/paste variants from the Azure portal (any case, spaces/hyphens
+    as word separators, e.g. 'East US 2') are folded to the slug
+    ('eastus2'); anything that still doesn't match a plain
+    letter-then-alnum slug raises immediately, so a typo'd region fails
+    loudly at config load rather than as an opaque 404 from ARM during
+    collection."""
+    locations = []
+    for item in value.split(","):
+        raw = item.strip()
+        if not raw:
+            continue
+        slug = raw.lower().replace(" ", "").replace("-", "")
+        if not _AZURE_LOCATION_SLUG_RE.match(slug):
+            raise OperationsConfigError(
+                f"{env_name}: {raw!r} is not a valid Azure region -- expected an ARM location slug "
+                "like 'eastus2' or 'westeurope' (spaces/hyphens as word separators are folded away, "
+                "e.g. 'East US 2' -> 'eastus2')."
+            )
+        locations.append(slug)
+    return tuple(locations)
+
+
 # A curated, deliberately small default allowlist of resource types that
 # (a) commonly carry customer/business-critical data or availability risk
 # and (b) reliably support Microsoft.Insights/diagnosticSettings -- never
@@ -99,6 +136,20 @@ class OperationsConfig:
     change_correlation_window_minutes: int = 60
     capacity_warning_pct: float = 75.0
     capacity_critical_pct: float = 90.0
+    # Azure regions capacity checks actually run against (Microsoft.Compute
+    # + Azure OpenAI/Cognitive Services regional usage -- see
+    # app.operations.collectors.capacity and collect_capacity_envelope in
+    # app.operations.service). An empty tuple (the default) means
+    # not_configured, exactly like key_vault_monitor_uris/
+    # automation_account_ids below -- capacity is never silently skipped
+    # without saying so, and no region is ever auto-discovered/guessed.
+    # app/operations/routes.py forwards this as run_full_collection's
+    # `locations`/`openai_locations` kwargs for every product route, so
+    # capacity collection actually runs once CAPACITY_LOCATIONS is set --
+    # no query-string plumbing required. Each entry must be a valid ARM
+    # location slug (e.g. 'eastus2', 'westeurope') -- see
+    # _parse_capacity_locations for accepted copy/paste variants.
+    capacity_locations: Tuple[str, ...] = ()
     # Exactly one of these configures workload SLOs; both empty (the
     # default) means "no SLOs configured" -- the SLO collector reports an
     # explicit not_configured state, never a fabricated uptime number.
@@ -297,12 +348,17 @@ class OperationsConfig:
             raw = os.environ.get(name, "")
             return _parse_csv_list(raw) if raw.strip() else default
 
+        def env_capacity_locations(name: str, default: Tuple[str, ...] = ()) -> Tuple[str, ...]:
+            raw = os.environ.get(name, "")
+            return _parse_capacity_locations(raw, name) if raw.strip() else default
+
         return cls(
             alert_lookback_hours=env_int("ALERT_LOOKBACK_HOURS", 24),
             change_lookback_hours=env_int("CHANGE_LOOKBACK_HOURS", 24),
             change_correlation_window_minutes=env_int("CHANGE_CORRELATION_WINDOW_MINUTES", 60),
             capacity_warning_pct=env_pct("CAPACITY_WARNING_PCT", 75.0),
             capacity_critical_pct=env_pct("CAPACITY_CRITICAL_PCT", 90.0),
+            capacity_locations=env_capacity_locations("CAPACITY_LOCATIONS"),
             slo_definitions_path=os.environ.get("SLO_DEFINITIONS_PATH", "").strip(),
             slo_definitions_json=os.environ.get("SLO_DEFINITIONS_JSON", "").strip(),
             enable_defender_alerts=env_bool("ENABLE_DEFENDER_ALERTS", True),

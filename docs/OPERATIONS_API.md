@@ -123,6 +123,24 @@ rebuild. A cached snapshot always carries its own truthful
 `status`/`source_errors` — **an error is never cached as a successful
 empty result**.
 
+### Capacity locations
+
+`app/operations/routes.py` builds one `OperationsConfig.from_env()` per
+request and forwards `OperationsConfig.capacity_locations` (the
+`CAPACITY_LOCATIONS` env var — a comma-separated, validated list of ARM
+region slugs, e.g. `eastus2,westeurope`; see `app/operations/config.py`)
+as `run_full_collection`'s `locations` **and** `openai_locations`
+kwargs, for every route that builds a snapshot (`/snapshot`, `/brief`,
+`/queue`, `GET /handoff`, `POST /handoff`, `/evidence/<id>`). There is
+no `?locations=` query-string override — an operator sets
+`CAPACITY_LOCATIONS` once, and every route immediately gets capacity
+coverage for those regions. Leaving `CAPACITY_LOCATIONS` unset is a
+valid, safe default: the `capacity` source reports `not_configured`,
+exactly as it does when calling `run_full_collection` directly with no
+`locations`. Because `CAPACITY_LOCATIONS` is process-static (read once
+from the environment, not per-request), it never changes which
+snapshot the subscription-keyed cache above returns.
+
 ### Snapshot status semantics
 
 - `ok` — every *applicable* source (one that actually attempted to
@@ -323,6 +341,9 @@ one call.
 ## Routes (`app/operations/routes.py`, mounted at `/api/operations`)
 
 All routes preserve every existing API in `app/main.py` unchanged.
+Every route below except `/demo` builds its snapshot with capacity
+coverage for `CAPACITY_LOCATIONS` (see "Capacity locations" above) —
+there is no `?locations=` query-string equivalent.
 
 | Method | Path | Notes |
 |---|---|---|

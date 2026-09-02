@@ -88,7 +88,7 @@ docs/EVIDENCE_MODEL.md, docs/AZURE_DATA_SOURCES.md) — an object param (rather 
 params) so it stays maintainable as the evidence layer grows. Recognized
 keys, all optional: alertLookbackHours, changeLookbackHours,
 changeCorrelationWindowMinutes, capacityWarningPct, capacityCriticalPct,
-sloDefinitionsPath, sloDefinitionsJson (Phase 1); enableDefenderAlerts,
+capacityLocations, sloDefinitionsPath, sloDefinitionsJson (Phase 1); enableDefenderAlerts,
 enableDefenderAssessments, costBudgetWarningPct, costBudgetCriticalPct,
 costTrendLookbackDays, costTrendGrowthPctThreshold,
 enableCostManagementBudget, enableCostManagementTrend,
@@ -102,7 +102,7 @@ enableTelemetryCoverage, retirementWarningDays,
 enableRetirementAdvisories (Phase 2); operationsSnapshotCacheTtlSeconds,
 operationsStateDbPath (product API -- snapshot/brief/queue/workflow-state,
 see docs/OPERATIONS_API.md). List-valued keys
-(keyVaultMonitorUris, automationAccountIds,
+(capacityLocations, keyVaultMonitorUris, automationAccountIds,
 telemetryMonitoredResourceTypes, telemetryCriticalResourceIds) take a
 single comma-separated string, not a Bicep array. Omitted keys fall back to the
 safe defaults documented in .env.example. Leaving this empty entirely
@@ -111,7 +111,9 @@ SLO collector reports an explicit not_configured state rather than a
 fabricated uptime number until sloDefinitionsPath/sloDefinitionsJson is
 set, and every Phase 2 source with an empty required list (e.g. no
 keyVaultMonitorUris) reports not_configured rather than silently
-skipping itself. Set at most one of sloDefinitionsPath/sloDefinitionsJson.
+skipping itself -- the same applies to capacityLocations (capacity
+reports not_configured with no auto-discovered regions). Set at most
+one of sloDefinitionsPath/sloDefinitionsJson.
 operationsStateDbPath should point under /home (e.g.
 /home/data/operations.db) so finding workflow state survives app
 restarts/scale events on Azure App Service Linux.

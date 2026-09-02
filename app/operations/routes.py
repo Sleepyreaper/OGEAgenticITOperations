@@ -22,7 +22,7 @@ from app.operations import brief as brief_service
 from app.operations import demo_fixture as demo_fixture_service
 from app.operations import handoff as handoff_service
 from app.operations import queue as queue_service
-from app.operations.config import OperationsConfigError
+from app.operations.config import OperationsConfig, OperationsConfigError
 from app.operations.errors import OperationsCollectionError
 from app.operations.finding_lookup import bounded_evidence_view, find_finding_item
 from app.operations.snapshot import get_default_state_store, get_snapshot
@@ -50,16 +50,42 @@ def _parse_refresh() -> bool:
     return request.args.get("refresh", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _capacity_full_collect_kwargs(config: OperationsConfig) -> dict:
+    """`run_full_collection`'s `locations`/`openai_locations` kwargs,
+    derived from `OperationsConfig.capacity_locations` (CAPACITY_LOCATIONS
+    -- an explicit, bounded, operator-configured region list, never an
+    unbounded query-string parameter). Empty when CAPACITY_LOCATIONS is
+    unset, so capacity collection reports its documented `not_configured`
+    state exactly as it does when calling run_full_collection directly."""
+    if not config.capacity_locations:
+        return {}
+    locations = list(config.capacity_locations)
+    return {"locations": locations, "openai_locations": locations}
+
+
 def _build_snapshot():
     """Shared by every route below: resolve ?subs=/?refresh=, then get
     (or build) the cached OperationsSnapshot. Raises ValueError (bad
     subs) or OperationsCollectionError/OperationsConfigError (propagated
     to the route's own error handling) -- never silently returns an
-    empty/fake snapshot."""
+    empty/fake snapshot. Builds one explicit OperationsConfig.from_env()
+    per request and forwards it (plus CAPACITY_LOCATIONS, see
+    _capacity_full_collect_kwargs) into get_snapshot, so every route that
+    calls this (snapshot/brief/queue/handoff/evidence) actually runs
+    capacity collection whenever an operator has set CAPACITY_LOCATIONS
+    -- no ?locations= query-string plumbing. The snapshot cache key stays
+    correct because this configuration is process-static: the same
+    CAPACITY_LOCATIONS value is forwarded for every request within a
+    process's lifetime, so a cached snapshot never mixes region
+    selections."""
     sub_ids = _parse_sub_ids()
     if not sub_ids or not any(sub_ids):
         raise ValueError("no subscription configured -- pass ?subs=<id> or configure AZURE_SUBSCRIPTION_ID")
-    return get_snapshot(sub_ids, force_refresh=_parse_refresh())
+    config = OperationsConfig.from_env()
+    return get_snapshot(
+        sub_ids, config=config, force_refresh=_parse_refresh(),
+        full_collect_kwargs=_capacity_full_collect_kwargs(config),
+    )
 
 
 @operations_bp.route("/snapshot", methods=["GET"])
@@ -68,11 +94,11 @@ def get_operations_snapshot():
     try:
         snapshot = _build_snapshot()
         return jsonify(snapshot.to_dict())
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
     except (OperationsCollectionError, OperationsConfigError) as exc:
         traceback.print_exc()
         return jsonify({"error": str(exc)}), 502
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001 -- last-resort route boundary; never leak a raw traceback to the client
         traceback.print_exc()
         return jsonify({"error": "failed to build operations snapshot", "detail": str(exc)}), 500
@@ -84,11 +110,11 @@ def get_operations_brief():
     try:
         snapshot = _build_snapshot()
         return jsonify(brief_service.build_brief(snapshot))
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
     except (OperationsCollectionError, OperationsConfigError) as exc:
         traceback.print_exc()
         return jsonify({"error": str(exc)}), 502
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001 -- last-resort route boundary
         traceback.print_exc()
         return jsonify({"error": "failed to build executive brief", "detail": str(exc)}), 500
@@ -111,11 +137,11 @@ def get_operations_queue():
             page_size=page_size,
         )
         return jsonify(result)
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
     except (OperationsCollectionError, OperationsConfigError) as exc:
         traceback.print_exc()
         return jsonify({"error": str(exc)}), 502
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001 -- last-resort route boundary
         traceback.print_exc()
         return jsonify({"error": "failed to build operations queue", "detail": str(exc)}), 500
@@ -197,11 +223,11 @@ def get_operations_handoff():
         store = get_default_state_store()
         handoff = handoff_service.build_handoff(snapshot, state_store=store)
         return jsonify(handoff)
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
     except (OperationsCollectionError, OperationsConfigError) as exc:
         traceback.print_exc()
         return jsonify({"error": str(exc)}), 502
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001 -- last-resort route boundary
         traceback.print_exc()
         return jsonify({"error": "failed to build handoff", "detail": str(exc)}), 500
@@ -231,7 +257,11 @@ def post_operations_handoff():
         sub_ids = subs if subs else _parse_sub_ids()
         if not sub_ids or not any(sub_ids):
             return jsonify({"error": "no subscription configured -- pass subs or configure AZURE_SUBSCRIPTION_ID"}), 400
-        snapshot = get_snapshot(sub_ids, force_refresh=_parse_refresh())
+        config = OperationsConfig.from_env()
+        snapshot = get_snapshot(
+            sub_ids, config=config, force_refresh=_parse_refresh(),
+            full_collect_kwargs=_capacity_full_collect_kwargs(config),
+        )
         store = get_default_state_store()
         handoff = handoff_service.build_handoff(snapshot, state_store=store)
         persisted = handoff_service.persist_handoff(handoff, state_store=store, created_by=created_by.strip())
@@ -256,11 +286,11 @@ def get_operations_evidence(finding_id):
     """
     try:
         snapshot = _build_snapshot()
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
     except (OperationsCollectionError, OperationsConfigError) as exc:
         traceback.print_exc()
         return jsonify({"error": str(exc)}), 502
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001 -- last-resort route boundary
         traceback.print_exc()
         return jsonify({"error": "failed to build operations snapshot", "detail": str(exc)}), 500
