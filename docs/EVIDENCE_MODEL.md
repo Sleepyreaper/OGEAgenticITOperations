@@ -240,7 +240,7 @@ in `docs/AZURE_DATA_SOURCES.md`):
 | `defender.collect_active_alerts` | Active high/medium Microsoft Defender for Cloud alerts | `Microsoft.Security/alerts` (ARM REST) -- `FindingCategory.SECURITY` |
 | `defender.collect_unhealthy_assessments` | Unhealthy Defender for Cloud posture recommendations | `Microsoft.Security/assessments` (ARM REST) -- `FindingCategory.COMPLIANCE`, never re-aggregated into a Secure Score |
 | `cost.collect_budget_summaries` / `budget_summaries_to_findings` | Budget threshold state | `Microsoft.Consumption/budgets` (ARM REST) |
-| `cost.collect_cost_trend` | Deterministic period-over-period actual-cost trend | `Microsoft.CostManagement/query` (ARM REST, `ActualCost`/`None` granularity) -- explicitly NOT Cost Management's native anomaly-detection feature |
+| `cost.collect_cost_trend` | Deterministic period-over-period actual-cost trend | `Microsoft.CostManagement/query` (ARM REST, `ActualCost`/`Daily` granularity, ONE request covering both periods, split/summed locally) -- explicitly NOT Cost Management's native anomaly-detection feature |
 | `backup.get_backup_jobs` / `backup_job_findings` | Failed/stuck-in-progress backup jobs | `AddonAzureBackupJobs` via `app.azure_data.query_logs` |
 | `backup.get_protected_item_health` / `protected_item_findings` | Protection-error/stale protected items | `CoreAzureBackup` via the same Log Analytics client |
 | `patches.collect_patch_compliance` | Missing critical/security updates + stale/failed assessments | Resource Graph `patchassessmentresources` table |

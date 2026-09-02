@@ -21,9 +21,19 @@ for the full rationale):
     length exceeds a configured threshold. This is a cost TREND signal,
     not ML-based anomaly detection -- named and documented as such so it
     is never mistaken for one.
+
+    The current and prior periods are both read from a SINGLE
+    Microsoft.CostManagement/query POST (Daily granularity, spanning
+    prior_start..current_end) rather than two independent queries: the
+    live subscription has been observed intermittently throttling
+    (HTTP 429) a second back-to-back query even with arm_post's bounded
+    retries, so this collector now asks for daily buckets once and
+    splits/sums the current vs. prior window locally against each row's
+    UsageDate -- see _query_daily_cost_series below (the single-series
+    fetch helper) and docs/AZURE_DATA_SOURCES.md.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from app.operations.collectors.http import (
@@ -187,29 +197,106 @@ def budget_summaries_to_findings(summaries: list) -> list:
     return findings
 
 
-def _query_total_cost(
+# Documented/observed Microsoft.CostManagement/query response column
+# names for a Daily-granularity ActualCost query. "UsageDate" is the
+# de-facto, universally-observed date-bucket column name for this API;
+# "date" is accepted as an explicit, tested fallback only (a variant
+# seen on some Cost Management API surfaces) -- never a fuzzy/case-
+# insensitive guess. Similarly "Cost" is the column name this collector
+# itself requests (see the aggregation "name" below); "PreTaxCost" is
+# kept as a documented fallback because older Cost Management query
+# responses have been observed to use it regardless of the requested
+# aggregation name.
+_DATE_COLUMN_NAMES = ("UsageDate", "date")
+_COST_COLUMN_NAMES = ("Cost", "PreTaxCost")
+
+
+def _resolve_column_index(columns: list, candidate_names: tuple, *, source: str, kind: str) -> int:
+    """Return the index of the first `candidate_names` entry present in
+    a Microsoft.CostManagement/query response's `columns` array (each
+    `{"name": ..., "type": ...}`), or raise OperationsCollectionError --
+    never guess/fabricate which column holds the date or the cost."""
+    names = [c.get("name") for c in columns]
+    for candidate in candidate_names:
+        if candidate in names:
+            return names.index(candidate)
+    raise OperationsCollectionError(
+        source,
+        f"cost query response is missing a recognized {kind} column "
+        f"(looked for {candidate_names!r}, got columns {names!r})",
+    )
+
+
+def _parse_usage_date(raw_value, *, source: str) -> date:
+    """Normalize one Microsoft.CostManagement/query Daily-granularity
+    row's date-bucket cell to a plain `date`. Azure has been observed
+    returning this column as an integer OR numeric string in YYYYMMDD
+    form (e.g. 20240115 / "20240115"), and less commonly as an
+    ISO-8601 date/datetime string (e.g. "2024-01-15" or
+    "2024-01-15T00:00:00Z") -- both explicit, tested shapes are
+    accepted; anything else raises rather than silently coercing."""
+    if isinstance(raw_value, bool):
+        raise OperationsCollectionError(source, f"cost query row had a non-date UsageDate/date value: {raw_value!r}")
+
+    if isinstance(raw_value, (int, float)):
+        text = str(int(raw_value))
+    elif isinstance(raw_value, str):
+        text = raw_value.strip()
+    else:
+        raise OperationsCollectionError(source, f"cost query row had a non-date UsageDate/date value: {raw_value!r}")
+
+    if text.isdigit() and len(text) == 8:
+        try:
+            return datetime.strptime(text, "%Y%m%d").date()
+        except ValueError as exc:
+            raise OperationsCollectionError(source, f"cost query row had an unparseable YYYYMMDD UsageDate/date value: {raw_value!r}") from exc
+
+    iso_text = f"{text[:-1]}+00:00" if text.endswith("Z") else text
+    try:
+        return datetime.fromisoformat(iso_text).date()
+    except ValueError as exc:
+        raise OperationsCollectionError(source, f"cost query row had an unparseable ISO UsageDate/date value: {raw_value!r}") from exc
+
+
+def _query_daily_cost_series(
     subscription_id: str,
     *,
-    start: datetime,
-    end: datetime,
+    prior_start: datetime,
+    current_end: datetime,
     credential_factory: CredentialFactory,
     http_post: HttpPost,
     max_retries: int,
     sleep_fn: SleepFn,
-) -> Optional[float]:
-    """POST one Microsoft.CostManagement/query (ActualCost, no
-    granularity -- a single summed total for [start, end)) and return the
-    total cost, or None if the period returned no rows (no cost data,
-    never treated as zero-cost)."""
+) -> list:
+    """POST exactly ONE Microsoft.CostManagement/query -- ActualCost,
+    Daily granularity, Cost/Sum aggregation, custom timePeriod spanning
+    `prior_start`..`current_end` -- and return a `[(date, cost), ...]`
+    list, one entry per row Azure returned (never pre-aggregated here;
+    splitting current vs. prior is the caller's job).
+
+    This single call replaces what used to be two independent queries
+    (current period, then prior period): the live subscription has been
+    observed intermittently throttling (HTTP 429) the second back-to-
+    back query even with arm_post's bounded retries -- one Daily-
+    granularity query covering both windows removes that failure mode
+    entirely rather than retrying around it.
+
+    Returns [] when Azure genuinely has no rows for the whole window
+    (no cost data at all, not treated as an error). Raises
+    OperationsCollectionError -- never fabricates a date/cost -- when
+    rows ARE present but the response's columns don't include a
+    recognized date or cost column (see _DATE_COLUMN_NAMES/
+    _COST_COLUMN_NAMES), or a row's date/cost cell can't be parsed.
+    """
     body = arm_post(
         f"/subscriptions/{subscription_id}/providers/Microsoft.CostManagement/query?api-version={QUERY_API_VERSION}",
         source=TREND_SOURCE,
         json_body={
             "type": "ActualCost",
             "timeframe": "Custom",
-            "timePeriod": {"from": format_utc_iso(start), "to": format_utc_iso(end)},
+            "timePeriod": {"from": format_utc_iso(prior_start), "to": format_utc_iso(current_end)},
             "dataset": {
-                "granularity": "None",
+                "granularity": "Daily",
                 "aggregation": {"totalCost": {"name": "Cost", "function": "Sum"}},
             },
         },
@@ -218,12 +305,23 @@ def _query_total_cost(
         max_retries=max_retries,
         sleep_fn=sleep_fn,
     )
-    columns = [c.get("name") for c in (body.get("columns") or [])]
+    columns = body.get("columns") or []
     rows = body.get("rows") or []
-    if not rows or "Cost" not in columns:
-        return None
-    cost_index = columns.index("Cost")
-    return float(rows[0][cost_index])
+    if not rows:
+        return []
+
+    date_index = _resolve_column_index(columns, _DATE_COLUMN_NAMES, source=TREND_SOURCE, kind="date")
+    cost_index = _resolve_column_index(columns, _COST_COLUMN_NAMES, source=TREND_SOURCE, kind="cost")
+
+    series = []
+    for row in rows:
+        day = _parse_usage_date(row[date_index], source=TREND_SOURCE)
+        try:
+            cost = float(row[cost_index])
+        except (TypeError, ValueError) as exc:
+            raise OperationsCollectionError(TREND_SOURCE, f"cost query row had a non-numeric cost value: {row[cost_index]!r}") from exc
+        series.append((day, cost))
+    return series
 
 
 def collect_cost_trend(
@@ -241,17 +339,31 @@ def collect_cost_trend(
     cost for the last `lookback_days` against the equal-length period
     immediately before it, via Microsoft.CostManagement/query.
 
+    Issues exactly ONE Microsoft.CostManagement/query POST -- Daily
+    granularity, custom timePeriod spanning prior_start..current_end --
+    via `_query_daily_cost_series`, then splits/sums the returned daily
+    rows into the current vs. prior window locally:
+
+      - prior_start   <= UsageDate <  current_start  -> prior period
+      - current_start <= UsageDate <= current_end     -> current period
+
+    (boundaries compared as plain dates, since Daily-granularity rows
+    carry no time-of-day). Every row falls into exactly one bucket --
+    never both, never neither, for any date genuinely inside the
+    requested window.
+
     Raises ValueError for a non-positive lookback_days/growth_pct_threshold
     (no silent clamping). Returns [] (never a fabricated Finding) when the
-    prior period has no cost data to compute a meaningful percentage
-    against -- there is no baseline to call "material growth" against.
+    prior period has no cost data (absent or zero) to compute a
+    meaningful percentage against -- there is no baseline to call
+    "material growth" against.
 
-    `max_retries`/`sleep_fn` are forwarded to each underlying `arm_post`
-    call (see app.operations.collectors.http.arm_post) -- Cost
-    Management's Query API is the one that has been observed throttling
-    (HTTP 429) under real load; a transient 429/5xx here is retried
-    with backoff rather than immediately failing the whole trend
-    collection.
+    `max_retries`/`sleep_fn` are forwarded to the single underlying
+    `arm_post` call (see app.operations.collectors.http.arm_post) --
+    Cost Management's Query API is the one that has been observed
+    throttling (HTTP 429) under real load; a transient 429/5xx here is
+    retried with backoff rather than immediately failing the whole
+    trend collection.
     """
     if not subscription_id:
         raise ValueError("subscription_id is required")
@@ -263,21 +375,31 @@ def collect_cost_trend(
     now = now or datetime.now(timezone.utc)
     current_end = now
     current_start = now - timedelta(days=lookback_days)
-    prior_end = current_start
     prior_start = current_start - timedelta(days=lookback_days)
 
-    current_cost = _query_total_cost(
-        subscription_id, start=current_start, end=current_end,
-        credential_factory=credential_factory, http_post=http_post,
-        max_retries=max_retries, sleep_fn=sleep_fn,
-    )
-    prior_cost = _query_total_cost(
-        subscription_id, start=prior_start, end=prior_end,
+    series = _query_daily_cost_series(
+        subscription_id, prior_start=prior_start, current_end=current_end,
         credential_factory=credential_factory, http_post=http_post,
         max_retries=max_retries, sleep_fn=sleep_fn,
     )
 
-    if current_cost is None or prior_cost is None or prior_cost <= 0:
+    current_start_date = current_start.date()
+    current_end_date = current_end.date()
+    prior_start_date = prior_start.date()
+
+    current_cost = 0.0
+    prior_cost = 0.0
+    for day, cost in series:
+        if current_start_date <= day <= current_end_date:
+            current_cost += cost
+        elif prior_start_date <= day < current_start_date:
+            prior_cost += cost
+        # else: a date outside the requested [prior_start, current_end]
+        # window entirely -- Azure is not documented to ever return one,
+        # but it is deliberately ignored rather than mis-bucketed into
+        # either period if it somehow did.
+
+    if prior_cost <= 0:
         return []
 
     growth_pct = round((current_cost - prior_cost) / prior_cost * 100, 2)

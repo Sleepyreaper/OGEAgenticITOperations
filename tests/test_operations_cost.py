@@ -2,7 +2,10 @@
 """Test Azure Cost Management budget/trend collectors
 (app/operations/collectors/cost.py) -- threshold state classification,
 severity, that the trend collector never fabricates a Finding without a
-real baseline, and explicit failure surfacing.
+real baseline, that the trend collector issues exactly ONE
+Microsoft.CostManagement/query POST per invocation (Daily granularity,
+covering both the current and prior windows) and splits/sums the
+returned daily rows locally, and explicit failure surfacing.
 
 All Azure calls are injected fakes; no real network calls are made.
 
@@ -17,6 +20,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from app.operations.collectors import cost  # noqa: E402
 from app.operations.errors import OperationsCollectionError  # noqa: E402
+from app.operations.models import format_utc_iso  # noqa: E402
 
 PASS = 0
 FAIL = 0
@@ -91,8 +95,27 @@ test("confidence is derived (threshold math, not a raw platform fact)", all(f.co
 critical_finding = next(f for f in findings if f.metadata["budget_name"] == "b2")
 test("a critical budget demands executive attention", critical_finding.executive_attention is True)
 
-# ─── Cost trend -- deterministic period-over-period comparison ────────
-print("\n\U0001f9ea Test 3: collect_cost_trend -- material growth raises a Finding, with no fake anomaly")
+# ─── Cost trend -- ONE query covering both periods, split/summed locally ──
+# NOW = 2026-02-01T00:00:00Z, lookback_days=30 ->
+#   current_start = 2026-01-02T00:00:00Z, current_end = NOW
+#   prior_start   = 2025-12-03T00:00:00Z
+from datetime import timedelta as _timedelta  # noqa: E402
+
+CURRENT_END = NOW
+CURRENT_START = NOW - _timedelta(days=30)
+PRIOR_START = CURRENT_START - _timedelta(days=30)
+EXPECTED_QUERY_URL = f"https://management.azure.com/subscriptions/sub1/providers/Microsoft.CostManagement/query?api-version={cost.QUERY_API_VERSION}"
+EXPECTED_QUERY_BODY = {
+    "type": "ActualCost",
+    "timeframe": "Custom",
+    "timePeriod": {"from": format_utc_iso(PRIOR_START), "to": format_utc_iso(CURRENT_END)},
+    "dataset": {
+        "granularity": "Daily",
+        "aggregation": {"totalCost": {"name": "Cost", "function": "Sum"}},
+    },
+}
+
+print("\n\U0001f9ea Test 3: collect_cost_trend -- exactly one POST, exact request shape, material growth raises a Finding")
 
 _calls = []
 _urls = []
@@ -101,23 +124,69 @@ _urls = []
 def http_post_growth(url, *, headers, json=None, timeout=30):
     _calls.append(json)
     _urls.append(url)
-    if len(_calls) == 1:
-        return FakeResponse({"columns": [{"name": "Cost"}], "rows": [[150.0]]})
-    return FakeResponse({"columns": [{"name": "Cost"}], "rows": [[100.0]]})
+    # One Daily-granularity response covering both periods: 100.0 prior, 150.0 current.
+    return FakeResponse({
+        "columns": [{"name": "UsageDate"}, {"name": "Cost"}],
+        "rows": [[20251215, 100.0], [20260115, 150.0]],
+    })
 
 
 trend_findings = cost.collect_cost_trend("sub1", lookback_days=30, growth_pct_threshold=20.0, credential_factory=fake_credential_factory, http_post=http_post_growth, now=NOW)
+test("exactly one underlying POST is made per collect_cost_trend invocation (never two)", len(_calls) == 1)
+test("the request hits the exact Microsoft.CostManagement/query URL with the documented api-version (2023-11-01)", _urls[0] == EXPECTED_QUERY_URL and cost.QUERY_API_VERSION == "2023-11-01")
+test("the request body is exactly one Daily-granularity ActualCost query covering prior_start..current_end", _calls[0] == EXPECTED_QUERY_BODY)
 test("a 50% period-over-period increase (>= 20% threshold) raises exactly one Finding", len(trend_findings) == 1)
 test("the trend Finding is category cost, medium severity", trend_findings[0].category == "cost" and trend_findings[0].severity == "medium")
 test("growth_pct is exposed in metadata, not hidden in a score", trend_findings[0].metadata["growth_pct"] == 50.0)
-test("both requests hit the exact Microsoft.CostManagement/query URL with the documented api-version (2023-11-01) -- never MissingApiVersionParameter", all(
-    u == f"https://management.azure.com/subscriptions/sub1/providers/Microsoft.CostManagement/query?api-version={cost.QUERY_API_VERSION}"
-    for u in _urls
-) and cost.QUERY_API_VERSION == "2023-11-01")
+test("current/prior period costs in metadata reflect the correct locally-split sums", trend_findings[0].metadata["current_period_cost"] == 150.0 and trend_findings[0].metadata["prior_period_cost"] == 100.0)
+
+
+print("\n\U0001f9ea Test 3a: collect_cost_trend -- boundary split (prior_start/current_start/current_end inclusive) and int/string/ISO date parsing, all in one response")
+
+
+def http_post_boundaries(url, *, headers, json=None, timeout=30):
+    return FakeResponse({
+        "columns": [{"name": "UsageDate"}, {"name": "Cost"}],
+        "rows": [
+            [20251203, 5.0],                    # == prior_start (int YYYYMMDD)      -> prior
+            ["20260101", 7.0],                  # one day before current_start (str) -> prior
+            ["2026-01-02", 9.0],                # == current_start (ISO date)        -> current
+            ["2026-02-01T00:00:00Z", 11.0],     # == current_end (ISO datetime+Z)    -> current
+        ],
+    })
+
+
+boundary_findings = cost.collect_cost_trend("sub1", lookback_days=30, growth_pct_threshold=1.0, credential_factory=fake_credential_factory, http_post=http_post_boundaries, now=NOW)
+test(
+    "boundary dates split into exactly the documented prior/current buckets (12.0 prior, 20.0 current)",
+    len(boundary_findings) == 1
+    and boundary_findings[0].metadata["prior_period_cost"] == 12.0
+    and boundary_findings[0].metadata["current_period_cost"] == 20.0,
+)
+
+
+print("\n\U0001f9ea Test 3b: collect_cost_trend -- documented fallback column names (date/PreTaxCost)")
+
+
+def http_post_fallback_columns(url, *, headers, json=None, timeout=30):
+    return FakeResponse({
+        "columns": [{"name": "date"}, {"name": "PreTaxCost"}],
+        "rows": [[20251215, 100.0], [20260115, 150.0]],
+    })
+
+
+fallback_findings = cost.collect_cost_trend("sub1", lookback_days=30, growth_pct_threshold=20.0, credential_factory=fake_credential_factory, http_post=http_post_fallback_columns, now=NOW)
+test("the 'date'/'PreTaxCost' documented fallback column names are recognized identically to UsageDate/Cost", len(fallback_findings) == 1 and fallback_findings[0].metadata["growth_pct"] == 50.0)
+
+
+print("\n\U0001f9ea Test 3c: collect_cost_trend -- below-threshold growth and a zero/absent prior baseline never raise a Finding")
 
 
 def http_post_below_threshold(url, *, headers, json=None, timeout=30):
-    return FakeResponse({"columns": [{"name": "Cost"}], "rows": [[105.0]]})
+    return FakeResponse({
+        "columns": [{"name": "UsageDate"}, {"name": "Cost"}],
+        "rows": [[20251215, 100.0], [20260115, 105.0]],
+    })
 
 
 below = cost.collect_cost_trend("sub1", growth_pct_threshold=20.0, credential_factory=fake_credential_factory, http_post=http_post_below_threshold, now=NOW)
@@ -125,37 +194,91 @@ test("growth below the configured threshold raises no Finding", below == [])
 
 
 def http_post_no_baseline(url, *, headers, json=None, timeout=30):
-    return FakeResponse({"columns": [{"name": "Cost"}], "rows": [[0.0]]})
+    return FakeResponse({"columns": [{"name": "UsageDate"}, {"name": "Cost"}], "rows": [[20260115, 50.0]]})
 
 
 no_baseline = cost.collect_cost_trend("sub1", credential_factory=fake_credential_factory, http_post=http_post_no_baseline, now=NOW)
-test("zero prior-period cost -> no Finding (never a fabricated percentage from a zero baseline)", no_baseline == [])
+test("zero/absent prior-period cost -> no Finding (never a fabricated percentage from a zero baseline)", no_baseline == [])
 
-# ─── 429 throttling -- collect_cost_trend retries with backoff, never fails outright ──
-print("\n\U0001f9ea Test 3b: collect_cost_trend -- a transient 429 is retried (with an injected sleep_fn) instead of failing the whole trend")
+
+def http_post_empty(url, *, headers, json=None, timeout=30):
+    return FakeResponse({"columns": [{"name": "UsageDate"}, {"name": "Cost"}], "rows": []})
+
+
+empty_series = cost.collect_cost_trend("sub1", credential_factory=fake_credential_factory, http_post=http_post_empty, now=NOW)
+test("an entirely empty rows response (no cost data at all) returns [] rather than raising", empty_series == [])
+
+
+print("\n\U0001f9ea Test 3d: collect_cost_trend -- a malformed response (no recognized date/cost column) raises OperationsCollectionError rather than fabricate")
+
+
+def http_post_malformed(url, *, headers, json=None, timeout=30):
+    return FakeResponse({"columns": [{"name": "Foo"}, {"name": "Bar"}], "rows": [[1, 2]]})
+
+
+try:
+    cost.collect_cost_trend("sub1", credential_factory=fake_credential_factory, http_post=http_post_malformed, now=NOW)
+    test("a response with rows but no recognized date/cost column raises OperationsCollectionError", False)
+except OperationsCollectionError:
+    test("a response with rows but no recognized date/cost column raises OperationsCollectionError", True)
+
+
+def http_post_unparseable_date(url, *, headers, json=None, timeout=30):
+    return FakeResponse({"columns": [{"name": "UsageDate"}, {"name": "Cost"}], "rows": [["not-a-date", 5.0]]})
+
+
+try:
+    cost.collect_cost_trend("sub1", credential_factory=fake_credential_factory, http_post=http_post_unparseable_date, now=NOW)
+    test("an unparseable UsageDate value raises OperationsCollectionError instead of fabricating a date", False)
+except OperationsCollectionError:
+    test("an unparseable UsageDate value raises OperationsCollectionError instead of fabricating a date", True)
+
+
+# ─── 429 throttling -- collect_cost_trend retries at the arm_post layer, never fails outright, and still makes only ONE logical arm_post call ──
+print("\n\U0001f9ea Test 3e: collect_cost_trend -- a transient 429 is retried at the arm_post layer (with an injected sleep_fn), staying within a single arm_post call per invocation")
 _throttled_calls = []
 _sleep_calls = []
+_arm_post_invocations = []
+_original_arm_post = cost.arm_post
 
 
 def _fake_sleep(seconds):
     _sleep_calls.append(seconds)
 
 
+def _counting_arm_post(*args, **kwargs):
+    """Wraps the real arm_post to count how many times cost.py's
+    collector code itself calls arm_post (as opposed to how many times
+    arm_post's own internal retry loop calls http_post) -- this is what
+    proves collect_cost_trend makes exactly one logical query per
+    invocation even though a 429 causes arm_post to retry internally."""
+    _arm_post_invocations.append(1)
+    return _original_arm_post(*args, **kwargs)
+
+
 def http_post_throttled_then_growth(url, *, headers, json=None, timeout=30):
     _throttled_calls.append(json)
-    # Only the very first underlying POST (the current-period query) is
-    # throttled once; every other call (including the retry) succeeds.
+    # The single underlying query is throttled once; the retry (same
+    # request, retried by arm_post itself) succeeds.
     if len(_throttled_calls) == 1:
         return FakeResponse({}, status_code=429, text="Too Many Requests")
-    if len(_throttled_calls) == 2:
-        return FakeResponse({"columns": [{"name": "Cost"}], "rows": [[150.0]]})
-    return FakeResponse({"columns": [{"name": "Cost"}], "rows": [[100.0]]})
+    return FakeResponse({
+        "columns": [{"name": "UsageDate"}, {"name": "Cost"}],
+        "rows": [[20251215, 100.0], [20260115, 150.0]],
+    })
 
 
-throttled_findings = cost.collect_cost_trend(
-    "sub1", lookback_days=30, growth_pct_threshold=20.0, credential_factory=fake_credential_factory,
-    http_post=http_post_throttled_then_growth, now=NOW, sleep_fn=_fake_sleep,
-)
+cost.arm_post = _counting_arm_post
+try:
+    throttled_findings = cost.collect_cost_trend(
+        "sub1", lookback_days=30, growth_pct_threshold=20.0, credential_factory=fake_credential_factory,
+        http_post=http_post_throttled_then_growth, now=NOW, sleep_fn=_fake_sleep,
+    )
+finally:
+    cost.arm_post = _original_arm_post
+
+test("collect_cost_trend calls arm_post exactly once per invocation, even though that call internally retried", len(_arm_post_invocations) == 1)
+test("the single arm_post call retried via 2 underlying HTTP POSTs (1 throttled + 1 successful retry)", len(_throttled_calls) == 2)
 test("a single 429 is retried and the trend still resolves to the correct Finding", len(throttled_findings) == 1)
 test("the resolved growth_pct reflects the retried (not the throttled) response", throttled_findings[0].metadata["growth_pct"] == 50.0)
 test("collect_cost_trend never actually slept -- the injected sleep_fn recorded the backoff instead", len(_sleep_calls) == 1)
