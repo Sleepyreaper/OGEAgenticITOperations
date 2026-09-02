@@ -61,12 +61,12 @@ QUERY = (
     "| where type =~ 'Microsoft.ResourceHealth/events' "
     "| extend eventType = tostring(properties.EventType), status = tostring(properties.Status) "
     "| where eventType == 'HealthAdvisory' and status =~ 'Active' "
-    "| extend eventSubType = tostring(properties.EventSubType), title = tostring(properties.Title), "
+    "| extend eventSubType = tostring(properties.EventSubType), advisoryTitle = tostring(properties.Title), "
     "summaryText = tostring(properties.Summary), trackingId = tostring(properties.TrackingId), "
     "advisoryPriority = tostring(properties.Priority), "
-    "impactStartTime = tostring(properties.ImpactStartTime), "
-    "impactMitigationTime = tostring(properties.ImpactMitigationTime) "
-    "| project id, name, subscriptionId, eventSubType, title, summaryText, trackingId, advisoryPriority, impactStartTime, impactMitigationTime"
+    "impactStart = tostring(properties.ImpactStartTime), "
+    "mitigationTime = tostring(properties.ImpactMitigationTime) "
+    "| project id, name, subscriptionId, eventSubType, advisoryTitle, summaryText, trackingId, advisoryPriority, impactStart, mitigationTime"
 )
 
 
@@ -80,14 +80,14 @@ def normalize_advisory(row: dict, *, warning_days: int, now: datetime) -> Findin
     if not advisory_id:
         raise OperationsCollectionError(SOURCE, "Service Health advisory payload is missing an id")
 
-    title = row.get("title") or "Azure Service Health advisory"
+    title = row.get("advisoryTitle") or row.get("title") or "Azure Service Health advisory"
     summary_text = (row.get("summaryText") or "")[:500]
     event_sub_type = row.get("eventSubType") or ""
     tracking_id = row.get("trackingId") or ""
 
-    deadline_raw = row.get("impactMitigationTime")
+    deadline_raw = row.get("mitigationTime") or row.get("impactMitigationTime")
     deadline = ensure_utc_iso(deadline_raw, field_name=f"advisory {advisory_id}.impactMitigationTime") if deadline_raw else None
-    impact_start_raw = row.get("impactStartTime")
+    impact_start_raw = row.get("impactStart") or row.get("impactStartTime")
     impact_start = ensure_utc_iso(impact_start_raw, field_name=f"advisory {advisory_id}.impactStartTime") if impact_start_raw else None
 
     evaluated_at = format_utc_iso(now)

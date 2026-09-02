@@ -58,14 +58,20 @@ print("\n\U0001f9ea Test 1b: resource_health_findings -- an authorized stop (rea
 authorized_stop_rows = [
     {"name": "vm4", "resourceGroup": "rg1", "type": "Microsoft.Compute/virtualMachines", "status": "Unavailable",
      "summary": "This virtual machine is stopped.", "title": "", "location": "eastus", "reasonType": "UserInitiated"},
+    {"name": "vm4b", "resourceGroup": "rg1", "type": "Microsoft.Compute/virtualMachines", "status": "Unavailable",
+     "summary": "This virtual machine is stopped and deallocated as requested by an authorized user or process.",
+     "title": "Stopped and deallocated", "location": "westus2", "reasonType": "Customer Initiated"},
 ]
 authorized_stop_findings = legacy_scan.resource_health_findings(authorized_stop_rows, subscription_id="sub1", now=NOW)
-test("an authorized-stop Unavailable VM still produces a Finding (never silently dropped)", len(authorized_stop_findings) == 1)
+test("authorized-stop Unavailable VMs still produce Findings (never silently dropped)", len(authorized_stop_findings) == 2)
 authorized_stop_finding = authorized_stop_findings[0]
 test("severity is downgraded to informational (not HIGH, unlike a genuine platform failure)", authorized_stop_finding.severity == Severity.INFORMATIONAL.value)
 test("executive_attention is False for an authorized stop", authorized_stop_finding.executive_attention is False)
 test("customer_impacting is False for an authorized stop", authorized_stop_finding.customer_impacting is False)
 test("metadata.authorized_stop is True", authorized_stop_finding.metadata["authorized_stop"] is True)
+customer_initiated = authorized_stop_findings[1]
+test("Customer Initiated is also recognized as an authorized stop", customer_initiated.metadata["authorized_stop"] is True)
+test("Customer Initiated is informational and not executive attention", customer_initiated.severity == Severity.INFORMATIONAL.value and customer_initiated.executive_attention is False)
 
 
 print("\n\U0001f9ea Test 1c: resource_health_findings -- reasonType blank/absent falls back to an EXACT title/summary phrase match")

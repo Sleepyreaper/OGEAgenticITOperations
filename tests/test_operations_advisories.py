@@ -111,13 +111,13 @@ test("filters to HealthAdvisory events", "eventType == 'HealthAdvisory'" in advi
 test("filters to Active status", "status =~ 'Active'" in advisories.QUERY)
 test("never uses todatetime(tolong(...)) -- the real cause of this query's ParserFailure", "tolong(" not in advisories.QUERY and "todatetime(" not in advisories.QUERY)
 test("ImpactStartTime/ImpactMitigationTime are cast with tostring(), deferring datetime parsing to Python", (
-    "impactStartTime = tostring(properties.ImpactStartTime)" in advisories.QUERY
-    and "impactMitigationTime = tostring(properties.ImpactMitigationTime)" in advisories.QUERY
+    "impactStart = tostring(properties.ImpactStartTime)" in advisories.QUERY
+    and "mitigationTime = tostring(properties.ImpactMitigationTime)" in advisories.QUERY
 ))
 test("projects every field normalize_advisory reads", all(
     field in advisories.QUERY for field in (
-        "id", "name", "subscriptionId", "eventSubType", "title", "summaryText",
-        "trackingId", "advisoryPriority", "impactStartTime", "impactMitigationTime",
+        "id", "name", "subscriptionId", "eventSubType", "advisoryTitle", "summaryText",
+        "trackingId", "advisoryPriority", "impactStart", "mitigationTime",
     )
 ))
 test(
@@ -125,6 +125,11 @@ test(
     "that produced this query's real, live ParserFailure",
     "advisoryPriority = tostring(properties.Priority)" in advisories.QUERY
     and re.search(r"(?<![A-Za-z])priority(?![A-Za-z])", advisories.QUERY) is None,
+)
+test(
+    "Title is aliased to advisoryTitle -- never the bare reserved 'title' name",
+    "advisoryTitle = tostring(properties.Title)" in advisories.QUERY
+    and re.search(r"(?<![A-Za-z])title(?![A-Za-z])", advisories.QUERY) is None,
 )
 
 
