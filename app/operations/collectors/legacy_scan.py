@@ -145,7 +145,11 @@ def _safe_iso(value, fallback: str) -> str:
 # probed) from a genuine platform-detected failure -- see
 # docs/AZURE_DATA_SOURCES.md. An authorized stop is never a customer-
 # impacting event and never demands executive attention on its own.
-_AUTHORIZED_STOP_REASON_TYPES = {"userinitiated"}
+_AUTHORIZED_STOP_REASON_TYPES = {
+    "userinitiated",
+    "customer initiated",
+    "customerinitiated",
+}
 
 # Live gap observed in at least one tenant: `reasonType` comes back
 # blank/absent on an "Unavailable" VM even though Resource Health's own
