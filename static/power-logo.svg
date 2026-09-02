@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Grid Ops Council logo">
+  <circle cx="32" cy="10" r="6" fill="#F59E0B"/>
+  <circle cx="10" cy="48" r="6" fill="#F59E0B"/>
+  <circle cx="54" cy="48" r="6" fill="#F59E0B"/>
+  <path d="M32 16 L14 44 M32 16 L50 44 M15 48 L49 48" stroke="#334155" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M34 22 L24 38 L31 38 L28 50 L42 32 L34 32 Z" fill="#0F172A"/>
+</svg>

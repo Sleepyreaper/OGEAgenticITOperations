@@ -109,6 +109,7 @@ print("\n\U0001f9ea Test 1: list_profiles() finds the checked-in profiles")
 profiles = list_profiles()
 test("includes 'oge'", "oge" in profiles)
 test("includes 'generic'", "generic" in profiles)
+test("includes 'power'", "power" in profiles)
 test("sorted", profiles == sorted(profiles))
 
 print("\n\U0001f9ea Test 2: is_valid_profile_id rejects unsafe/invalid ids")
@@ -188,13 +189,16 @@ with temp_profile("test-missing-prompt", missing_prompt_document) as profile_dir
         test("missing prompt file raises ProfileError", "does_not_exist.txt" in str(exc))
 
 
-# ─── app.config.Settings — default ("oge") profile behavior ────────────
-print("\n\U0001f9ea Test 8: Settings() with the default profile reproduces original behavior")
+# ─── app.config.Settings — default ("power") profile behavior ──────────
+print("\n\U0001f9ea Test 8: Settings() with the default profile is the 'power' reference deployment")
 default_settings = Settings()
-test("defaults to the 'oge' profile", default_settings.profile_id == "oge")
+test("defaults to the 'power' profile", default_settings.profile_id == "power")
 test("has all six agents", set(default_settings.agents) == set(AGENT_KEYS))
-test("orchestrator is named Pipeline", default_settings.agents["orchestrator"].name == "Pipeline")
-test("cost_sentinel is named Barrel Counter", default_settings.agents["cost_sentinel"].name == "Barrel Counter")
+test("orchestrator is named Grid Coordinator", default_settings.agents["orchestrator"].name == "Grid Coordinator")
+test(
+    "cost_sentinel is named Cost & Capacity Analyst",
+    default_settings.agents["cost_sentinel"].name == "Cost & Capacity Analyst",
+)
 test(
     "no agent sends a custom temperature by default",
     all(not cfg.supports_temperature for cfg in default_settings.agents.values()),
@@ -204,11 +208,49 @@ test(
     default_settings.agents["orchestrator"].endpoint == "",
 )
 
+print("\n\U0001f9ea Test 8b: default ('power') profile maps agents to the recommended GPT-5.6 tiers")
+expected_power_mapping = {
+    "orchestrator": ("Grid Coordinator", "gpt-5.6-sol"),
+    "cost_sentinel": ("Cost & Capacity Analyst", "gpt-5.6-terra"),
+    "standards_architect": ("Reliability Engineer", "gpt-5.6-terra"),
+    "diagnostics_sre": ("Incident Investigator", "gpt-5.6-sol"),
+    "scout": ("Operations Monitor", "gpt-5.6-luna"),
+    "compliance_inspector": ("Compliance Advisor", "gpt-5.6-terra"),
+}
+for key, (expected_name, expected_deployment) in expected_power_mapping.items():
+    cfg = default_settings.agents[key]
+    test(f"{key} name is {expected_name!r}", cfg.name == expected_name)
+    test(f"{key} deployment is {expected_deployment!r}", cfg.deployment == expected_deployment)
+    test(f"{key} has a positive max_completion_tokens", cfg.max_completion_tokens > 0)
+    test(f"{key} has a positive max_context_chars", cfg.max_context_chars > 0)
+    test(f"{key} has a non-empty response_instruction", bool(cfg.response_instruction.strip()))
+    test(f"{key} has positive pricing configured", cfg.input_cost_per_million > 0 and cfg.output_cost_per_million > 0)
+
+print("\n\U0001f9ea Test 8c: legacy 'oge' profile is unaffected by the default changing")
+oge_settings = Settings(profile_id="oge")
+test("oge profile still loads", oge_settings.profile_id == "oge")
+test("orchestrator is still named Pipeline", oge_settings.agents["orchestrator"].name == "Pipeline")
+test("cost_sentinel is still named Barrel Counter", oge_settings.agents["cost_sentinel"].name == "Barrel Counter")
+test("standards_architect is still named The Roughneck", oge_settings.agents["standards_architect"].name == "The Roughneck")
+test("diagnostics_sre is still named Turnaround", oge_settings.agents["diagnostics_sre"].name == "Turnaround")
+test("scout is still named Flare Stack", oge_settings.agents["scout"].name == "Flare Stack")
+test("compliance_inspector is still named The Inspector", oge_settings.agents["compliance_inspector"].name == "The Inspector")
+test(
+    "oge gained explicit conservative controls without changing personality",
+    oge_settings.agents["cost_sentinel"].max_completion_tokens > 0
+    and "dollar figure" in oge_settings.agents["cost_sentinel"].response_instruction,
+)
+
 print("\n\U0001f9ea Test 9: Settings() with the 'generic' profile is fully re-branded")
 generic_settings = Settings(profile_id="generic")
-test("brand differs from oge", generic_settings.brand.app_name != default_settings.brand.app_name)
+test("brand differs from the default profile", generic_settings.brand.app_name != default_settings.brand.app_name)
 test("orchestrator renamed", generic_settings.agents["orchestrator"].name == "Orchestrator")
 test("still has all six agents", set(generic_settings.agents) == set(AGENT_KEYS))
+test(
+    "generic profile also has explicit conservative controls",
+    generic_settings.agents["orchestrator"].max_completion_tokens > 0
+    and generic_settings.agents["orchestrator"].max_context_chars > 0,
+)
 
 # ─── app.config.Settings — invalid profile handling ────────────────────
 print("\n\U0001f9ea Test 10: Settings() rejects an invalid/unknown APP_PROFILE")
@@ -238,7 +280,12 @@ with temp_env(
     test("deployment overridden", cfg.deployment == "gpt-4o")
     test("temperature overridden", cfg.temperature == 0.2)
     test("supports_temperature overridden", cfg.supports_temperature is True)
-    test("other agents untouched", overridden.agents["orchestrator"].name == "Pipeline")
+    test("other agents untouched", overridden.agents["orchestrator"].name == "Grid Coordinator")
+    test(
+        "overriding one field doesn't clobber that agent's other unrelated fields",
+        overridden.agents["cost_sentinel"].max_completion_tokens
+        == default_settings.agents["cost_sentinel"].max_completion_tokens,
+    )
 
 print("\n\U0001f9ea Test 12: malformed per-agent overrides raise explicit errors (no silent fallback)")
 with temp_env(AGENT_SCOUT_TEMPERATURE="not-a-number"):
@@ -256,7 +303,14 @@ with temp_env(AGENT_SCOUT_SUPPORTS_TEMPERATURE="maybe"):
         test("bad AGENT_*_SUPPORTS_TEMPERATURE raises ProfileError", True)
 
 print("\n\U0001f9ea Test 13: endpoint reference resolution")
-with temp_env(AZURE_OPENAI_ENDPOINT_SECONDARY="https://eu2.openai.azure.com/"):
+with temp_env(
+    AZURE_OPENAI_ENDPOINT_SECONDARY="https://eu2.openai.azure.com/",
+    # Forced via env override rather than relying on any particular
+    # checked-in profile's own endpoint_ref default (only "oge" ships
+    # with endpoint_ref: "secondary" out of the box) — this test is
+    # about the resolution logic itself, not a specific profile.
+    AGENT_ORCHESTRATOR_ENDPOINT="secondary",
+):
     configured = Settings()
     test(
         "endpoint_ref 'secondary' resolves when configured",
@@ -280,6 +334,125 @@ with temp_env(AGENT_SCOUT_ENDPOINT="https://custom.openai.azure.com/"):
         "a literal https:// endpoint ref is used as-is",
         literal_url_settings.agents["scout"].endpoint == "https://custom.openai.azure.com/",
     )
+
+# ─── app.profiles: strict schema validation of the new controls ────────
+print("\n\U0001f9ea Test 13b: profile.json schema validation — max_completion_tokens / max_context_chars")
+for bad_value, label in [(-1, "negative"), (1.5, "float"), ("900", "string")]:
+    bad_tokens_doc = minimal_profile_document(f"test-bad-tokens-{label}")
+    bad_tokens_doc["agents"]["scout"]["max_completion_tokens"] = bad_value
+    with temp_profile(f"test-bad-tokens-{label}", bad_tokens_doc) as profile_dir:
+        try:
+            load_profile_document(profile_dir, f"test-bad-tokens-{label}")
+            test(f"max_completion_tokens rejects {label} value", False)
+        except ProfileError as exc:
+            test(f"max_completion_tokens rejects {label} value", "max_completion_tokens" in str(exc))
+
+    bad_context_doc = minimal_profile_document(f"test-bad-context-{label}")
+    bad_context_doc["agents"]["scout"]["max_context_chars"] = bad_value
+    with temp_profile(f"test-bad-context-{label}", bad_context_doc) as profile_dir:
+        try:
+            load_profile_document(profile_dir, f"test-bad-context-{label}")
+            test(f"max_context_chars rejects {label} value", False)
+        except ProfileError as exc:
+            test(f"max_context_chars rejects {label} value", "max_context_chars" in str(exc))
+
+zero_is_valid_doc = minimal_profile_document("test-zero-tokens-ok")
+zero_is_valid_doc["agents"]["scout"]["max_completion_tokens"] = 0
+zero_is_valid_doc["agents"]["scout"]["max_context_chars"] = 0
+with temp_profile("test-zero-tokens-ok", zero_is_valid_doc) as profile_dir:
+    document = load_profile_document(profile_dir, "test-zero-tokens-ok")
+    test("0 is a valid max_completion_tokens (provider default)", document["agents"]["scout"]["max_completion_tokens"] == 0)
+    test("0 is a valid max_context_chars (no truncation)", document["agents"]["scout"]["max_context_chars"] == 0)
+
+print("\n\U0001f9ea Test 13c: profile.json schema validation — response_instruction")
+empty_instruction_doc = minimal_profile_document("test-empty-instruction")
+empty_instruction_doc["agents"]["scout"]["response_instruction"] = "   "
+with temp_profile("test-empty-instruction", empty_instruction_doc) as profile_dir:
+    try:
+        load_profile_document(profile_dir, "test-empty-instruction")
+        test("blank response_instruction is rejected", False)
+    except ProfileError as exc:
+        test("blank response_instruction is rejected", "response_instruction" in str(exc))
+
+wrong_type_instruction_doc = minimal_profile_document("test-wrong-type-instruction")
+wrong_type_instruction_doc["agents"]["scout"]["response_instruction"] = 12345
+with temp_profile("test-wrong-type-instruction", wrong_type_instruction_doc) as profile_dir:
+    try:
+        load_profile_document(profile_dir, "test-wrong-type-instruction")
+        test("non-string response_instruction is rejected", False)
+    except ProfileError as exc:
+        test("non-string response_instruction is rejected", "response_instruction" in str(exc))
+
+print("\n\U0001f9ea Test 13d: profile.json schema validation — pricing fields")
+for field_name in ("input_cost_per_million", "output_cost_per_million"):
+    bad_pricing_doc = minimal_profile_document(f"test-bad-{field_name}")
+    bad_pricing_doc["agents"]["scout"][field_name] = -1.0
+    with temp_profile(f"test-bad-{field_name}", bad_pricing_doc) as profile_dir:
+        try:
+            load_profile_document(profile_dir, f"test-bad-{field_name}")
+            test(f"negative {field_name} is rejected", False)
+        except ProfileError as exc:
+            test(f"negative {field_name} is rejected", field_name in str(exc))
+
+zero_pricing_doc = minimal_profile_document("test-zero-pricing-ok")
+zero_pricing_doc["agents"]["scout"]["input_cost_per_million"] = 0
+zero_pricing_doc["agents"]["scout"]["output_cost_per_million"] = 0.0
+with temp_profile("test-zero-pricing-ok", zero_pricing_doc) as profile_dir:
+    document = load_profile_document(profile_dir, "test-zero-pricing-ok")
+    test("0 is valid pricing (no cost estimate)", document["agents"]["scout"]["input_cost_per_million"] == 0)
+
+# ─── app.config.Settings — env overrides for the new controls ─────────
+print("\n\U0001f9ea Test 13e: AGENT_<KEY>_* env overrides for the new controls")
+with temp_env(
+    AGENT_SCOUT_MAX_COMPLETION_TOKENS="321",
+    AGENT_SCOUT_MAX_CONTEXT_CHARS="4321",
+    AGENT_SCOUT_RESPONSE_INSTRUCTION="Test-only override instruction.",
+    AGENT_SCOUT_INPUT_COST_PER_MILLION="2.5",
+    AGENT_SCOUT_OUTPUT_COST_PER_MILLION="7.5",
+):
+    overridden = Settings()
+    cfg = overridden.agents["scout"]
+    test("max_completion_tokens overridden", cfg.max_completion_tokens == 321)
+    test("max_context_chars overridden", cfg.max_context_chars == 4321)
+    test("response_instruction overridden", cfg.response_instruction == "Test-only override instruction.")
+    test("input_cost_per_million overridden", cfg.input_cost_per_million == 2.5)
+    test("output_cost_per_million overridden", cfg.output_cost_per_million == 7.5)
+
+print("\n\U0001f9ea Test 13f: malformed env overrides for the new controls raise explicit errors")
+for bad_env, context_hint in [
+    ({"AGENT_SCOUT_MAX_COMPLETION_TOKENS": "not-a-number"}, "MAX_COMPLETION_TOKENS"),
+    ({"AGENT_SCOUT_MAX_COMPLETION_TOKENS": "-5"}, "MAX_COMPLETION_TOKENS"),
+    ({"AGENT_SCOUT_MAX_COMPLETION_TOKENS": "1.5"}, "MAX_COMPLETION_TOKENS"),
+    ({"AGENT_SCOUT_MAX_CONTEXT_CHARS": "not-a-number"}, "MAX_CONTEXT_CHARS"),
+    ({"AGENT_SCOUT_MAX_CONTEXT_CHARS": "-1"}, "MAX_CONTEXT_CHARS"),
+    ({"AGENT_SCOUT_INPUT_COST_PER_MILLION": "not-a-number"}, "INPUT_COST_PER_MILLION"),
+    ({"AGENT_SCOUT_INPUT_COST_PER_MILLION": "-0.5"}, "INPUT_COST_PER_MILLION"),
+    ({"AGENT_SCOUT_OUTPUT_COST_PER_MILLION": "not-a-number"}, "OUTPUT_COST_PER_MILLION"),
+]:
+    with temp_env(**bad_env):
+        try:
+            Settings()
+            test(f"bad {context_hint} env override raises ProfileError", False)
+        except ProfileError as exc:
+            test(f"bad {context_hint} env override raises ProfileError", context_hint in str(exc))
+
+print("\n\U0001f9ea Test 13g: every checked-in profile agent has the new fields populated")
+for profile_id in ("oge", "generic", "power"):
+    settings_for_profile = Settings(profile_id=profile_id)
+    for key, cfg in settings_for_profile.agents.items():
+        test(
+            f"{profile_id}.{key}: max_completion_tokens/max_context_chars are non-negative ints",
+            isinstance(cfg.max_completion_tokens, int) and isinstance(cfg.max_context_chars, int)
+            and cfg.max_completion_tokens >= 0 and cfg.max_context_chars >= 0,
+        )
+        test(
+            f"{profile_id}.{key}: response_instruction is a non-empty string",
+            isinstance(cfg.response_instruction, str) and bool(cfg.response_instruction.strip()),
+        )
+        test(
+            f"{profile_id}.{key}: pricing fields are non-negative numbers",
+            cfg.input_cost_per_million >= 0 and cfg.output_cost_per_million >= 0,
+        )
 
 
 # ─── scripts/configure.py — validation helpers ─────────────────────────
@@ -311,6 +484,12 @@ except wizard.ConfigureError:
     test("invalid resource id rejected", True)
 
 print("\n\U0001f9ea Test 16: wizard per-agent override flag parsing")
+for new_field in (
+    "max_completion_tokens", "max_context_chars", "response_instruction",
+    "input_cost_per_million", "output_cost_per_million",
+):
+    test(f"AGENT_OVERRIDE_FIELDS includes {new_field!r}", new_field in wizard.AGENT_OVERRIDE_FIELDS)
+
 key, field_name, value = wizard.parse_agent_override_flag("cost_sentinel:deployment=foundry-reasoning")
 test("parses key/field/value", (key, field_name, value) == ("cost_sentinel", "deployment", "foundry-reasoning"))
 try:
@@ -328,6 +507,35 @@ try:
     test("malformed flag format rejected", False)
 except wizard.ConfigureError:
     test("malformed flag format rejected", True)
+
+key, field_name, value = wizard.parse_agent_override_flag("scout:max_completion_tokens=400")
+test(
+    "parses a new token/response/pricing control field",
+    (key, field_name, value) == ("scout", "max_completion_tokens", "400"),
+)
+key, field_name, value = wizard.parse_agent_override_flag("cost_sentinel:response_instruction=Lead with the number.")
+test(
+    "parses response_instruction (value may contain spaces)",
+    (key, field_name, value) == ("cost_sentinel", "response_instruction", "Lead with the number."),
+)
+
+print("\n\U0001f9ea Test 16b: wizard snake_case -> Bicep camelCase field-name translation")
+camel_case_cases = {
+    "deployment": "deployment",
+    "supports_temperature": "supportsTemperature",
+    "api_version": "apiVersion",
+    "prompt_file": "promptFile",
+    "max_completion_tokens": "maxCompletionTokens",
+    "max_context_chars": "maxContextChars",
+    "response_instruction": "responseInstruction",
+    "input_cost_per_million": "inputCostPerMillion",
+    "output_cost_per_million": "outputCostPerMillion",
+}
+for snake_case, expected_camel_case in camel_case_cases.items():
+    test(
+        f"{snake_case} -> {expected_camel_case}",
+        wizard._to_bicep_field_name(snake_case) == expected_camel_case,
+    )
 
 print("\n\U0001f9ea Test 17: wizard answer validation")
 valid_answers = wizard.Answers(
@@ -366,6 +574,13 @@ answers_with_agent_override.set_agent_override("cost_sentinel", "deployment", "f
 env_with_override = wizard.generate_env_content(answers_with_agent_override)
 test("per-agent override written", "AGENT_COST_SENTINEL_DEPLOYMENT=foundry-reasoning" in env_with_override)
 
+answers_with_new_controls = copy.deepcopy(valid_answers)
+answers_with_new_controls.set_agent_override("scout", "max_completion_tokens", "400")
+answers_with_new_controls.set_agent_override("scout", "response_instruction", "Alert format only.")
+env_with_new_controls = wizard.generate_env_content(answers_with_new_controls)
+test("max_completion_tokens override written", "AGENT_SCOUT_MAX_COMPLETION_TOKENS=400" in env_with_new_controls)
+test("response_instruction override written", "AGENT_SCOUT_RESPONSE_INSTRUCTION=Alert format only." in env_with_new_controls)
+
 answers_with_secret = copy.deepcopy(valid_answers)
 answers_with_secret.ado_pat = "super-secret-pat"
 env_with_secret = wizard.generate_env_content(answers_with_secret)
@@ -381,6 +596,32 @@ test("empty agentOverrides renders as {}", "param agentOverrides = {}" in bicepp
 
 bicepparam_with_override = wizard.generate_bicepparam_content(answers_with_agent_override)
 test("agentOverrides entry rendered", "cost_sentinel: { deployment: 'foundry-reasoning' }" in bicepparam_with_override)
+test("otelServiceName always emitted (default blank)", "param otelServiceName = ''" in bicepparam_content)
+
+bicepparam_with_new_controls = wizard.generate_bicepparam_content(answers_with_new_controls)
+test(
+    "new control fields are translated to camelCase in the Bicep object literal",
+    "scout: { maxCompletionTokens: '400', responseInstruction: 'Alert format only.' }" in bicepparam_with_new_controls,
+)
+
+answers_with_legacy_snake_case_fields = copy.deepcopy(valid_answers)
+answers_with_legacy_snake_case_fields.set_agent_override("cost_sentinel", "supports_temperature", "true")
+answers_with_legacy_snake_case_fields.set_agent_override("cost_sentinel", "api_version", "2025-04-01-preview")
+answers_with_legacy_snake_case_fields.set_agent_override("cost_sentinel", "prompt_file", "prompts/custom.txt")
+bicepparam_with_legacy_fields = wizard.generate_bicepparam_content(answers_with_legacy_snake_case_fields)
+test(
+    "supports_temperature/api_version/prompt_file also reach Bicep as camelCase "
+    "(previously would have been silently dropped by web-app.bicep's camelCase lookup)",
+    "supportsTemperature: 'true'" in bicepparam_with_legacy_fields
+    and "apiVersion: '2025-04-01-preview'" in bicepparam_with_legacy_fields
+    and "promptFile: 'prompts/custom.txt'" in bicepparam_with_legacy_fields,
+)
+test(
+    "no raw snake_case field name leaks into the Bicep object literal",
+    "supports_temperature:" not in bicepparam_with_legacy_fields
+    and "api_version:" not in bicepparam_with_legacy_fields
+    and "prompt_file:" not in bicepparam_with_legacy_fields,
+)
 
 print("\n\U0001f9ea Test 21: wizard write_file refuses to write outside the repository")
 try:

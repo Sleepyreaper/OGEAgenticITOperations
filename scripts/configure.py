@@ -20,9 +20,9 @@ Usage:
     python3 scripts/configure.py --help
 
 Examples:
-    # Fully automated, single Azure OpenAI account, default "oge" profile:
+    # Fully automated, single Azure OpenAI account, default "power" profile:
     python3 scripts/configure.py --non-interactive \\
-        --profile oge \\
+        --profile power \\
         --subscription-id 11111111-2222-3333-4444-555555555555 \\
         --openai-endpoint https://my-account.openai.azure.com/ \\
         --openai-account-name my-account --openai-resource-group rg-openai \\
@@ -37,7 +37,20 @@ Examples:
         --openai-account-name contoso-openai --openai-resource-group rg-openai \\
         --app-service-plan-id /subscriptions/.../serverfarms/contoso-plan \\
         --agent cost_sentinel:deployment=foundry-reasoning \\
-        --agent cost_sentinel:endpoint=secondary
+        --agent cost_sentinel:endpoint=secondary \\
+        --agent cost_sentinel:max_completion_tokens=900 \\
+        --agent cost_sentinel:response_instruction="Lead with the dollar figure, 3-5 sentences."
+
+    # Existing profile ("oge" is the checked-in legacy/example profile;
+    # use --profile <your-id> for anything else), tightening one agent's
+    # token/response controls without forking the profile:
+    python3 scripts/configure.py --non-interactive --profile oge \\
+        --subscription-id 11111111-2222-3333-4444-555555555555 \\
+        --openai-endpoint https://my-account.openai.azure.com/ \\
+        --openai-account-name my-account --openai-resource-group rg-openai \\
+        --app-service-plan-id /subscriptions/.../serverfarms/my-plan \\
+        --agent scout:max_completion_tokens=300 \\
+        --agent scout:max_context_chars=8000
 """
 
 from __future__ import annotations
@@ -76,6 +89,12 @@ from app.profiles import (  # noqa: E402
 AGENT_OVERRIDE_FIELDS = (
     "name", "role", "deployment", "endpoint",
     "temperature", "supports_temperature", "api_version", "prompt_file",
+    # Enforceable token/response/personality controls (see
+    # docs/MODEL_CONFIGURATION.md). Values are always passed through as
+    # plain strings here — app/config.py does the strict int/float/bool
+    # parsing and raises ProfileError on anything malformed at app startup.
+    "max_completion_tokens", "max_context_chars", "response_instruction",
+    "input_cost_per_million", "output_cost_per_million",
 )
 
 _SUBSCRIPTION_ID_RE = re.compile(
@@ -192,6 +211,10 @@ class Answers:
     azure_client_id: str = ""
     key_vault_uri: str = ""
     log_analytics_workspace_id: str = ""
+    # OpenTelemetry service.name (see docs/TELEMETRY.md). Blank (default)
+    # lets the app derive a profile-safe "ops-council-<profile_id>" name
+    # at startup instead.
+    otel_service_name: str = ""
 
     # agent_key -> {field: value}
     agent_overrides: dict = field(default_factory=dict)
@@ -462,6 +485,8 @@ def build_answers_non_interactive(args: argparse.Namespace) -> Answers:
         answers.deployer_principal_id = args.deployer_principal_id
     if args.public_network_access is not None:
         answers.public_network_access = args.public_network_access
+    if args.otel_service_name is not None:
+        answers.otel_service_name = args.otel_service_name
 
     if args.azure_client_id is not None:
         answers.azure_client_id = args.azure_client_id
@@ -599,6 +624,17 @@ def _bicep_object_literal(pairs: dict, indent: str = "  ") -> str:
     return "\n".join(lines)
 
 
+def _to_bicep_field_name(field_name: str) -> str:
+    """Translate a snake_case agent-override field name (as used for env
+    var suffixes / ``--agent`` flags / ``--answers`` JSON) to the
+    camelCase key ``agentOverrides`` expects in Bicep (see
+    ``infra/main.bicep`` / ``infra/modules/web-app.bicep``). Fields with
+    no underscore (e.g. ``deployment``) are returned unchanged.
+    """
+    head, *rest = field_name.split("_")
+    return head + "".join(word.capitalize() for word in rest)
+
+
 def generate_bicepparam_content(answers: Answers) -> str:
     additional_accounts: dict = {}
     if answers.openai_endpoint_secondary:
@@ -615,7 +651,14 @@ def generate_bicepparam_content(answers: Answers) -> str:
             fields_ = answers.agent_overrides.get(key)
             if not fields_:
                 continue
-            inner = ", ".join(f"{k}: '{v}'" for k, v in fields_.items())
+            # Bicep's agentOverrides schema uses camelCase field names
+            # (supportsTemperature, apiVersion, promptFile, ...) while the
+            # env-var/CLI/answers-file side of this wizard uses snake_case
+            # (matching AGENT_<KEY>_<FIELD> env var suffixes) — translate
+            # here so a --agent/--answers override actually reaches the
+            # app when deployed via Bicep instead of being silently
+            # dropped by an unrecognized key.
+            inner = ", ".join(f"{_to_bicep_field_name(k)}: '{v}'" for k, v in fields_.items())
             entries.append(f"  {key}: {{ {inner} }}")
         agent_overrides_literal = "{\n" + "\n".join(entries) + "\n}" if entries else "{}"
 
@@ -646,6 +689,7 @@ def generate_bicepparam_content(answers: Answers) -> str:
         f"param openaiApiVersion = '{answers.openai_api_version}'",
         f"param additionalOpenAiAccounts = {additional_accounts_literal}",
         f"param agentOverrides = {agent_overrides_literal}",
+        f"param otelServiceName = '{answers.otel_service_name}'",
         f"param publicNetworkAccess = '{answers.public_network_access}'",
         f"param deployerPrincipalId = '{answers.deployer_principal_id}'",
         "",
@@ -693,7 +737,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--list-profiles", action="store_true", help="List checked-in profiles and exit.")
 
     profile_group = parser.add_argument_group("profile selection")
-    profile_group.add_argument("--profile", default=None, help="Use an existing checked-in profile (default: oge).")
+    profile_group.add_argument("--profile", default=None, help="Use an existing checked-in profile (default: power).")
     profile_group.add_argument("--new-profile", default=None, metavar="ID",
                                 help="Create a new profile with this id (cloned from --clone-from).")
     profile_group.add_argument("--clone-from", default="generic", help="Profile to clone when using --new-profile.")
@@ -712,6 +756,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     azure_group.add_argument("--azure-client-id", default=None, help="Managed identity client ID (usually left for Bicep output).")
     azure_group.add_argument("--key-vault-uri", default=None, help="Key Vault URI (usually left for Bicep output).")
     azure_group.add_argument("--log-analytics-workspace-id", default=None, help="Log Analytics workspace ID (usually left for Bicep output).")
+
+    observability_group = parser.add_argument_group("Observability")
+    observability_group.add_argument(
+        "--otel-service-name", default=None,
+        help="OpenTelemetry service.name reported to Application Insights (default: a profile-safe "
+             "'ops-council-<profile>' derived by the app at startup). See docs/TELEMETRY.md.",
+    )
 
     openai_group = parser.add_argument_group("Azure OpenAI")
     openai_group.add_argument("--openai-endpoint", default=None, help="Primary Azure OpenAI endpoint (https://...).")

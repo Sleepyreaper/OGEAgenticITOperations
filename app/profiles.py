@@ -5,7 +5,10 @@ branding metadata, per-agent display/model configuration, and system prompt
 files. The ``APP_PROFILE`` environment variable selects which profile the
 running app loads (see app/config.py). Customers create new profiles by
 copying ``profiles/generic`` to a new directory and editing it — the ``oge``
-profile reproduces this app's original default behavior exactly.
+profile reproduces this app's original OGE-branded behavior exactly and
+remains checked in as a selectable legacy/example profile. ``profiles/power``
+(a generic power-utility example) is the default profile for this reusable
+platform.
 
 This module has zero third-party dependencies and no import-time side
 effects (it does not read the environment or instantiate anything), so it
@@ -22,7 +25,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROFILES_ROOT = REPO_ROOT / "profiles"
 
-DEFAULT_PROFILE = "oge"
+# "power" is the default, checked-in reference deployment for this
+# reusable platform — a generic power-utility example (see
+# profiles/power/ and docs/MODEL_CONFIGURATION.md). "oge" remains
+# checked in as a selectable legacy/example profile for existing
+# deployments; it is unaffected by this default changing.
+DEFAULT_PROFILE = "power"
 DEFAULT_API_VERSION = "2025-01-01-preview"
 
 # app/agents/runner.py, app/main.py, and app/agents/demos.py hardcode these
@@ -55,7 +63,25 @@ _REQUIRED_BRAND_KEYS = (
 _OPTIONAL_BRAND_KEYS = ("customer", "industry")
 
 _REQUIRED_AGENT_KEYS = ("name", "role", "deployment", "prompt_file")
-_OPTIONAL_AGENT_KEYS = ("endpoint_ref", "temperature", "supports_temperature", "api_version")
+_OPTIONAL_AGENT_KEYS = (
+    "endpoint_ref",
+    "temperature",
+    "supports_temperature",
+    "api_version",
+    # Enforceable token/response/personality controls (see docs/MODEL_CONFIGURATION.md).
+    "max_completion_tokens",
+    "max_context_chars",
+    "response_instruction",
+    "input_cost_per_million",
+    "output_cost_per_million",
+)
+
+# max_completion_tokens/max_context_chars share one convention: 0 (or the
+# field being omitted) means "no limit" — i.e. use the provider's default
+# completion length, or don't truncate context_data at all. Any positive
+# integer is a hard cap. Negative numbers, floats, and non-numeric values
+# are all rejected — there is no separate "null" spelling, to keep the
+# convention to a single, unambiguous value per field.
 
 
 class ProfileError(ValueError):
@@ -68,6 +94,10 @@ class ProfileError(ValueError):
 
 def _is_number(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_nonneg_int(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def is_valid_profile_id(profile_id: str) -> bool:
@@ -190,6 +220,35 @@ def load_profile_document(profile_dir: Path, profile_id: str) -> dict:
                 errors.append(f"agents.{agent_key}.api_version must be a string")
             if "endpoint_ref" in agent_data and not isinstance(agent_data["endpoint_ref"], str):
                 errors.append(f"agents.{agent_key}.endpoint_ref must be a string")
+            if "max_completion_tokens" in agent_data and not _is_nonneg_int(
+                agent_data["max_completion_tokens"]
+            ):
+                errors.append(
+                    f"agents.{agent_key}.max_completion_tokens must be a non-negative integer "
+                    "(0 means provider default)"
+                )
+            if "max_context_chars" in agent_data and not _is_nonneg_int(agent_data["max_context_chars"]):
+                errors.append(
+                    f"agents.{agent_key}.max_context_chars must be a non-negative integer "
+                    "(0 means no truncation)"
+                )
+            if "response_instruction" in agent_data:
+                value = agent_data["response_instruction"]
+                if not isinstance(value, str) or not value.strip():
+                    errors.append(
+                        f"agents.{agent_key}.response_instruction must be a non-empty string "
+                        "when present (omit the field instead of setting it to an empty string)"
+                    )
+            if "input_cost_per_million" in agent_data and (
+                not _is_number(agent_data["input_cost_per_million"])
+                or agent_data["input_cost_per_million"] < 0
+            ):
+                errors.append(f"agents.{agent_key}.input_cost_per_million must be a non-negative number")
+            if "output_cost_per_million" in agent_data and (
+                not _is_number(agent_data["output_cost_per_million"])
+                or agent_data["output_cost_per_million"] < 0
+            ):
+                errors.append(f"agents.{agent_key}.output_cost_per_million must be a non-negative number")
             unknown_agent_keys = (
                 set(agent_data) - set(_REQUIRED_AGENT_KEYS) - set(_OPTIONAL_AGENT_KEYS)
             )

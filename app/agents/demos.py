@@ -7,6 +7,8 @@ data comes from azure_data.py queries.
 
 import json
 
+from app.config import settings
+
 # ─── Scenario 1: "Why is this VM so big?" ────────────────────────
 
 VM_SIZING_DATA = json.dumps({
@@ -343,7 +345,7 @@ COMPLIANCE_QUESTION = "Run a compliance scan. We need to know what's non-complia
 DEMO_SCENARIOS = {
     "vm_sizing": {
         "title": "Why is this VM so big?",
-        "subtitle": "⚡ Meter Reader vs 🔌 The Lineman — the grid team debates sizing",
+        "subtitle": f"{settings.agents['cost_sentinel'].name} and {settings.agents['standards_architect'].name} debate sizing",
         "icon": "server",
         "question": VM_SIZING_QUESTION,
         "data": VM_SIZING_DATA,
@@ -351,7 +353,7 @@ DEMO_SCENARIOS = {
     },
     "deployment_failure": {
         "title": "My deployment failed",
-        "subtitle": "🌑 Blackout diagnoses failures without elevated access",
+        "subtitle": f"{settings.agents['diagnostics_sre'].name} diagnoses failures without elevated access",
         "icon": "alert-triangle",
         "question": DEPLOYMENT_FAILURE_QUESTION,
         "data": DEPLOYMENT_FAILURE_DATA,
@@ -359,15 +361,15 @@ DEMO_SCENARIOS = {
     },
     "waste_analysis": {
         "title": "Where are we wasting money?",
-        "subtitle": "⚡ Meter Reader finds waste, 🔌 The Lineman defends spending",
+        "subtitle": f"{settings.agents['cost_sentinel'].name} finds waste while {settings.agents['standards_architect'].name} tests the operational risk",
         "icon": "dollar-sign",
         "question": WASTE_QUESTION,
         "data": WASTE_ANALYSIS_DATA,
         "agents": ["cost_sentinel", "standards_architect"],
     },
     "scout_alert": {
-        "title": "⚠️ Light the Arc Flash",
-        "subtitle": "Arc Flash scans for issues before they become incidents",
+        "title": "Run a proactive operations scan",
+        "subtitle": f"{settings.agents['scout'].name} scans for issues before they become incidents",
         "icon": "radar",
         "question": SCOUT_ALERT_QUESTION,
         "data": SCOUT_ALERT_DATA,
@@ -382,8 +384,8 @@ DEMO_SCENARIOS = {
         "agents": ["cost_sentinel", "standards_architect", "diagnostics_sre", "scout"],
     },
     "continuous_compliance": {
-        "title": "📊 Compliance inspection",
-        "subtitle": "The Regulator classifies violations — policy bugs vs workaround abuse",
+        "title": "Compliance inspection",
+        "subtitle": f"{settings.agents['compliance_inspector'].name} classifies policy defects, misconfigurations, exemptions, and workaround abuse",
         "icon": "clipboard-check",
         "question": COMPLIANCE_QUESTION,
         "data": COMPLIANCE_DATA,

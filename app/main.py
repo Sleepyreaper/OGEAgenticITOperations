@@ -14,9 +14,17 @@ from app.agents.demos import DEMO_SCENARIOS
 from app.config import settings
 from app import azure_data
 from app import ado_integration
+from app import telemetry
 
 
 def create_app():
+    # Must run before the Flask app object is constructed, so the Azure
+    # Monitor OpenTelemetry distro's Flask auto-instrumentation attaches
+    # to this app instance. A no-op (returns False) when
+    # APPLICATIONINSIGHTS_CONNECTION_STRING isn't set — the normal local
+    # dev state. See app/telemetry.py and docs/TELEMETRY.md.
+    telemetry.init_telemetry()
+
     app = Flask(
         __name__,
         template_folder="../templates",
@@ -388,6 +396,14 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                 "deployment": cfg.deployment,
                 "endpoint_configured": bool(cfg.endpoint or settings.openai_endpoint),
                 "supports_temperature": cfg.supports_temperature,
+                # Enforceable token/response/personality controls (see
+                # docs/MODEL_CONFIGURATION.md) — plain config values, not
+                # secrets, so safe to report here for at-a-glance
+                # verification that an override actually took effect.
+                "max_completion_tokens": cfg.max_completion_tokens,
+                "max_context_chars": cfg.max_context_chars,
+                "response_instruction_configured": bool(cfg.response_instruction),
+                "pricing_configured": bool(cfg.input_cost_per_million or cfg.output_cost_per_million),
             }
             for key, cfg in settings.agents.items()
         }
@@ -402,6 +418,7 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                 "subscription_configured": bool(settings.subscription_id),
                 "key_vault_configured": bool(settings.key_vault_uri),
                 "log_analytics_configured": bool(settings.log_analytics_workspace_id),
+                "telemetry_enabled": telemetry.is_enabled(),
             },
         })
 

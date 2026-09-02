@@ -6,12 +6,13 @@ are all controlled by a **profile** — a checked-in directory under `profiles/<
 — plus optional environment variable overrides. No code changes are required to
 rebrand it for a new customer.
 
-Two profiles ship today:
+Three profiles ship today:
 
 | Profile | Purpose |
 |---|---|
-| `oge` (default) | This app's original branding and agent personas (Microsoft Oil, Gas & Energy). `APP_PROFILE` defaults to this — existing deployments are unaffected. |
+| `power` (default) | A generic power-utility reference deployment, mapped onto a GPT-5.6 Sol/Terra/Luna model tier per agent — see [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md). `APP_PROFILE` defaults to this. |
 | `generic` | A neutral starting point (no industry flavor) — clone this for a new customer. |
+| `oge` (legacy/example) | This app's original branding and agent personas (Microsoft Oil, Gas & Energy). Existing deployments that already set `APP_PROFILE=oge` are unaffected by the default changing. |
 
 ## Quick Start — Rebrand for a new customer
 
@@ -74,7 +75,12 @@ for a full, valid reference):
       "endpoint_ref": "",
       "temperature": 0.7,
       "supports_temperature": false,
-      "prompt_file": "prompts/orchestrator.txt"
+      "prompt_file": "prompts/orchestrator.txt",
+      "max_completion_tokens": 900,
+      "max_context_chars": 20000,
+      "response_instruction": "Keep your response to 3-5 concise sentences.",
+      "input_cost_per_million": 0.0,
+      "output_cost_per_million": 0.0
     },
     "cost_sentinel": { "...": "..." },
     "standards_architect": { "...": "..." },
@@ -106,11 +112,13 @@ of agents is a larger change than this config layer covers.
 | `customer` / `industry` | Optional — for your own docs/derivation; not directly rendered |
 
 > **Scope note**: the sections above (title, nav header, chat welcome greeting,
-> and the loaded agents' display names) are profile-driven. The "The Crew" tab's
-> detailed personality bios (`templates/index.html`) are still static, oge-flavored
-> HTML — editing those for a new profile is a manual template edit, not yet
-> data-driven. This was a deliberate scope decision to avoid a risky rewrite of
-> the ~100KB template in one pass.
+> the loaded agents' display names, and — as of this release — the "The Crew"
+> tab's per-agent name/role/deployment) are all profile-driven via Jinja
+> (`templates/index.html`). The tab's decorative icon/color per role and its
+> generic skill-tag chips (e.g. "Rightsizing", "Root cause") are still static
+> per-card styling, not per-profile — that's a deliberate scope decision to
+> avoid a risky wholesale rewrite of the ~100KB template; it does not affect
+> which persona name/description is displayed.
 
 ### `agents.<key>` fields
 
@@ -124,6 +132,10 @@ of agents is a larger change than this config layer covers.
 | `temperature` | No (default `1.0`) | Only sent if `supports_temperature` is `true` |
 | `supports_temperature` | No (default `false`) | Some deployments (o-series/GPT-5-style reasoning models) reject any temperature but the default — leave `false` unless you've confirmed your model accepts it |
 | `api_version` | No (default: the app-wide default) | Per-agent Azure OpenAI API version override |
+| `max_completion_tokens` | No (default `0`) | `0` = provider default (argument omitted); positive = hard cap on completion length. See [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md) |
+| `max_context_chars` | No (default `0`) | `0` = no truncation of `context_data`; positive = character cap (approximate token accounting, not exact) |
+| `response_instruction` | No (default `""`) | Non-empty tone/length/personality instruction appended as its own message on every call; replaces the old hardcoded, persona-name-keyed style hints |
+| `input_cost_per_million` / `output_cost_per_million` | No (default `0.0`) | USD per 1M tokens — caller-maintained telemetry cost estimate, not billing truth |
 
 ## Overriding without forking a profile
 
@@ -137,6 +149,8 @@ AGENT_COST_SENTINEL_DEPLOYMENT=foundry-reasoning
 AGENT_COST_SENTINEL_ENDPOINT=secondary
 AGENT_COST_SENTINEL_SUPPORTS_TEMPERATURE=true
 AGENT_COST_SENTINEL_TEMPERATURE=0.2
+AGENT_COST_SENTINEL_MAX_COMPLETION_TOKENS=900
+AGENT_COST_SENTINEL_RESPONSE_INSTRUCTION="Lead with the dollar figure, 3-5 sentences."
 ```
 
 `KEY` is the agent key upper-cased (`ORCHESTRATOR`, `COST_SENTINEL`,
@@ -160,11 +174,13 @@ single agent's prompt without editing the profile.
 | `profiles/<id>/profile.json` | Agent names, personalities (via `role` + prompt files), branding metadata |
 | `profiles/<id>/prompts/*.txt` | Full system prompts, one file per agent |
 | `static/<your-logo>` | Your logo asset — reference it from `brand.logo_path` |
-| `app/agents/demos.py` | Demo data (resource names, scenarios) — not profile-driven; edit directly if needed |
+| `app/agents/demos.py` | Demo scenario data (resource names, JSON payloads) — not profile-driven, edit directly if needed. Scenario `title`/`subtitle` labels *are* profile-driven (built from `settings.agents[key].name`) |
 | `infra/main.bicep` / `main.bicepparam.example` | Azure resource naming prefix (`prefix` param), `appProfile`, `agentOverrides` |
 | `pipelines/azure-pipelines.yml` | CI/CD pipeline config (web app name, resource group) |
 | `package.json` | NPM package name |
 | `README.md` | Project description |
+| `docs/MODEL_CONFIGURATION.md` | Per-agent model/endpoint/token/cost control reference, GPT-5.6 Sol/Terra/Luna mapping rationale |
+| `docs/TELEMETRY.md` | Azure Monitor OpenTelemetry architecture, KQL reference, sampling/retention |
 | `docs/` | Architecture docs, decision log, demo script |
 
 ## Validation
