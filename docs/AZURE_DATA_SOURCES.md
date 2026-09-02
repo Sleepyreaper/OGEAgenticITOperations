@@ -92,7 +92,14 @@ into one inventory.
 - **Minimum RBAC role**: `Reader` at subscription scope.
 - **Configuration**: `CAPACITY_WARNING_PCT` / `CAPACITY_CRITICAL_PCT`
   (default `75` / `90`); `locations` is supplied by the caller (e.g.
-  discovered via Resource Graph), not read from env.
+  discovered via Resource Graph, or -- when calling
+  `app.operations.service.run_collection`/`run_full_collection` directly
+  -- an explicit list). The product-facing routes in
+  `app/operations/routes.py` instead read `CAPACITY_LOCATIONS`, a
+  comma-separated, validated list of ARM region slugs (e.g.
+  `eastus2,westeurope`; see `OperationsConfig.capacity_locations` in
+  `app/operations/config.py`), and forward it as both `locations` and
+  `openai_locations` -- there is no `?locations=` query-string override.
 - **Envelope status**: `not_configured` when no `locations` are
   supplied; otherwise `ok` or `error`.
 - **Limitations**: Azure OpenAI quota here is a subscription+region

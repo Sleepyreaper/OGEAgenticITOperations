@@ -32,10 +32,12 @@ never a disguised "all clear."
 Capacity coverage (Phase 1's `capacity` source) requires an explicit
 `locations` list (see run_full_collection); this module does not
 auto-discover regions -- pass `full_collect_kwargs={"locations": [...]}`
-(app/operations/routes.py exposes this as an optional `?locations=`
-query param). Leaving it unset is a valid, safe default: capacity simply
-reports `not_configured`, exactly as it does when calling
-run_full_collection directly.
+(app/operations/routes.py forwards `OperationsConfig.capacity_locations`
+-- the CAPACITY_LOCATIONS env var, see app/operations/config.py -- as
+`locations`/`openai_locations` for every route, never an unbounded
+query-string parameter). Leaving it unset is a valid, safe default:
+capacity simply reports `not_configured`, exactly as it does when
+calling run_full_collection directly.
 """
 
 import dataclasses
