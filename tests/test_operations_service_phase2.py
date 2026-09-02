@@ -76,7 +76,10 @@ def make_http_get(defender_alerts_status=200):
 
 
 def fake_http_post(url, *, headers, json=None, timeout=30):
-    return FakeResponse({"columns": [{"name": "Cost"}], "rows": [[0.0]]})
+    # cost_management_trend's single Daily-granularity query -- a response
+    # with zero rows (no cost data at all) so collect_cost_trend's
+    # prior_cost stays 0 and no Finding is fabricated here.
+    return FakeResponse({"columns": [{"name": "UsageDate"}, {"name": "Cost"}], "rows": []})
 
 
 def fake_query_logs(*args, **kwargs):

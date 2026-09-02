@@ -94,7 +94,10 @@ ALERT_PAYLOAD = {"value": []}
 # can share one fallback response across every source without any one
 # source's normalization choking on a shape it wasn't meant for.
 COMPUTE_PAYLOAD = {"value": []}
-COST_TREND_PAYLOAD = {"columns": [{"name": "Cost"}], "rows": [[0.0]]}
+# cost_management_trend's single Daily-granularity query -- zero rows
+# (no cost data at all) is a valid, non-error response: prior_cost stays
+# 0 and collect_cost_trend returns [] rather than fabricating a Finding.
+COST_TREND_PAYLOAD = {"columns": [{"name": "UsageDate"}, {"name": "Cost"}], "rows": []}
 
 
 # ─── Test 1+2: run_collection -- concurrent wall-clock speedup, fixed order ──

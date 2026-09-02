@@ -218,7 +218,8 @@ into one inventory.
 
 - **Provider / API**: `Microsoft.CostManagement/query` (ARM REST, POST).
   API version: `2023-11-01`. Query type `ActualCost`, granularity
-  `None` (a single summed total per period).
+  `Daily` (one summed `Cost` row per calendar day), aggregation
+  `totalCost` -> `Cost`/`Sum`.
 - **Minimum RBAC role**: `Cost Management Reader` at subscription scope.
 - **Configuration**: `COST_TREND_LOOKBACK_DAYS` (default `30`),
   `COST_TREND_GROWTH_PCT_THRESHOLD` (default `20`),
@@ -239,6 +240,31 @@ into one inventory.
   configured threshold. If Azure later ships a stable anomaly-detection
   REST API, that becomes a new, separately-named collector/source --
   never silently merged into this one.
+- **A single request covers both periods**: `collect_cost_trend` issues
+  exactly ONE `Microsoft.CostManagement/query` POST per invocation, with
+  a custom `timePeriod` spanning `prior_start` (the start of the prior
+  comparison window) through `current_end` (`now`) -- covering both the
+  current and prior `COST_TREND_LOOKBACK_DAYS`-day windows in one call.
+  The response's daily rows are parsed and split/summed into the
+  current vs. prior period locally (`prior_start <= UsageDate <
+  current_start` is prior; `current_start <= UsageDate <= current_end`
+  is current -- compared as plain dates, since Daily-granularity rows
+  carry no time-of-day), rather than asking Azure for two separate
+  pre-summed totals. This replaced an earlier two-query design (one
+  `granularity: None` query per period) that intermittently hit HTTP
+  429 on the second, back-to-back query even with `arm_post`'s bounded
+  retries -- see "Throttling resilience" below.
+- **Response parsing**: columns are resolved dynamically by name, never
+  by a fixed index. The date-bucket column is `UsageDate` (the
+  universally observed shape for this API -- an integer or numeric
+  string in `YYYYMMDD` form, e.g. `20240115`/`"20240115"`; an
+  ISO-8601 date/datetime string, e.g. `"2024-01-15"` or
+  `"2024-01-15T00:00:00Z"`, is also accepted) with `date` accepted as an
+  explicit, tested fallback column name. The cost column is `Cost` (the
+  name this collector itself requests) with `PreTaxCost` accepted as a
+  documented fallback. If the response has rows but no recognized
+  date/cost column, this collector raises `OperationsCollectionError`
+  rather than fabricate which column to read.
 - **Limitations**: returns no Finding (never a fabricated one) when the
   prior period has zero/negative cost -- there is no meaningful baseline
   percentage in that case.
@@ -250,7 +276,10 @@ into one inventory.
   Retry-After-honoring exponential backoff (default up to 3 attempts,
   hard-capped at 5) before raising -- a genuine, persistent failure
   still surfaces as an explicit `error` envelope exactly as before; any
-  OTHER 4xx (400/401/403/404/...) is never retried.
+  OTHER 4xx (400/401/403/404/...) is never retried. Because
+  `collect_cost_trend` now makes only ONE `arm_post` call per
+  invocation (see above) instead of two, there is no longer a second,
+  independent request that can be throttled after the first succeeds.
 
 ### 9. `azure_backup`
 
