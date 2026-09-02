@@ -15,6 +15,10 @@ from app.config import settings
 from app import azure_data
 from app import ado_integration
 from app import telemetry
+from app.operations.routes import operations_bp
+from app.agents.analysis_routes import agent_analysis_bp
+from app.agents import backend as agent_backend
+from app.agents import evaluation as agent_evaluation
 
 
 def create_app():
@@ -30,6 +34,19 @@ def create_app():
         template_folder="../templates",
         static_folder="../static",
     )
+
+    # Product-facing deterministic operations API (snapshot/brief/queue/
+    # workflow-state/handoff/evidence) -- see docs/OPERATIONS_API.md and
+    # app/operations/routes.py. Entirely additive: no existing route
+    # below is changed.
+    app.register_blueprint(operations_bp)
+
+    # Evidence-grounded agent analysis/briefing (see
+    # docs/AGENT_INTELLIGENCE.md and app/agents/analysis_routes.py) --
+    # the ONLY blueprint under /api/operations that calls a model
+    # backend; kept separate from operations_bp so that module's
+    # "no LLM call" invariant stays true and easy to verify.
+    app.register_blueprint(agent_analysis_bp)
 
     # ─── Pages ──────────────────────────────────────────────
 
@@ -404,6 +421,9 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                 "max_context_chars": cfg.max_context_chars,
                 "response_instruction_configured": bool(cfg.response_instruction),
                 "pricing_configured": bool(cfg.input_cost_per_million or cfg.output_cost_per_million),
+                # Agent-intelligence layer (see docs/AGENT_INTELLIGENCE.md).
+                "prompt_version": cfg.prompt_version,
+                "supports_structured_output": cfg.supports_structured_output,
             }
             for key, cfg in settings.agents.items()
         }
@@ -420,6 +440,14 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                 "log_analytics_configured": bool(settings.log_analytics_workspace_id),
                 "telemetry_enabled": telemetry.is_enabled(),
             },
+            # Agent-intelligence layer (see docs/AGENT_INTELLIGENCE.md and
+            # docs/FOUNDRY_ARCHITECTURE.md) — deliberately honest:
+            # backend.foundry_implemented is always False today (this app
+            # calls Azure OpenAI directly), and evaluation is an
+            # in-process, deterministic aggregate (never model output).
+            "agent_definition_version": settings.agent_definition_version,
+            "backend": agent_backend.backend_health(),
+            "evaluation": agent_evaluation.get_aggregate_summary(),
         })
 
     # ─── Chaos Demo ─────────────────────────────────────────

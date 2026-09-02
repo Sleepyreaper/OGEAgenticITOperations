@@ -15,3 +15,9 @@ infra/main.json
 .env.*
 !.env.example
 !*.bicepparam.example
+
+# Local finding workflow-state SQLite store (app/operations/state.py) --
+# per-environment data, never checked in.
+*.db
+*.db-wal
+*.db-shm

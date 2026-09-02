@@ -1,0 +1,141 @@
+"""Retirement/deprecation advisories: active Azure Service Health
+HealthAdvisory events (which Microsoft's own documentation states
+include "all upcoming service retirement events"), extended into
+actionable Findings with a deadline when Azure publishes one.
+
+Reads Resource Graph's ServiceHealthResources table via
+app.operations.collectors.arg.arg_query -- see docs/AZURE_DATA_SOURCES.md
+for the exact query and the ImpactMitigationTime "deadline" assumption.
+
+This deliberately does NOT filter to eventSubType == 'Retirement' only:
+Microsoft does not publish a fixed, guaranteed-complete enum of
+eventSubType values, and under-collecting a legitimate deprecation
+notice under a different subtype would be a worse failure mode than
+including a few non-retirement health advisories.
+"""
+
+from datetime import datetime, timezone
+from typing import Optional
+
+from app.operations.collectors.arg import QueryResourceGraphFn, arg_query, default_query_resource_graph
+from app.operations.errors import OperationsCollectionError
+from app.operations.models import (
+    ConfidenceLevel,
+    EvidenceReference,
+    EvidenceSource,
+    Finding,
+    FindingCategory,
+    FindingStatus,
+    Severity,
+    ensure_utc_iso,
+    format_utc_iso,
+    parse_utc_iso,
+)
+
+__all__ = ["normalize_advisory", "collect_retirement_advisories"]
+
+SOURCE = EvidenceSource.SERVICE_HEALTH.value
+
+QUERY = (
+    "ServiceHealthResources "
+    "| where type =~ 'Microsoft.ResourceHealth/events' "
+    "| extend eventType = tostring(properties.EventType), status = tostring(properties.Status) "
+    "| where eventType == 'HealthAdvisory' and status =~ 'Active' "
+    "| extend eventSubType = tostring(properties.EventSubType), title = tostring(properties.Title), "
+    "summaryText = tostring(properties.Summary), trackingId = tostring(properties.TrackingId), "
+    "priority = tostring(properties.Priority), "
+    "impactStartTime = todatetime(tolong(properties.ImpactStartTime)), "
+    "impactMitigationTime = todatetime(tolong(properties.ImpactMitigationTime)) "
+    "| project id, name, subscriptionId, eventSubType, title, summaryText, trackingId, priority, impactStartTime, impactMitigationTime"
+)
+
+
+def normalize_advisory(row: dict, *, warning_days: int, now: datetime) -> Finding:
+    """Normalize one active HealthAdvisory ServiceHealthResources row
+    into a Finding. Severity is threshold-derived from how close the
+    published deadline (ImpactMitigationTime) is, when one exists;
+    advisories with no published deadline are LOW severity (informational
+    -- there is nothing to threshold against)."""
+    advisory_id = row.get("id") or row.get("trackingId") or row.get("name") or ""
+    if not advisory_id:
+        raise OperationsCollectionError(SOURCE, "Service Health advisory payload is missing an id")
+
+    title = row.get("title") or "Azure Service Health advisory"
+    summary_text = (row.get("summaryText") or "")[:500]
+    event_sub_type = row.get("eventSubType") or ""
+    tracking_id = row.get("trackingId") or ""
+
+    deadline_raw = row.get("impactMitigationTime")
+    deadline = ensure_utc_iso(deadline_raw, field_name=f"advisory {advisory_id}.impactMitigationTime") if deadline_raw else None
+    impact_start_raw = row.get("impactStartTime")
+    impact_start = ensure_utc_iso(impact_start_raw, field_name=f"advisory {advisory_id}.impactStartTime") if impact_start_raw else None
+
+    evaluated_at = format_utc_iso(now)
+    days_to_deadline = None
+    if deadline:
+        days_to_deadline = (parse_utc_iso(deadline) - now).total_seconds() / 86400.0
+        severity = Severity.HIGH if days_to_deadline <= warning_days else Severity.MEDIUM
+        confidence = ConfidenceLevel.DERIVED
+    else:
+        severity = Severity.LOW
+        confidence = ConfidenceLevel.CONFIRMED
+
+    recommended_action = (
+        f"Review this advisory and complete any required migration/action before {deadline}."
+        if deadline else
+        "Review this advisory for required action; Azure has not published a fixed deadline for it yet."
+    )
+    business_impact = f"{event_sub_type or 'Service Health advisory'} requires action" + (f" before {deadline}." if deadline else ".")
+
+    return Finding(
+        category=FindingCategory.COMPLIANCE.value,
+        severity=severity.value,
+        status=FindingStatus.OPEN.value,
+        title=title,
+        summary=summary_text or f"{event_sub_type or 'Health advisory'} affecting this subscription.",
+        business_impact=business_impact,
+        first_seen=evaluated_at,
+        last_seen=evaluated_at,
+        source=SOURCE,
+        confidence=confidence.value,
+        evidence=[EvidenceReference(
+            source=SOURCE,
+            title=title,
+            observed_at=evaluated_at,
+            reference=tracking_id or advisory_id,
+            raw_excerpt=summary_text or f"eventSubType={event_sub_type}",
+        )],
+        recommended_action=recommended_action,
+        approval_required=False,
+        executive_attention=severity == Severity.HIGH,
+        metadata={
+            "event_sub_type": event_sub_type,
+            "tracking_id": tracking_id,
+            "priority": row.get("priority", ""),
+            "deadline": deadline,
+            "impact_start": impact_start,
+            "days_to_deadline": round(days_to_deadline, 1) if days_to_deadline is not None else None,
+        },
+        discriminator=tracking_id or advisory_id,
+    )
+
+
+def collect_retirement_advisories(
+    subscription_ids: list,
+    *,
+    warning_days: int = 180,
+    query_fn: QueryResourceGraphFn = default_query_resource_graph,
+    now: Optional[datetime] = None,
+) -> list:
+    """Active Service Health HealthAdvisory events (retirements/
+    deprecations/required actions) across `subscription_ids`, each
+    normalized into a Finding with its deadline when Azure has published
+    one."""
+    if not subscription_ids:
+        raise ValueError("subscription_ids must be a non-empty list")
+    if warning_days <= 0:
+        raise ValueError("warning_days must be positive")
+    now = now or datetime.now(timezone.utc)
+
+    rows = arg_query(QUERY, subscription_ids=subscription_ids, source=SOURCE, query_fn=query_fn)
+    return [normalize_advisory(row, warning_days=warning_days, now=now) for row in rows]

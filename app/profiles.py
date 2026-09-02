@@ -74,7 +74,23 @@ _OPTIONAL_AGENT_KEYS = (
     "response_instruction",
     "input_cost_per_million",
     "output_cost_per_million",
+    # Agent-intelligence layer (see docs/AGENT_INTELLIGENCE.md):
+    # prompt_version is a free-form version tag for this agent's system
+    # prompt/config, surfaced on /api/health and grounded-analysis
+    # responses (app/agents/analysis.py) -- omit it to fall back to a
+    # deterministic hash of the loaded system_prompt (see app/config.py).
+    # supports_structured_output declares whether this agent's deployment
+    # accepts Azure OpenAI/OpenAI structured-output
+    # (response_format=json_schema) requests; app/agents/backend.py
+    # falls back to a plain completion + explicit parser either way, so
+    # this is an optimization (skip a doomed-to-fail request), not a
+    # correctness requirement.
+    "prompt_version",
+    "supports_structured_output",
 )
+
+_OPTIONAL_TOP_LEVEL_KEYS = ("meta",)
+_OPTIONAL_META_KEYS = ("agent_definition_version",)
 
 # max_completion_tokens/max_context_chars share one convention: 0 (or the
 # field being omitted) means "no limit" — i.e. use the provider's default
@@ -171,6 +187,21 @@ def load_profile_document(profile_dir: Path, profile_id: str) -> dict:
         errors.append(
             f"profile.json 'id' ({data['id']!r}) does not match directory name ({profile_id!r})"
         )
+    unknown_top_level_keys = set(data) - {"id", "brand", "agents"} - set(_OPTIONAL_TOP_LEVEL_KEYS)
+    if unknown_top_level_keys:
+        errors.append(f"profile.json has unknown top-level keys: {sorted(unknown_top_level_keys)}")
+
+    meta = data.get("meta")
+    if meta is not None and not isinstance(meta, dict):
+        errors.append("'meta' must be a JSON object")
+    elif isinstance(meta, dict):
+        if "agent_definition_version" in meta:
+            value = meta["agent_definition_version"]
+            if not isinstance(value, str) or not value.strip():
+                errors.append("meta.agent_definition_version must be a non-empty string when present")
+        unknown_meta_keys = set(meta) - set(_OPTIONAL_META_KEYS)
+        if unknown_meta_keys:
+            errors.append(f"meta has unknown keys: {sorted(unknown_meta_keys)}")
 
     brand = data.get("brand")
     if brand is not None and not isinstance(brand, dict):
@@ -249,6 +280,17 @@ def load_profile_document(profile_dir: Path, profile_id: str) -> dict:
                 or agent_data["output_cost_per_million"] < 0
             ):
                 errors.append(f"agents.{agent_key}.output_cost_per_million must be a non-negative number")
+            if "prompt_version" in agent_data:
+                value = agent_data["prompt_version"]
+                if not isinstance(value, str) or not value.strip():
+                    errors.append(
+                        f"agents.{agent_key}.prompt_version must be a non-empty string when present "
+                        "(omit the field to fall back to a deterministic hash of the system prompt)"
+                    )
+            if "supports_structured_output" in agent_data and not isinstance(
+                agent_data["supports_structured_output"], bool
+            ):
+                errors.append(f"agents.{agent_key}.supports_structured_output must be a boolean")
             unknown_agent_keys = (
                 set(agent_data) - set(_REQUIRED_AGENT_KEYS) - set(_OPTIONAL_AGENT_KEYS)
             )

@@ -95,6 +95,8 @@ AGENT_OVERRIDE_FIELDS = (
     # parsing and raises ProfileError on anything malformed at app startup.
     "max_completion_tokens", "max_context_chars", "response_instruction",
     "input_cost_per_million", "output_cost_per_million",
+    # Agent-intelligence layer (see docs/AGENT_INTELLIGENCE.md).
+    "prompt_version", "supports_structured_output",
 )
 
 _SUBSCRIPTION_ID_RE = re.compile(

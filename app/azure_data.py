@@ -131,7 +131,7 @@ def get_deep_analysis(subscription_id: str = None,
     idle_plans = query_resource_graph(
         "Resources | where type =~ 'Microsoft.Web/serverfarms' "
         "| project name, resourceGroup, sku=sku.name, tier=sku.tier, "
-        "numberOfSites=properties.numberOfSites",
+        "numberOfSites=properties.numberOfSites, subscriptionId",
         subscription_ids=subs,
     )
     idle_plans = [p for p in idle_plans if p.get("numberOfSites", 0) == 0]
@@ -139,7 +139,7 @@ def get_deep_analysis(subscription_id: str = None,
     # Orphaned NSGs (attached to nothing)
     all_nsgs = query_resource_graph(
         "Resources | where type =~ 'Microsoft.Network/networkSecurityGroups' "
-        "| project name, resourceGroup, subnets=properties.subnets, nics=properties.networkInterfaces",
+        "| project name, resourceGroup, subnets=properties.subnets, nics=properties.networkInterfaces, subscriptionId",
         subscription_ids=subs,
     )
     orphaned_nsgs = [n for n in all_nsgs if not n.get("subnets") and not n.get("nics")]
@@ -152,7 +152,7 @@ def get_deep_analysis(subscription_id: str = None,
         "| project vnetName=name, subnetName, resourceGroup, "
         "addressPrefix=tostring(subnet.properties.addressPrefix), "
         "connectedDevices=array_length(subnet.properties.ipConfigurations), "
-        "delegations=array_length(subnet.properties.delegations)",
+        "delegations=array_length(subnet.properties.delegations), subscriptionId",
         subscription_ids=subs,
     )
     empty_subnets = [v for v in vnets if (v.get("connectedDevices") or 0) == 0 and (v.get("delegations") or 0) == 0]
