@@ -58,6 +58,15 @@ _call_counter = None
 _token_counter = None
 _duration_histogram = None
 _cost_counter = None
+# Tool-call/routing/evaluation instrumentation (see tool_call_span,
+# record_routing_decision, record_evaluation_metrics below) -- same
+# no-op-unless-enabled convention as the agent-call counters above.
+_tool_call_counter = None
+_tool_duration_histogram = None
+_routing_decision_counter = None
+_evaluation_schema_valid_counter = None
+_evaluation_schema_invalid_counter = None
+_evaluation_unsupported_citation_counter = None
 
 
 def init_telemetry() -> bool:
@@ -74,6 +83,9 @@ def init_telemetry() -> bool:
     """
     global _initialized, _enabled, _tracer
     global _call_counter, _token_counter, _duration_histogram, _cost_counter
+    global _tool_call_counter, _tool_duration_histogram, _routing_decision_counter
+    global _evaluation_schema_valid_counter, _evaluation_schema_invalid_counter
+    global _evaluation_unsupported_citation_counter
 
     if _initialized:
         return _enabled
@@ -130,6 +142,36 @@ def init_telemetry() -> bool:
         unit="usd",
         description="Estimated cost (caller-maintained pricing, not billing truth), by agent key and model.",
     )
+    _tool_call_counter = meter.create_counter(
+        "ops_council.tool.calls",
+        unit="1",
+        description="Typed operations-tool invocations (app/agents/tools.py), by tool name and status.",
+    )
+    _tool_duration_histogram = meter.create_histogram(
+        "ops_council.tool.duration",
+        unit="ms",
+        description="Typed operations-tool invocation latency, by tool name.",
+    )
+    _routing_decision_counter = meter.create_counter(
+        "ops_council.routing.decisions",
+        unit="1",
+        description="Agent-analysis routing decisions (app/agents/routing.py), by debate/coordinator flags.",
+    )
+    _evaluation_schema_valid_counter = meter.create_counter(
+        "ops_council.evaluation.schema_valid",
+        unit="1",
+        description="Grounded-analysis responses that parsed/validated against AGENT_ANALYSIS_JSON_SCHEMA.",
+    )
+    _evaluation_schema_invalid_counter = meter.create_counter(
+        "ops_council.evaluation.schema_invalid",
+        unit="1",
+        description="Grounded-analysis responses that FAILED schema validation (see app/agents/schema.py).",
+    )
+    _evaluation_unsupported_citation_counter = meter.create_counter(
+        "ops_council.evaluation.unsupported_citations",
+        unit="1",
+        description="Evidence ids cited by a model that were not present in the evidence bundle it was given.",
+    )
     _enabled = True
     return True
 
@@ -149,6 +191,9 @@ def reset_for_tests() -> None:
     """
     global _initialized, _enabled, _tracer
     global _call_counter, _token_counter, _duration_histogram, _cost_counter
+    global _tool_call_counter, _tool_duration_histogram, _routing_decision_counter
+    global _evaluation_schema_valid_counter, _evaluation_schema_invalid_counter
+    global _evaluation_unsupported_citation_counter
     _initialized = False
     _enabled = False
     _tracer = None
@@ -156,6 +201,12 @@ def reset_for_tests() -> None:
     _token_counter = None
     _duration_histogram = None
     _cost_counter = None
+    _tool_call_counter = None
+    _tool_duration_histogram = None
+    _routing_decision_counter = None
+    _evaluation_schema_valid_counter = None
+    _evaluation_schema_invalid_counter = None
+    _evaluation_unsupported_citation_counter = None
 
 
 class _SpanRecorder:
@@ -251,3 +302,83 @@ def record_usage(
         _token_counter.add(completion_tokens, {**attributes, "gen_ai.token.type": "output"})
     if _cost_counter is not None and cost_usd:
         _cost_counter.add(cost_usd, attributes)
+
+
+class _ToolSpanRecorder:
+    """Same no-op-unless-enabled convention as ``_SpanRecorder`` above,
+    scoped to one typed operations-tool invocation
+    (app/agents/tools.py::execute_tool). Records ONLY the tool name,
+    result count, and status -- never the tool's arguments or result
+    content (which may include finding titles/summaries)."""
+
+    __slots__ = ("_span",)
+
+    def __init__(self, span):
+        self._span = span
+
+    def set_result_count(self, count: int) -> None:
+        if self._span is not None:
+            self._span.set_attribute("ops.tool.result_count", count)
+
+    def set_status(self, status: str) -> None:
+        if self._span is not None:
+            self._span.set_attribute("ops.tool.status", status)
+
+
+@contextmanager
+def tool_call_span(*, tool_name: str) -> Iterator[_ToolSpanRecorder]:
+    """Wrap one typed operations-tool invocation
+    (app/agents/tools.py::execute_tool) -- a parent/child span alongside
+    ``agent_call_span`` so tool execution is auditable the same way
+    agent calls are. Always usable regardless of whether telemetry is
+    enabled; re-raises any exception unchanged."""
+    if not _enabled:
+        yield _ToolSpanRecorder(None)
+        return
+
+    from opentelemetry.trace import Status, StatusCode
+
+    attributes = {"ops.tool.name": tool_name}
+    start = time.monotonic()
+    with _tracer.start_as_current_span("ops_tool_execution") as span:
+        span.set_attribute("ops.tool.name", tool_name)
+        recorder = _ToolSpanRecorder(span)
+        try:
+            yield recorder
+        except Exception as exc:
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR, str(exc)))
+            raise
+        finally:
+            duration_ms = (time.monotonic() - start) * 1000
+            if _tool_duration_histogram is not None:
+                _tool_duration_histogram.record(duration_ms, attributes)
+            if _tool_call_counter is not None:
+                _tool_call_counter.add(1, attributes)
+
+
+def record_routing_decision(*, debate: bool, specialist_count: int, coordinator_included: bool) -> None:
+    """No-op unless telemetry is enabled. Records ONLY the routing shape
+    (a count and two booleans) -- never the question text or any
+    evidence content (see app/agents/routing.py)."""
+    if not _enabled or _routing_decision_counter is None:
+        return
+    _routing_decision_counter.add(1, {
+        "ops.routing.debate": debate,
+        "ops.routing.specialist_count": specialist_count,
+        "ops.routing.coordinator_included": coordinator_included,
+    })
+
+
+def record_evaluation_metrics(*, schema_valid: bool, unsupported_citation_count: int) -> None:
+    """No-op unless telemetry is enabled. Records ONLY the deterministic
+    evaluation counts computed by app.agents.evaluation -- never any
+    prompt/response content (see app/agents/evaluation.py)."""
+    if not _enabled:
+        return
+    if schema_valid and _evaluation_schema_valid_counter is not None:
+        _evaluation_schema_valid_counter.add(1)
+    if not schema_valid and _evaluation_schema_invalid_counter is not None:
+        _evaluation_schema_invalid_counter.add(1)
+    if unsupported_citation_count and _evaluation_unsupported_citation_counter is not None:
+        _evaluation_unsupported_citation_counter.add(unsupported_citation_count)

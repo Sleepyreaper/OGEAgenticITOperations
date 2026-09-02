@@ -1,0 +1,25 @@
+{
+  "_comment": "Example workload SLO definitions for app/operations/collectors/slo.py. Copy this file, edit the entries for your workloads, and point SLO_DEFINITIONS_PATH at your copy (or inline the 'slos' array as SLO_DEFINITIONS_JSON). Neither env var set = SLOs report an explicit not_configured state, never a fabricated uptime number. See docs/EVIDENCE_MODEL.md for the full field reference.",
+  "slos": [
+    {
+      "workload": "checkout-api",
+      "criticality": "customer_facing",
+      "objective_pct": 99.9,
+      "window_hours": 720,
+      "at_risk_burn_rate": 2.0,
+      "good_column": "good",
+      "total_column": "total",
+      "query": "AppRequests | where AppRoleName == 'checkout-api' | summarize total = count(), good = countif(Success == true)"
+    },
+    {
+      "workload": "billing-batch-job",
+      "criticality": "internal",
+      "objective_pct": 99.0,
+      "window_hours": 168,
+      "at_risk_burn_rate": 3.0,
+      "good_column": "good",
+      "total_column": "total",
+      "query": "AzureDiagnostics | where ResourceProvider == 'MICROSOFT.LOGIC' and Category == 'WorkflowRuntime' | summarize total = count(), good = countif(status_s == 'Succeeded')"
+    }
+  ]
+}

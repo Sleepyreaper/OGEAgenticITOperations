@@ -61,8 +61,10 @@ cost_sentinel, standards_architect, diagnostics_sre, scout,
 compliance_inspector — matching the Python agent keys exactly). Each value
 may set any subset of: deployment, endpoint, temperature, supportsTemperature,
 apiVersion, name, role, promptFile, maxCompletionTokens, maxContextChars,
-responseInstruction, inputCostPerMillion, outputCostPerMillion (see
-docs/MODEL_CONFIGURATION.md for what each of the last five controls).
+responseInstruction, inputCostPerMillion, outputCostPerMillion,
+promptVersion, supportsStructuredOutput (see docs/MODEL_CONFIGURATION.md
+for what the cost/token/instruction fields control, and
+docs/AGENT_INTELLIGENCE.md for promptVersion/supportsStructuredOutput).
 Omitted fields fall back to the loaded profile's defaults. `endpoint` may
 be "primary", "secondary", any other key present in
 additionalOpenAiAccounts, or a literal https:// URL.
@@ -72,6 +74,50 @@ param agentOverrides object = {}
 
 @description('OpenTelemetry service.name reported to Application Insights. Empty (default) falls back to a profile-safe "ops-council-<appProfile>" at app startup — see docs/TELEMETRY.md. Only takes effect when Application Insights is provisioned (always true for this template).')
 param otelServiceName string = ''
+
+@description('A version fingerprint for "this profile\'s agent definitions as currently loaded" (see docs/AGENT_INTELLIGENCE.md), surfaced on /api/health and every /api/operations/analyze|briefing response. Empty (default) derives one automatically at app startup; set this only for a human-chosen version tag.')
+param agentDefinitionVersion string = ''
+
+@description('Which model backend app/agents/analysis.py uses (see docs/FOUNDRY_ARCHITECTURE.md). "direct" (default) calls Azure OpenAI directly. "foundry" is NOT implemented and fails loudly at call time rather than silently using "direct" — do not set this until the Foundry migration described in that doc is actually implemented.')
+@allowed(['direct', 'foundry'])
+param agentBackend string = 'direct'
+
+@description('''
+Optional operations evidence layer settings (app/operations/, see
+docs/EVIDENCE_MODEL.md, docs/AZURE_DATA_SOURCES.md) — an object param (rather than dozens of flat
+params) so it stays maintainable as the evidence layer grows. Recognized
+keys, all optional: alertLookbackHours, changeLookbackHours,
+changeCorrelationWindowMinutes, capacityWarningPct, capacityCriticalPct,
+sloDefinitionsPath, sloDefinitionsJson (Phase 1); enableDefenderAlerts,
+enableDefenderAssessments, costBudgetWarningPct, costBudgetCriticalPct,
+costTrendLookbackDays, costTrendGrowthPctThreshold,
+enableCostManagementBudget, enableCostManagementTrend,
+backupLookbackHours, backupStaleRecoveryPointDays, enableBackup,
+patchAssessmentStaleDays, enableUpdateManager, keyVaultExpiryWarningDays,
+keyVaultMonitorUris, keyVaultMaxItemsPerType, enableKeyVaultExpiry,
+automationLookbackHours, automationAccountIds, enableAutomation,
+telemetryMonitoredResourceTypes, telemetryCriticalResourceIds,
+telemetryMaxResources, telemetryHeartbeatLookbackHours,
+enableTelemetryCoverage, retirementWarningDays,
+enableRetirementAdvisories (Phase 2); operationsSnapshotCacheTtlSeconds,
+operationsStateDbPath (product API -- snapshot/brief/queue/workflow-state,
+see docs/OPERATIONS_API.md). List-valued keys
+(keyVaultMonitorUris, automationAccountIds,
+telemetryMonitoredResourceTypes, telemetryCriticalResourceIds) take a
+single comma-separated string, not a Bicep array. Omitted keys fall back to the
+safe defaults documented in .env.example. Leaving this empty entirely
+(the default) is a valid, safe production state — in particular, the
+SLO collector reports an explicit not_configured state rather than a
+fabricated uptime number until sloDefinitionsPath/sloDefinitionsJson is
+set, and every Phase 2 source with an empty required list (e.g. no
+keyVaultMonitorUris) reports not_configured rather than silently
+skipping itself. Set at most one of sloDefinitionsPath/sloDefinitionsJson.
+operationsStateDbPath should point under /home (e.g.
+/home/data/operations.db) so finding workflow state survives app
+restarts/scale events on Azure App Service Linux.
+Example: { capacityWarningPct: 80, capacityCriticalPct: 95 }
+''')
+param operationsSettings object = {}
 
 @description('Whether the web app is reachable directly over the public internet. "Disabled" (default) requires access via the VNet/private networking this template provisions. Set to "Enabled" for a simpler standalone public demo deployment (weaker isolation — see DEPLOYMENT.md).')
 @allowed(['Enabled', 'Disabled'])
@@ -157,6 +203,9 @@ module webApp 'modules/web-app.bicep' = {
     agentOverrides: agentOverrides
     publicNetworkAccess: publicNetworkAccess
     otelServiceName: otelServiceName
+    operationsSettings: operationsSettings
+    agentDefinitionVersion: agentDefinitionVersion
+    agentBackend: agentBackend
   }
 }
 

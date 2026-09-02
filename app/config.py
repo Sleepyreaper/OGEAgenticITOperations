@@ -22,6 +22,7 @@ back to a guessed value for broken configuration.
 """
 
 import os
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -91,6 +92,21 @@ class AgentConfig:
     # only — not billing truth. 0.0 means "don't estimate a cost".
     input_cost_per_million: float = 0.0
     output_cost_per_million: float = 0.0
+    # Agent-intelligence layer (see docs/AGENT_INTELLIGENCE.md). Blank
+    # (the default) means "derive one deterministically from the loaded
+    # system_prompt" — see Settings.__post_init__ below, which fills
+    # this in with a short sha256 fingerprint when a profile/override
+    # doesn't set it explicitly; AgentConfig itself never computes it,
+    # so a directly-constructed AgentConfig (e.g. in tests) is never
+    # silently given a "magic" non-empty default.
+    prompt_version: str = ""
+    # Whether this agent's deployment accepts Azure OpenAI/OpenAI
+    # structured-output (response_format={"type": "json_schema", ...})
+    # requests. app/agents/backend.py::DirectAzureOpenAIBackend falls
+    # back to a plain completion + explicit parser either way (see
+    # app/agents/schema.py) — this only skips a request attempt known to
+    # fail for a given deployment.
+    supports_structured_output: bool = True
 
 
 @dataclass
@@ -228,6 +244,15 @@ class Settings:
     # Populated in __post_init__ from the profile + env var overrides.
     agents: dict = field(default_factory=dict)
     brand: Optional[BrandMetadata] = None
+    # Populated in __post_init__ (see below) -- a single version
+    # fingerprint for "this profile's agent definitions as currently
+    # loaded", surfaced on /api/health and every grounded-analysis
+    # response (app/agents/analysis.py). Resolution order: the
+    # AGENT_DEFINITION_VERSION env var, then profile.json's
+    # meta.agent_definition_version, then a deterministic sha256 hash of
+    # (profile_id + every agent's resolved prompt_version) -- never left
+    # blank, so it's always meaningful for a deploy-to-deploy diff.
+    agent_definition_version: str = ""
 
     def __post_init__(self):
         profile_dir = resolve_profile_dir(self.profile_id)
@@ -348,6 +373,28 @@ class Settings:
             else:
                 system_prompt = load_prompt(profile_dir, agent_doc["prompt_file"], context)
 
+            prompt_version_raw = os.environ.get(f"{prefix}_PROMPT_VERSION", "").strip()
+            if prompt_version_raw:
+                prompt_version = prompt_version_raw
+            else:
+                prompt_version = str(agent_doc.get("prompt_version", "")).strip()
+            if not prompt_version:
+                # Deterministic fallback: a short fingerprint of the
+                # resolved system prompt, so prompt_version is never
+                # blank and automatically changes whenever the prompt
+                # file/override does -- never a fabricated/static value.
+                prompt_version = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:12]
+
+            supports_structured_output_raw = os.environ.get(
+                f"{prefix}_SUPPORTS_STRUCTURED_OUTPUT", ""
+            ).strip()
+            if supports_structured_output_raw:
+                supports_structured_output = _parse_bool(
+                    supports_structured_output_raw, f"{context}: {prefix}_SUPPORTS_STRUCTURED_OUTPUT"
+                )
+            else:
+                supports_structured_output = bool(agent_doc.get("supports_structured_output", True))
+
             agents[agent_key] = AgentConfig(
                 key=agent_key,
                 name=name,
@@ -363,9 +410,23 @@ class Settings:
                 response_instruction=response_instruction,
                 input_cost_per_million=input_cost_per_million,
                 output_cost_per_million=output_cost_per_million,
+                prompt_version=prompt_version,
+                supports_structured_output=supports_structured_output,
             )
 
         self.agents = agents
+
+        agent_definition_version_override = os.environ.get("AGENT_DEFINITION_VERSION", "").strip()
+        meta_version = str(document.get("meta", {}).get("agent_definition_version", "")).strip()
+        if agent_definition_version_override:
+            self.agent_definition_version = agent_definition_version_override
+        elif meta_version:
+            self.agent_definition_version = meta_version
+        else:
+            fingerprint_input = self.profile_id + "|" + "|".join(
+                f"{key}:{agents[key].prompt_version}" for key in sorted(agents)
+            )
+            self.agent_definition_version = hashlib.sha256(fingerprint_input.encode("utf-8")).hexdigest()[:12]
 
 
 settings = Settings()

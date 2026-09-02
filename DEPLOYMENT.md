@@ -226,7 +226,7 @@ IDs, or other secrets:
 ```json
 {
   "status": "ok",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "profile": "power",
   "agents": { "orchestrator": { "name": "Grid Coordinator", "deployment": "gpt-5.6-sol", "endpoint_configured": true, "supports_temperature": false, "max_completion_tokens": 1400, "max_context_chars": 30000, "response_instruction_configured": true, "pricing_configured": true }, "...": "..." },
   "config": { "openai_primary_endpoint_configured": true, "subscription_configured": true, "telemetry_enabled": false, "...": "..." }

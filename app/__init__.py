@@ -14,4 +14,4 @@ installed first. Third-party setup (e.g. loading a local .env file) lives
 in app/config.py instead, since only that module actually needs it.
 """
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"

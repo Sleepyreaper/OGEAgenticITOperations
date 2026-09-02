@@ -34,6 +34,8 @@ from urllib.parse import quote
 
 import requests
 
+from app.approval import approval_metadata, proposal_approval_tier
+
 logger = logging.getLogger(__name__)
 
 
@@ -399,9 +401,18 @@ class AdoProposal:
     approved_by: str = ""
     approved_at: str = ""
     rejected_reason: str = ""
+    # Deterministic approval-tier metadata (see app/approval.py) --
+    # descriptive only. This proposal's own PENDING -> approve/reject
+    # human gate (below) already enforces the actual approval; this
+    # field just exposes WHY a human must act, for the UI/API.
+    approval_tier: str = ""
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        payload = asdict(self)
+        payload["approval"] = approval_metadata(
+            proposal_approval_tier(self.proposal_type), allowlisted=False, execution_capable=False
+        )
+        return payload
 
 
 # ─── In-Memory Proposal Store ──────────────────────────────
@@ -453,6 +464,7 @@ def create_proposal(
         pr_source_branch=f"dte-weather-ops/policy-fix-{str(uuid.uuid4())[:8]}",
         pr_file_changes=pr_file_changes or [],
     )
+    proposal.approval_tier = proposal_approval_tier(proposal.proposal_type).value
 
     _proposals[proposal.id] = proposal
     return proposal

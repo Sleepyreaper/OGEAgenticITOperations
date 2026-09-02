@@ -27,11 +27,21 @@ param appProfile string = 'power'
 @description('OpenTelemetry service.name. Empty (default) falls back to "ops-council-<appProfile>" at app startup — a short, profile-safe default that never leaks a customer brand string unless you set this explicitly. Only used when appInsightsConnectionString/APPLICATIONINSIGHTS_CONNECTION_STRING is non-empty; see docs/TELEMETRY.md.')
 param otelServiceName string = ''
 
+@description('A version fingerprint for the loaded profile\'s agent definitions (see docs/AGENT_INTELLIGENCE.md). Empty (default) derives one automatically at app startup.')
+param agentDefinitionVersion string = ''
+
+@description('Which model backend app/agents/analysis.py uses. "direct" (default) calls Azure OpenAI directly; "foundry" is NOT implemented (see docs/FOUNDRY_ARCHITECTURE.md) and fails loudly at call time rather than silently using "direct".')
+@allowed(['direct', 'foundry'])
+param agentBackend string = 'direct'
+
 @description('Additional Azure OpenAI accounts for per-agent endpoint routing (see main.bicep). Only .endpoint is used here, surfaced as AZURE_OPENAI_ENDPOINT_<NAME>.')
 param additionalOpenAiAccounts object = {}
 
 @description('Per-agent configuration overrides. See main.bicep for the full field list.')
 param agentOverrides object = {}
+
+@description('Operations evidence layer settings (see main.bicep). Optional subset of: alertLookbackHours, changeLookbackHours, changeCorrelationWindowMinutes, capacityWarningPct, capacityCriticalPct, sloDefinitionsPath, sloDefinitionsJson, enableDefenderAlerts, enableDefenderAssessments, costBudgetWarningPct, costBudgetCriticalPct, costTrendLookbackDays, costTrendGrowthPctThreshold, enableCostManagementBudget, enableCostManagementTrend, backupLookbackHours, backupStaleRecoveryPointDays, enableBackup, patchAssessmentStaleDays, enableUpdateManager, keyVaultExpiryWarningDays, keyVaultMonitorUris, keyVaultMaxItemsPerType, enableKeyVaultExpiry, automationLookbackHours, automationAccountIds, enableAutomation, telemetryMonitoredResourceTypes, telemetryCriticalResourceIds, telemetryMaxResources, telemetryHeartbeatLookbackHours, enableTelemetryCoverage, retirementWarningDays, enableRetirementAdvisories, operationsSnapshotCacheTtlSeconds, operationsStateDbPath (product API -- see docs/OPERATIONS_API.md). List-valued keys (keyVaultMonitorUris, automationAccountIds, telemetryMonitoredResourceTypes, telemetryCriticalResourceIds) take a comma-separated string.')
+param operationsSettings object = {}
 
 @description('Whether the web app is reachable directly over the public internet.')
 @allowed(['Enabled', 'Disabled'])
@@ -53,6 +63,8 @@ var baseAppSettings = [
   { name: 'LOG_ANALYTICS_WORKSPACE_ID', value: logAnalyticsWorkspaceId }
   { name: 'AZURE_SUBSCRIPTION_ID', value: subscriptionId }
   { name: 'APP_PROFILE', value: appProfile }
+  { name: 'AGENT_DEFINITION_VERSION', value: agentDefinitionVersion }
+  { name: 'AGENT_BACKEND', value: agentBackend }
   { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'true' }
 ]
 
@@ -79,6 +91,8 @@ var agentOverrideFieldSuffixes = {
   responseInstruction: 'RESPONSE_INSTRUCTION'
   inputCostPerMillion: 'INPUT_COST_PER_MILLION'
   outputCostPerMillion: 'OUTPUT_COST_PER_MILLION'
+  promptVersion: 'PROMPT_VERSION'
+  supportsStructuredOutput: 'SUPPORTS_STRUCTURED_OUTPUT'
 }
 
 // Nested for-loops aren't supported directly for variable construction, so
@@ -92,7 +106,62 @@ var agentOverrideSettingsRaw = flatten(map(items(agentOverrides), agentItem => m
 // own defaults instead of being overridden with an empty string.
 var agentOverrideSettings = filter(agentOverrideSettingsRaw, setting => !empty(setting.value))
 
-var appSettings = concat(baseAppSettings, namedEndpointSettings, agentOverrideSettings)
+// Operations evidence layer settings -> env var names (see
+// app/operations/config.py). One object param instead of dozens of flat
+// params, same convention as agentOverrides above. List-valued settings
+// (keyVaultMonitorUris, automationAccountIds,
+// telemetryMonitoredResourceTypes, telemetryCriticalResourceIds) take a
+// single comma-separated STRING value here, matching the env var format
+// app/operations/config.py's _parse_csv_list expects -- not a Bicep
+// array.
+var operationsSettingFieldNames = {
+  alertLookbackHours: 'ALERT_LOOKBACK_HOURS'
+  changeLookbackHours: 'CHANGE_LOOKBACK_HOURS'
+  changeCorrelationWindowMinutes: 'CHANGE_CORRELATION_WINDOW_MINUTES'
+  capacityWarningPct: 'CAPACITY_WARNING_PCT'
+  capacityCriticalPct: 'CAPACITY_CRITICAL_PCT'
+  sloDefinitionsPath: 'SLO_DEFINITIONS_PATH'
+  sloDefinitionsJson: 'SLO_DEFINITIONS_JSON'
+  enableDefenderAlerts: 'ENABLE_DEFENDER_ALERTS'
+  enableDefenderAssessments: 'ENABLE_DEFENDER_ASSESSMENTS'
+  costBudgetWarningPct: 'COST_BUDGET_WARNING_PCT'
+  costBudgetCriticalPct: 'COST_BUDGET_CRITICAL_PCT'
+  costTrendLookbackDays: 'COST_TREND_LOOKBACK_DAYS'
+  costTrendGrowthPctThreshold: 'COST_TREND_GROWTH_PCT_THRESHOLD'
+  enableCostManagementBudget: 'ENABLE_COST_MANAGEMENT_BUDGET'
+  enableCostManagementTrend: 'ENABLE_COST_MANAGEMENT_TREND'
+  backupLookbackHours: 'BACKUP_LOOKBACK_HOURS'
+  backupStaleRecoveryPointDays: 'BACKUP_STALE_RECOVERY_POINT_DAYS'
+  enableBackup: 'ENABLE_BACKUP'
+  patchAssessmentStaleDays: 'PATCH_ASSESSMENT_STALE_DAYS'
+  enableUpdateManager: 'ENABLE_UPDATE_MANAGER'
+  keyVaultExpiryWarningDays: 'KEY_VAULT_EXPIRY_WARNING_DAYS'
+  keyVaultMonitorUris: 'KEY_VAULT_MONITOR_URIS'
+  keyVaultMaxItemsPerType: 'KEY_VAULT_MAX_ITEMS_PER_TYPE'
+  enableKeyVaultExpiry: 'ENABLE_KEY_VAULT_EXPIRY'
+  automationLookbackHours: 'AUTOMATION_LOOKBACK_HOURS'
+  automationAccountIds: 'AUTOMATION_ACCOUNT_IDS'
+  enableAutomation: 'ENABLE_AUTOMATION'
+  telemetryMonitoredResourceTypes: 'TELEMETRY_MONITORED_RESOURCE_TYPES'
+  telemetryCriticalResourceIds: 'TELEMETRY_CRITICAL_RESOURCE_IDS'
+  telemetryMaxResources: 'TELEMETRY_MAX_RESOURCES'
+  telemetryHeartbeatLookbackHours: 'TELEMETRY_HEARTBEAT_LOOKBACK_HOURS'
+  enableTelemetryCoverage: 'ENABLE_TELEMETRY_COVERAGE'
+  retirementWarningDays: 'RETIREMENT_WARNING_DAYS'
+  enableRetirementAdvisories: 'ENABLE_RETIREMENT_ADVISORIES'
+  operationsSnapshotCacheTtlSeconds: 'OPERATIONS_SNAPSHOT_CACHE_TTL_SECONDS'
+  operationsStateDbPath: 'OPERATIONS_STATE_DB'
+}
+
+var operationsSettingsRaw = [for item in items(operationsSettingFieldNames): {
+  name: item.value
+  value: contains(operationsSettings, item.key) ? string(operationsSettings[item.key]) : ''
+}]
+// Skip fields the caller didn't set, so they fall back to the safe
+// defaults in app/operations/config.py instead of an empty override.
+var operationsAppSettings = filter(operationsSettingsRaw, setting => !empty(setting.value))
+
+var appSettings = concat(baseAppSettings, namedEndpointSettings, agentOverrideSettings, operationsAppSettings)
 
 resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   name: webAppName

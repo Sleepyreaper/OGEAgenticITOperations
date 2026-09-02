@@ -23,9 +23,11 @@
 
 Six AI specialists — each named after cloud operations concepts — debate, disagree, and synthesize to deliver balanced, transparent recommendations. Built for teams that need operational answers without elevated access.
 
-**Two views, one platform:**
-- **Reliability** — Executive dashboard with reliability scores, pillar assessments, and service health (Rick's view)
-- **Ops Center** — Operational findings, chaos testing, remediation code, and deep intelligence (Christopher/Shane's view)
+**Two PRIMARY views, one platform** (see [docs/UI_WORKFLOW.md](docs/UI_WORKFLOW.md) for the full workflow):
+- **Executive Brief** — one-sentence status, freshness/source coverage, Business Impact / Reliability-SLO / Capacity cards, What Changed, Decisions/Escalations, and Attention Items — every value evidence-backed via `/api/operations/brief` (never a fabricated score/formula). One "Generate Executive Briefing / Explain" button surfaces a single synthesized coordinator voice on demand; agents/personas are otherwise hidden here.
+- **Operations Center** — a unified, priority-ranked findings queue (`/api/operations/queue`) with a collapsible shift-handoff bar (`/api/operations/handoff`), a finding detail/evidence drawer with acknowledge/assign/resolve/dismiss/snooze workflow controls, and an "AI Analyze" action for grounded, evidence-cited agent analysis (`/api/operations/analyze`).
+
+Ops Council (multi-agent chat/debate) and The Crew (agent bios) remain fully available as **secondary** views, one click away via the top nav's "More" menu — they never compete with the two primary views for attention.
 
 ## The Crew (default "power" profile)
 
@@ -77,24 +79,22 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 
 ## Key Features
 
-### Executive Reliability View
-- Reliability score (0-100) with animated ring gauge
-- Four pillar assessments: Security, Governance, Resilience, Cost Efficiency — each with score bars
-- Azure Service Health events — clickable for "which of MY resources are affected?"
-- Prioritized action cards (HIGH / MED / LOW)
-- "Ask the orchestrator for Executive Summary" button
+### Executive Brief
+- One-sentence status headline + data freshness + source coverage (`N/M sources OK`) — never disguised as healthy when a source errored or SLO/capacity aren't configured
+- Three evidence-backed cards: Business Impact, Reliability/SLO, Capacity — each with an honest `not_configured`/`unknown` state, never a guessed number
+- What Changed (last 24h), Decisions/Escalations, and Attention Items — each bounded to 3 items, every item links straight into the Operations Center's finding drawer
+- One "Generate Executive Briefing / Explain" button synthesizes a single coordinator voice (via `/api/operations/briefing`) with specialist detail collapsed behind a `<details>` disclosure — agents/personas are hidden on this surface otherwise
+- One "Open Operations Center" button
 
-### Ops Center
-- Real-time findings: orphaned disks, public IPs, insecure storage, NSG drift
-- Deep intelligence: architecture smell detection, cross-resource correlation, orphaned NSGs, idle App Service Plans, empty subnets
-- Azure Advisor integration — platform-verified evidence alongside crew analysis
-- Resource Health status bar with visual progress indicator
-- Auto-refresh every 60 seconds in Live mode (Resource Graph queries are free)
-- Change detection — badge flashes "⚡ CHANGE DETECTED" when environment changes
-- 💥 "Do Something Stupid" chaos demo — creates real security problem, detected in ~10 seconds
-- ☀️ Morning Briefing — overnight digest from the crew
+### Operations Center
+- Always-visible, collapsible shift-handoff bar: open / new-since-prior / changed-since-prior / snoozed / pending approvals / source gaps (`/api/operations/handoff`)
+- Unified priority queue (`/api/operations/queue`) — priority band + factors, severity/category, business impact, age, owner/status, evidence count, recommended action, approval flag; filterable by status/category/severity/owner with Load-more pagination
+- Finding detail/evidence drawer with acknowledge / assign / start / resolve / dismiss (reason required) / snooze (expiry required) controls — client-side validated, API errors surfaced inline, never a silent no-op
+- "AI Analyze" — grounded operations analysis (`/api/operations/analyze`): routing explanation, evidence citations, confidence, missing evidence, recommended actions with approval tier, specialist debate collapsed by default
+- Supporting strips: current health/source coverage, capacity watch, recent changes, and a "Deep Intelligence" findings-by-category breakdown — all sourced from the same snapshot/handoff, never a second scattered API call
+- Tools & Guided Demo (secondary, collapsible): Morning Briefing, 💥 chaos demo, demo scenarios, Compliance → ADO proposal scan/approve/reject, and crew status — see [docs/UI_WORKFLOW.md](docs/UI_WORKFLOW.md) for the guided demo script
 
-### Ops Council Chat
+### Ops Council Chat (secondary view)
 - Streaming multi-agent debate with custom-styled personalities
 - 🔧 Generate Terraform / CLI Fix button after every analysis
 - 📊 Executive Summary button for leadership-ready output
@@ -102,8 +102,15 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 - Dynamic suggested questions that update based on real environment scan
 
 ### Data Modes
-- **Demo**: Pre-built demo scenarios (VM sizing, deployment failure, waste analysis)
+- **Demo**: Ops Council demo scenarios (VM sizing, deployment failure, waste analysis) plus a
+  centralized Executive Brief/Operations Center fixture (`app/operations/demo_fixture.py`,
+  served at `GET /api/operations/demo`) — every value is produced by feeding hand-authored
+  evidence through the exact same prioritization/brief/queue/handoff logic real Azure data
+  goes through; only a couple of narrative "AI analysis" strings are fabricated, and those
+  are always labeled `"simulated": true`.
 - **Live**: Scans real Azure subscription via Managed Identity — everything real
+- Demo vs Live is always explicit in the UI (toggle + inline labels) — a simulated value is
+  never shown as if it were live.
 
 ## Architecture
 
@@ -160,6 +167,15 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for the full step-by-step guide, and
 | `/api/digest` | GET | Morning briefing (SSE) |
 | `/api/chaos/create` | POST | Create chaos NSG rule |
 | `/api/chaos/cleanup` | POST | Remove chaos NSG rule |
+| `/api/operations/snapshot` | GET | Deterministic, evidence-backed operations snapshot (no LLM call) — see [docs/OPERATIONS_API.md](docs/OPERATIONS_API.md) |
+| `/api/operations/brief` | GET | Executive brief (feeds the Executive Brief view) |
+| `/api/operations/queue` | GET | Filtered/paginated priority queue (feeds the Operations Center view) |
+| `/api/operations/findings/<id>` | PATCH | Finding workflow action (acknowledge/start/resolve/dismiss/snooze/assign) |
+| `/api/operations/handoff` | GET/POST | Shift handoff (GET builds; POST builds + persists) |
+| `/api/operations/evidence/<id>` | GET | Bounded evidence view for one finding |
+| `/api/operations/demo` | GET | Centralized Demo-mode fixture — same brief/queue/handoff schema |
+| `/api/operations/analyze` | GET/POST | Evidence-grounded agent analysis ("AI Analyze") |
+| `/api/operations/briefing` | GET/POST | One synthesized coordinator-voice executive briefing |
 
 ## Configuration & Customization
 
@@ -184,8 +200,19 @@ guide. Quick reference:
 ├── app/
 │   ├── agents/
 │   │   ├── demos.py          # 6 demo scenarios with realistic data
-│   │   └── runner.py         # Debate system, SSE streaming, remediation
+│   │   ├── runner.py         # Debate system, SSE streaming, remediation
+│   │   ├── analysis.py       # Evidence-grounded agent analysis/briefing (AI Analyze)
+│   │   ├── routing.py        # Deterministic specialist routing + debate policy
+│   │   └── evidence.py       # Bounded, redacted evidence bundles for agent analysis
 │   ├── azure_data.py         # Resource Graph, Health APIs, Advisor, deep analysis
+│   ├── operations/            # Product-facing operations API -- see docs/OPERATIONS_API.md
+│   │   ├── snapshot.py        # get_snapshot() -- the one bounded/cached/prioritized entry point
+│   │   ├── brief.py           # build_brief() -- Executive Brief
+│   │   ├── queue.py           # build_queue() -- Operations Center priority queue
+│   │   ├── handoff.py         # build_handoff() -- shift handoff
+│   │   ├── state.py           # SQLite finding workflow-state store
+│   │   ├── demo_fixture.py    # Centralized Demo-mode fixture (GET /api/operations/demo)
+│   │   └── routes.py          # Flask blueprint mounted at /api/operations
 │   ├── config.py             # Settings/AgentConfig, profile + env var resolution
 │   ├── profiles.py           # Profile loading/validation (stdlib only)
 │   ├── telemetry.py          # Azure Monitor OpenTelemetry init + agent call spans
@@ -198,10 +225,10 @@ guide. Quick reference:
 ├── infra/                    # Bicep IaC (VNet, KV, identity, web app)
 │   ├── main.bicepparam.example  # Checked-in template (copy or use the wizard)
 │   └── main.bicepparam       # Your local deployment values (git-ignored)
-├── templates/index.html      # Executive + Ops views
+├── templates/index.html      # Executive Brief + Operations Center (primary) + Ops Council/Crew (secondary)
 ├── docs/                     # RBAC guide, demo script, architecture, decisions,
-│                             # MODEL_CONFIGURATION.md, TELEMETRY.md
-├── tests/                    # Config/profile/ADO integration tests (stdlib unittest)
+│                             # MODEL_CONFIGURATION.md, TELEMETRY.md, OPERATIONS_API.md, UI_WORKFLOW.md
+├── tests/                    # Config/profile/ADO/operations-API/UI-contract tests (stdlib unittest style)
 ├── .env.example               # Checked-in template for local .env
 ├── requirements.txt
 ├── wsgi.py
