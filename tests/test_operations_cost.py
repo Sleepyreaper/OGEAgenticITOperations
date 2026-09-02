@@ -131,6 +131,35 @@ def http_post_no_baseline(url, *, headers, json=None, timeout=30):
 no_baseline = cost.collect_cost_trend("sub1", credential_factory=fake_credential_factory, http_post=http_post_no_baseline, now=NOW)
 test("zero prior-period cost -> no Finding (never a fabricated percentage from a zero baseline)", no_baseline == [])
 
+# ─── 429 throttling -- collect_cost_trend retries with backoff, never fails outright ──
+print("\n\U0001f9ea Test 3b: collect_cost_trend -- a transient 429 is retried (with an injected sleep_fn) instead of failing the whole trend")
+_throttled_calls = []
+_sleep_calls = []
+
+
+def _fake_sleep(seconds):
+    _sleep_calls.append(seconds)
+
+
+def http_post_throttled_then_growth(url, *, headers, json=None, timeout=30):
+    _throttled_calls.append(json)
+    # Only the very first underlying POST (the current-period query) is
+    # throttled once; every other call (including the retry) succeeds.
+    if len(_throttled_calls) == 1:
+        return FakeResponse({}, status_code=429, text="Too Many Requests")
+    if len(_throttled_calls) == 2:
+        return FakeResponse({"columns": [{"name": "Cost"}], "rows": [[150.0]]})
+    return FakeResponse({"columns": [{"name": "Cost"}], "rows": [[100.0]]})
+
+
+throttled_findings = cost.collect_cost_trend(
+    "sub1", lookback_days=30, growth_pct_threshold=20.0, credential_factory=fake_credential_factory,
+    http_post=http_post_throttled_then_growth, now=NOW, sleep_fn=_fake_sleep,
+)
+test("a single 429 is retried and the trend still resolves to the correct Finding", len(throttled_findings) == 1)
+test("the resolved growth_pct reflects the retried (not the throttled) response", throttled_findings[0].metadata["growth_pct"] == 50.0)
+test("collect_cost_trend never actually slept -- the injected sleep_fn recorded the backoff instead", len(_sleep_calls) == 1)
+
 # ─── Explicit failure surfacing ─────────────────────────────────────────
 print("\n\U0001f9ea Test 4: explicit failures -- never an empty success-shaped list")
 

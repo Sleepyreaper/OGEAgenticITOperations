@@ -221,6 +221,13 @@ def _build_findings(now) -> dict:
         source="legacy_policy_compliance", confidence=ConfidenceLevel.CONFIRMED.value,
         resource_id=f"{_DEMO_RG}/Analytics-RG/providers/Microsoft.Storage/storageAccounts/stgdemoreports01",
         recommended_action="Provision a private endpoint for stgdemoreports01 and disable public network access.",
+        # Deliberately approval_required=True but executive_attention=False
+        # and only MEDIUM severity -- a demo example of a routine
+        # operational approval that app.operations.brief's
+        # decisions_required now correctly EXCLUDES from the executive
+        # brief (human approval alone is not executive attention -- see
+        # app.operations.brief._decision_required_eligible); it remains
+        # fully visible in the Ops queue and handoff's pending_approvals.
         approval_required=True, executive_attention=False,
         evidence=[ev(EvidenceSource.POLICY_INSIGHTS.value, "Policy assignment 'require-private-endpoint': NonCompliant",
                      now - timedelta(minutes=90), f"{_DEMO_RG}/Analytics-RG/providers/Microsoft.Storage/storageAccounts/stgdemoreports01")],

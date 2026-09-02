@@ -84,6 +84,17 @@ class CollectionEnvelope:
     findings: list = field(default_factory=list)  # list[Finding]
     summaries: list = field(default_factory=list)  # source-specific: list[SLOSummary] | list[CapacitySummary] | list[BudgetSummary] | list[TelemetryCoverageSummary]
     error: Optional[str] = None
+    # Non-fatal, `status == "ok"` coverage warning -- e.g. a LATER
+    # nextLink page failed mid-pagination (see
+    # app.operations.collectors.http.paginated_get's `partial_error`)
+    # while an earlier page's data was still successfully collected and
+    # normalized. Distinct from `error`: `error` means the WHOLE source
+    # failed (status is "error"/"not_supported"); `coverage_warning`
+    # means the source still succeeded, just with an explicit, honest
+    # caveat about incomplete coverage -- never silently dropped, and
+    # never escalated into failing the entire envelope over what was,
+    # at worst, a partial/transient page fetch.
+    coverage_warning: Optional[str] = None
 
     def __post_init__(self):
         if self.status not in _VALID_STATUSES:
@@ -99,6 +110,7 @@ class CollectionEnvelope:
             "findings": [f.to_dict() for f in self.findings],
             "summaries": [s.to_dict() for s in self.summaries],
             "error": self.error,
+            "coverage_warning": self.coverage_warning,
         }
 
 
@@ -126,9 +138,10 @@ def _collect_envelope(
     classify_error: Optional[Callable[[BaseException], str]] = None,
 ) -> CollectionEnvelope:
     """Run one source's `collect_fn` -- a zero-argument callable
-    returning either `findings` (a list) or `(findings, summaries)` --
-    and wrap the result, or any `_EXPECTED_SOURCE_FAILURES` it raises,
-    into that source's own CollectionEnvelope.
+    returning `findings` (a list), `(findings, summaries)`, or
+    `(findings, summaries, coverage_warning)` -- and wrap the result, or
+    any `_EXPECTED_SOURCE_FAILURES` it raises, into that source's own
+    CollectionEnvelope.
 
     Centralizes the try/except/CollectionEnvelope-construction
     boilerplate every envelope function below used to repeat (and, for
@@ -144,17 +157,33 @@ def _collect_envelope(
     distinction (e.g. cost_management_trend's 'not_supported' billing
     scope -- see _is_cost_not_supported_error) map the caught exception
     to a CollectionEnvelope status other than the default 'error'.
+
+    `coverage_warning` (the optional 3rd tuple element) lets a source
+    that succeeded but knows its coverage was incomplete for a
+    non-fatal reason -- e.g. defender_assessments' later-page pagination
+    failure, see collect_defender_assessments_envelope -- surface that
+    explicitly on the resulting 'ok' envelope instead of either staying
+    silent about it or (the prior defect) letting an unrelated
+    per-item normalization problem escalate into failing the entire
+    source.
     """
     try:
         result = collect_fn()
     except _EXPECTED_SOURCE_FAILURES as exc:
         status = classify_error(exc) if classify_error else "error"
         return CollectionEnvelope(source=source, status=status, collected_at=utc_now_iso(), error=str(exc))
+    coverage_warning = None
     if isinstance(result, tuple):
-        findings, summaries = result
+        if len(result) == 3:
+            findings, summaries, coverage_warning = result
+        else:
+            findings, summaries = result
     else:
         findings, summaries = result, []
-    return CollectionEnvelope(source=source, status="ok", collected_at=utc_now_iso(), findings=findings, summaries=summaries)
+    return CollectionEnvelope(
+        source=source, status="ok", collected_at=utc_now_iso(), findings=findings, summaries=summaries,
+        coverage_warning=coverage_warning,
+    )
 
 
 def collect_alerts_envelope(
@@ -236,6 +265,7 @@ def collect_capacity_envelope(
                 summaries.extend(capacity_collector.collect_openai_capacity(
                     subscription_id, oi_locations,
                     warning_pct=config.capacity_warning_pct, critical_pct=config.capacity_critical_pct,
+                    name_filters=config.openai_capacity_name_filters,
                     history_provider=history_provider, credential_factory=credential_factory, http_get=http_get,
                 ))
         findings = capacity_collector.capacity_summaries_to_findings(summaries)
@@ -347,6 +377,17 @@ def collect_defender_assessments_envelope(
     credential_factory: CredentialFactory = default_credential_factory,
     http_get: HttpGet = default_http_get,
 ) -> CollectionEnvelope:
+    """Defender assessments source. A LATER assessments page failing to
+    fetch (e.g. a transient timeout/5xx) never fails this whole source
+    -- app.operations.collectors.defender.collect_unhealthy_assessments'
+    `on_partial_result` callback is wired here to capture that failure
+    message per subscription and surface it as this envelope's
+    `coverage_warning` (status stays 'ok', the assessments already
+    collected from earlier pages are kept) instead of either silently
+    dropping it or letting a per-item normalization problem (e.g. an
+    assessment with a missing/unrecognized severity -- see
+    normalize_assessment, which never raises for that) escalate into an
+    'error' envelope."""
     source = "defender_assessments"
     if not config.enable_defender_assessments:
         return CollectionEnvelope(
@@ -356,11 +397,14 @@ def collect_defender_assessments_envelope(
 
     def _collect():
         findings = []
+        coverage_warnings = []
         for subscription_id in subscription_ids:
             findings.extend(defender_collector.collect_unhealthy_assessments(
                 subscription_id, credential_factory=credential_factory, http_get=http_get,
+                on_partial_result=coverage_warnings.append,
             ))
-        return findings
+        coverage_warning = "; ".join(coverage_warnings) if coverage_warnings else None
+        return findings, [], coverage_warning
 
     return _collect_envelope(source, _collect)
 

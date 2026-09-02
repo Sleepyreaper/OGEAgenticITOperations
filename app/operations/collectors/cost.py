@@ -28,14 +28,17 @@ from typing import Optional
 
 from app.operations.collectors.http import (
     CredentialFactory,
+    DEFAULT_ARM_POST_MAX_RETRIES,
     DEFAULT_MAX_PAGES,
     DEFAULT_MAX_RECORDS,
     HttpGet,
     HttpPost,
+    SleepFn,
     arm_post,
     default_credential_factory,
     default_http_get,
     default_http_post,
+    default_sleep_fn,
     paginated_get,
 )
 from app.operations.errors import OperationsCollectionError
@@ -191,6 +194,8 @@ def _query_total_cost(
     end: datetime,
     credential_factory: CredentialFactory,
     http_post: HttpPost,
+    max_retries: int,
+    sleep_fn: SleepFn,
 ) -> Optional[float]:
     """POST one Microsoft.CostManagement/query (ActualCost, no
     granularity -- a single summed total for [start, end)) and return the
@@ -210,6 +215,8 @@ def _query_total_cost(
         },
         credential_factory=credential_factory,
         http_post=http_post,
+        max_retries=max_retries,
+        sleep_fn=sleep_fn,
     )
     columns = [c.get("name") for c in (body.get("columns") or [])]
     rows = body.get("rows") or []
@@ -227,6 +234,8 @@ def collect_cost_trend(
     credential_factory: CredentialFactory = default_credential_factory,
     http_post: HttpPost = default_http_post,
     now: Optional[datetime] = None,
+    max_retries: int = DEFAULT_ARM_POST_MAX_RETRIES,
+    sleep_fn: SleepFn = default_sleep_fn,
 ) -> list:
     """Deterministic period-over-period actual-cost trend: compares total
     cost for the last `lookback_days` against the equal-length period
@@ -236,6 +245,13 @@ def collect_cost_trend(
     (no silent clamping). Returns [] (never a fabricated Finding) when the
     prior period has no cost data to compute a meaningful percentage
     against -- there is no baseline to call "material growth" against.
+
+    `max_retries`/`sleep_fn` are forwarded to each underlying `arm_post`
+    call (see app.operations.collectors.http.arm_post) -- Cost
+    Management's Query API is the one that has been observed throttling
+    (HTTP 429) under real load; a transient 429/5xx here is retried
+    with backoff rather than immediately failing the whole trend
+    collection.
     """
     if not subscription_id:
         raise ValueError("subscription_id is required")
@@ -253,10 +269,12 @@ def collect_cost_trend(
     current_cost = _query_total_cost(
         subscription_id, start=current_start, end=current_end,
         credential_factory=credential_factory, http_post=http_post,
+        max_retries=max_retries, sleep_fn=sleep_fn,
     )
     prior_cost = _query_total_cost(
         subscription_id, start=prior_start, end=prior_end,
         credential_factory=credential_factory, http_post=http_post,
+        max_retries=max_retries, sleep_fn=sleep_fn,
     )
 
     if current_cost is None or prior_cost is None or prior_cost <= 0:

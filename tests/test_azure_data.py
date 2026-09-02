@@ -15,6 +15,7 @@ network calls are made.
 
 Run: python3 tests/test_azure_data.py
 """
+import re
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -191,10 +192,12 @@ ADVISOR_PAGE2 = {
     }],
 }
 _advisor_calls = []
+_advisor_headers = []
 
 
 def fake_get_advisor(url, headers, timeout=30):
     _advisor_calls.append(url)
+    _advisor_headers.append(headers)
     if "skiptoken" in url:
         return FakeResponse(ADVISOR_PAGE2)
     return FakeResponse(ADVISOR_PAGE1)
@@ -210,6 +213,18 @@ test("normalizes category/impact/problem/solution/resource from the ARM REST sha
 })
 test("a recommendation with no resourceMetadata gets an empty resource string, never a KeyError", recs[1]["resource"] == "")
 test("the api-version is passed on the request URL", all("api-version=2023-01-01" in u for u in _advisor_calls))
+test(
+    "every advisor request carries a real, structurally-valid Bearer Authorization header "
+    "(regex shape check only -- never asserts/prints the token value itself), never the literal "
+    "redacted placeholder that caused a live 401",
+    len(_advisor_headers) == 2 and all(
+        re.match(r"^Bearer [^\s]+$", h.get("Authorization", "")) for h in _advisor_headers
+    ),
+)
+test(
+    "the Authorization header is never the literal 6-asterisk redacted placeholder",
+    all(h.get("Authorization", "") != "Bearer " + "*" * 6 and "*" * 6 not in h.get("Authorization", "") for h in _advisor_headers),
+)
 
 
 def fake_get_advisor_error(url, headers, timeout=30):

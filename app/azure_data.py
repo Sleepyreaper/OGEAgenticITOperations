@@ -252,7 +252,7 @@ def get_advisor_recommendations(subscription_id: str = None) -> list[dict]:
     sub = subscription_id or _subscription_id()
     cred = _credential()
     token = cred.get_token("https://management.azure.com/.default").token
-    headers = {"Authorization": f"******"}
+    headers = {"Authorization": f"Bearer {token}"}
 
     recs = []
     url = (

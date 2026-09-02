@@ -69,6 +69,26 @@ test("capacity.state is 'critical' (matches the seeded CapacitySummary)", brief[
 test("business_impact.active_customer_impacting_count > 0 (hero + others are exec-attention/high-severity)",
      brief["business_impact"]["active_customer_impacting_count"] > 0)
 
+decisions_required_titles = {d["title"] for d in brief["decisions_required"]}
+test(
+    "decisions_required excludes the routine, Medium-severity, non-executive compliance approval "
+    "(human approval alone is not executive attention)",
+    "Storage account stgdemoreports01 fails 'require-private-endpoint' policy" not in decisions_required_titles,
+)
+test(
+    "decisions_required still includes the Critical-severity hero security approval",
+    "NSG 'nsg-web-pe' allows inbound SSH (22) from any source" in decisions_required_titles,
+)
+test(
+    "decisions_required still includes the High-severity capacity quota approval",
+    "Standard Dv5 vCPU quota in eastus2 at 95% utilization" in decisions_required_titles,
+)
+queue_titles = {item["title"] for item in payload["queue"]["items"]}
+test(
+    "the excluded compliance approval remains fully visible in the Ops queue (never hidden entirely)",
+    "Storage account stgdemoreports01 fails 'require-private-endpoint' policy" in queue_titles,
+)
+
 print("\n\U0001f9ea Test 4: queue section")
 queue = payload["queue"]
 test("queue.total == 13", queue["total"] == 13)

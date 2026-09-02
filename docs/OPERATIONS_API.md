@@ -47,6 +47,20 @@ independent `CollectionEnvelope`-shaped sources:
 | `legacy_resource_hygiene` | Orphaned disks/NSGs, idle App Service Plans, empty subnets | cost | `get_orphaned_disks` + `get_deep_analysis` |
 | `legacy_ownership` | Resource groups missing a `support-owner` tag | ownership | `get_tagging_compliance` |
 
+**Authorized VM stop/deallocate detection**: `legacy_resource_health`
+downgrades an "Unavailable" VM to informational severity (no
+`executive_attention`/customer impact) when Resource Health's
+`reasonType` is Azure's documented `UserInitiated` value. Some tenants
+have been observed reporting `reasonType` blank/absent on a genuinely
+authorized stop/deallocate -- as a narrow fallback, an EXACT
+(case-insensitive) match of `title`/`summary` against Azure's own
+published authorized-stop wording ("Stopped and deallocated" / "This
+virtual machine is stopped and deallocated as requested by an
+authorized user or process.") is used ONLY when `reasonType` is absent
+-- see `legacy_scan.resource_health_findings` for the exact phrases.
+This never broadens to "any Unavailable status that mentions being
+stopped".
+
 **Dedup**: `app.azure_data.get_service_health_events` and Phase 2's
 `app.operations.collectors.advisories.collect_retirement_advisories` both
 read the same underlying `Microsoft.ResourceHealth` event feed.
@@ -141,6 +155,23 @@ exactly as it does when calling `run_full_collection` directly with no
 from the environment, not per-request), it never changes which
 snapshot the subscription-keyed cache above returns.
 
+### Capacity name filters
+
+`OperationsConfig.openai_capacity_name_filters` (the
+`OPENAI_CAPACITY_NAME_FILTERS` env var — a comma-separated,
+case-insensitive substring allowlist) is forwarded the same way, via
+`app.operations.service.collect_capacity_envelope`, straight into
+`app.operations.collectors.capacity.collect_openai_capacity`'s
+`name_filters` — no separate route wiring needed, since it travels on
+the same `OperationsConfig` instance every snapshot-building route
+already builds per request. It narrows the Azure OpenAI/Cognitive
+Services quotas the `capacity` source reports on (e.g. `gpt-5.6`) so a
+shared Cognitive Services account's unrelated, always-fully-allocated
+model quotas never dominate the capacity executive summary. Unset (the
+default) means no filtering — every quota is kept, the correct default
+for a dedicated/generic deployment. `Microsoft.Compute` usages are
+never filtered by this setting.
+
 ### Snapshot status semantics
 
 - `ok` — every *applicable* source (one that actually attempted to
@@ -177,7 +208,9 @@ snapshot the subscription-keyed cache above returns.
     "forecast": { "resource_scope": "...", "metric": "...", "exhaustion_at": "..." } | null
   },
   "changes_since_yesterday": [ /* up to 3, last 24h of Activity Log change Findings */ ],
-  "decisions_required": [ /* up to 3, approval_required == true, open (non-resolved/dismissed/snoozed) */ ],
+  "decisions_required": [ /* up to 3, open (non-resolved/dismissed/snoozed), approval_required == true AND
+    (executive_attention == true OR severity in {critical, high} OR metadata.decision_required in
+    {true, 'blocked', 'cost_commitment'}) -- see "Decisions required" below */ ],
   "attention_items": [ /* up to 3, executive_attention == true, open */ ],
   "source_coverage": { /* same shape as OperationsSnapshot.coverage */ },
   "snapshot_id": "snap-..."
@@ -193,7 +226,9 @@ never an opaque composite score):
   open incident/reliability Finding with High/Critical severity or
   `executive_attention`.
 - `attention` — any open `executive_attention` Finding, any open
-  approval-required Finding, capacity `critical`/`unknown`, or
+  Finding qualifying for `decisions_required` (see above -- an
+  approval-required Finding alone is NOT enough; human approval does
+  not equal executive attention), capacity `critical`/`unknown`, or
   reliability `breached`/`unknown`, or `source_coverage.error_count > 0`
   (at least one applicable source -- any source, not just
   capacity/reliability -- failed to collect; `status == "partial"`).
@@ -210,6 +245,30 @@ never an opaque composite score):
 risk, no static MTTR.** If SLOs or capacity aren't configured, `reliability`/
 `capacity` say `"not_configured"` explicitly; if the underlying source
 errored, they say `"unknown"` — never a guessed number.
+
+### Decisions required
+
+`decisions_required` is deliberately STRICTER than plain
+`approval_required` — human approval does not equal executive
+attention. A routine, low/medium-severity operational approval (e.g.
+deleting an orphaned disk after a confirmation window, or a Medium-
+severity policy-compliance fix) must never crowd this CIO-facing list.
+An open, `approval_required` Finding is only surfaced here when it is
+ALSO at least one of:
+
+- explicitly `executive_attention`,
+- Critical/High severity, or
+- explicitly flagged via `metadata.decision_required` as
+  `true`/`"blocked"`/`"cost_commitment"` — an escalation/cost-commitment
+  marker a collector or workflow step can set even for a Medium/Low-
+  severity Finding.
+
+Every approval-required Finding — including the routine ones excluded
+here — remains fully visible and filterable in the unified queue
+(`/api/operations/queue`, which applies no such filter) and in
+`GET /api/operations/handoff`'s `pending_approvals` (also unfiltered).
+This tightening only changes what the EXECUTIVE brief leads with, never
+what Ops can see/action.
 
 **Never exposes a subscription id, endpoint, token, or credential**: the
 evidence entries embedded in `business_impact`/`decisions_required`/

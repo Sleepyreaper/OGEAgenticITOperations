@@ -88,6 +88,48 @@ def _business_impact_eligible(item: dict) -> bool:
     return finding["severity"] in (Severity.CRITICAL.value, Severity.HIGH.value) or finding["executive_attention"]
 
 
+# metadata.decision_required values a collector/workflow step can set to
+# explicitly flag an approval-required Finding as needing an EXECUTIVE
+# decision regardless of severity (e.g. a cost commitment a CIO must
+# personally sign off on) -- see _decision_required_eligible.
+_METADATA_DECISION_REQUIRED_VALUES = {True, "true", "blocked", "cost_commitment"}
+
+
+def _decision_required_eligible(item: dict) -> bool:
+    """Stricter than plain `approval_required`: human approval alone
+    does NOT equal an executive decision. A routine, low/medium-
+    severity operational approval (e.g. deleting an orphaned disk after
+    a confirmation window) must never crowd this CIO-facing list --
+    that used to be this function's defect (every approval_required
+    Finding, regardless of severity, counted as an executive decision).
+
+    An approval-required Finding is only surfaced here when it is ALSO
+    at least one of:
+      - explicitly `executive_attention`,
+      - Critical/High severity (a serious approval, not routine
+        hygiene), or
+      - explicitly flagged via `metadata.decision_required` as
+        true/'blocked'/'cost_commitment' -- an escalation/cost-
+        commitment marker a collector or workflow step can set even for
+        a Medium/Low-severity Finding.
+
+    Everything else that still needs approval stays fully visible in
+    the Ops queue (app.operations.queue.build_queue, which applies no
+    such filter) and in handoff's `pending_approvals`
+    (app.operations.handoff.build_handoff) -- this tightening is
+    strictly about what the EXECUTIVE brief leads with, never about
+    hiding an approval from the people who actually action it."""
+    finding = item["finding"]
+    if not finding["approval_required"]:
+        return False
+    if finding["executive_attention"]:
+        return True
+    if finding["severity"] in (Severity.CRITICAL.value, Severity.HIGH.value):
+        return True
+    metadata = finding.get("metadata") or {}
+    return metadata.get("decision_required") in _METADATA_DECISION_REQUIRED_VALUES
+
+
 def _reliability_section(envelopes_by_source: dict) -> dict:
     envelope = envelopes_by_source.get("workload_slo")
     if envelope is None:
@@ -197,7 +239,7 @@ def build_brief(snapshot: OperationsSnapshot, *, now: Optional[datetime] = None)
     capacity = _capacity_section(envelopes_by_source)
     changes_since_yesterday = _changes_since_yesterday(envelopes_by_source, now=now)
 
-    decisions_required_items = [item for item in open_items if item["finding"]["approval_required"]]
+    decisions_required_items = [item for item in open_items if _decision_required_eligible(item)]
     decisions_required = [_finding_summary(i["finding"], i["workflow"]) for i in decisions_required_items[:_MAX_LIST_ITEMS]]
 
     attention_items_all = [item for item in open_items if item["finding"]["executive_attention"]]

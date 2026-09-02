@@ -100,6 +100,17 @@ into one inventory.
   `eastus2,westeurope`; see `OperationsConfig.capacity_locations` in
   `app/operations/config.py`), and forward it as both `locations` and
   `openai_locations` -- there is no `?locations=` query-string override.
+  Optionally, `OPENAI_CAPACITY_NAME_FILTERS` (a comma-separated,
+  case-insensitive substring allowlist; see
+  `OperationsConfig.openai_capacity_name_filters`) narrows the Azure
+  OpenAI/Cognitive Services quotas this source reports on, applied
+  BEFORE threshold classification -- a shared Cognitive Services
+  account can carry many unrelated, always-fully-allocated model
+  quotas (e.g. Claude/image models provisioned for other teams) that
+  would otherwise dominate a capacity executive summary. Unset (the
+  default) means no filtering. This setting is profile-independent
+  (not tied to any one profile's prompts/branding) and NEVER filters
+  `Microsoft.Compute` usages -- only Cognitive Services/Azure OpenAI.
 - **Envelope status**: `not_configured` when no `locations` are
   supplied; otherwise `ok` or `error`.
 - **Limitations**: Azure OpenAI quota here is a subscription+region
@@ -159,6 +170,21 @@ into one inventory.
   This module deliberately never re-aggregates assessments into an
   invented Secure Score-like number; each Unhealthy assessment is its
   own Finding.
+- **Missing/unrecognized `metadata.severity`**: some assessment
+  types/tenants have been observed returning `metadata.severity` as
+  `None`/missing or an unrecognized value entirely -- unlike an active
+  alert (`defender_alerts`, whose severity handling stays strict and
+  still raises), this is downgraded to `informational` with
+  `metadata.severity_unknown=True` and `executive_attention=False`
+  rather than erroring the entire source (see
+  `defender.normalize_assessment`/`_assessment_severity_from_raw`).
+- **Partial pagination coverage**: a LATER assessments page (not the
+  first) failing to fetch -- e.g. a transient timeout/5xx -- does not
+  fail this source or discard the earlier page(s) already collected
+  (see `app.operations.collectors.http.paginated_get`'s bounded
+  partial-result contract). It surfaces as this envelope's
+  `coverage_warning` with `status` staying `ok` -- see
+  `service.collect_defender_assessments_envelope`.
 
 ### 7. `cost_management_budget`
 
@@ -206,6 +232,15 @@ into one inventory.
 - **Limitations**: returns no Finding (never a fabricated one) when the
   prior period has zero/negative cost -- there is no meaningful baseline
   percentage in that case.
+- **Throttling resilience**: `Microsoft.CostManagement/query` has been
+  observed throttling aggressively (HTTP 429) under real load, which
+  used to fail this entire source outright. `app.operations.collectors.
+  http.arm_post` (used by every ARM POST in this codebase, not just
+  this collector) now retries a 429 or a transient 5xx with bounded,
+  Retry-After-honoring exponential backoff (default up to 3 attempts,
+  hard-capped at 5) before raising -- a genuine, persistent failure
+  still surfaces as an explicit `error` envelope exactly as before; any
+  OTHER 4xx (400/401/403/404/...) is never retried.
 
 ### 9. `azure_backup`
 
@@ -404,6 +439,16 @@ into one inventory.
   the ARG-side type-coercion risk entirely. `metadata.deadline` is set
   when Azure has published one; advisories with no published deadline
   are `low` severity rather than assigned an invented one.
+- **Reserved-name pitfall**: live probing against a real subscription
+  proved this query otherwise succeeds right up until `project`ing an
+  alias literally named `priority` -- Azure Resource Graph's Kusto
+  dialect treats that name as reserved/problematic and rejects it with
+  a `ParserFailure` of its own, independent of the
+  `todatetime(tolong(...))` issue above. `properties.Priority` is
+  therefore extended/projected as `advisoryPriority` instead (see
+  `advisories.QUERY`); `normalize_advisory` reads the row by that same
+  key. Only the ARG-side column name changed -- the Finding's own
+  `metadata.priority` output key is unaffected.
 - **Scope (explicit assumption)**: this collects ALL active
   `HealthAdvisory` events, not filtered to `EventSubType == 'Retirement'`
   only. Microsoft's own documentation states "all upcoming service
