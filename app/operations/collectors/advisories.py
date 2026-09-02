@@ -36,6 +36,9 @@ __all__ = ["normalize_advisory", "collect_retirement_advisories"]
 
 SOURCE = EvidenceSource.SERVICE_HEALTH.value
 
+_DOTNET_UNIX_EPOCH_TICKS = 621355968000000000
+_TICKS_PER_SECOND = 10000000
+
 # Deliberately simple: every properties.* field, including the two
 # timestamps, is cast with tostring() -- never todatetime(tolong(...)).
 # That combination assumes ImpactStartTime/ImpactMitigationTime are
@@ -70,6 +73,20 @@ QUERY = (
 )
 
 
+def _normalize_service_health_time(value, *, field_name: str) -> Optional[str]:
+    """Normalize Service Health timestamps returned as ISO strings or .NET ticks."""
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    if text.isdigit():
+        ticks = int(text)
+        if ticks < _DOTNET_UNIX_EPOCH_TICKS:
+            raise ValueError(f"{field_name}: invalid .NET tick timestamp {text!r}")
+        unix_seconds = (ticks - _DOTNET_UNIX_EPOCH_TICKS) / _TICKS_PER_SECOND
+        return format_utc_iso(datetime.fromtimestamp(unix_seconds, tz=timezone.utc))
+    return ensure_utc_iso(text, field_name=field_name)
+
+
 def normalize_advisory(row: dict, *, warning_days: int, now: datetime) -> Finding:
     """Normalize one active HealthAdvisory ServiceHealthResources row
     into a Finding. Severity is threshold-derived from how close the
@@ -86,9 +103,13 @@ def normalize_advisory(row: dict, *, warning_days: int, now: datetime) -> Findin
     tracking_id = row.get("trackingId") or ""
 
     deadline_raw = row.get("mitigationTime") or row.get("impactMitigationTime")
-    deadline = ensure_utc_iso(deadline_raw, field_name=f"advisory {advisory_id}.impactMitigationTime") if deadline_raw else None
+    deadline = _normalize_service_health_time(
+        deadline_raw, field_name=f"advisory {advisory_id}.impactMitigationTime"
+    )
     impact_start_raw = row.get("impactStart") or row.get("impactStartTime")
-    impact_start = ensure_utc_iso(impact_start_raw, field_name=f"advisory {advisory_id}.impactStartTime") if impact_start_raw else None
+    impact_start = _normalize_service_health_time(
+        impact_start_raw, field_name=f"advisory {advisory_id}.impactStartTime"
+    )
 
     evaluated_at = format_utc_iso(now)
     days_to_deadline = None

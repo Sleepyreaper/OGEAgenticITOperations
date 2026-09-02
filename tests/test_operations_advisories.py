@@ -132,6 +132,20 @@ test(
     and re.search(r"(?<![A-Za-z])title(?![A-Za-z])", advisories.QUERY) is None,
 )
 
+ticks_row = {
+    "id": "ticks-advisory",
+    "advisoryTitle": "Retirement with .NET ticks",
+    "summaryText": "Migrate before the deadline.",
+    "eventSubType": "Retirement",
+    "trackingId": "TICKS-1",
+    "advisoryPriority": "1",
+    "impactStart": "638712864000000000",
+    "mitigationTime": "639223488000000000",
+}
+ticks_finding = advisories.normalize_advisory(ticks_row, warning_days=180, now=NOW)
+test(".NET tick mitigation timestamps are normalized to UTC ISO", ticks_finding.metadata["deadline"].endswith("Z"))
+test(".NET tick impact timestamps are normalized to UTC ISO", ticks_finding.metadata["impact_start"].endswith("Z"))
+
 
 # ─── Summary ────────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
