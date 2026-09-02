@@ -18,11 +18,39 @@ docstring. `run_collection()` itself is UNCHANGED (same four sources,
 same order, same signature/behavior) so existing Phase 1 callers/tests
 keep working exactly as before; `run_full_collection()` is strictly
 additive on top of it.
+
+Concurrency: `run_collection()` (4 sources) and `run_full_collection()`
+(14 sources) each run their sources' independent collect_*_envelope
+calls concurrently through ONE bounded ThreadPoolExecutor -- see
+`_run_tasks_concurrently`/`_resolve_max_workers` below -- sized by
+`OperationsConfig.operations_collection_max_workers`
+(`OPERATIONS_COLLECTION_MAX_WORKERS`, default 6, hard-capped at
+`OPERATIONS_COLLECTION_MAX_WORKERS_HARD_CAP` = 12 regardless of config).
+This is what lets `/api/operations/brief?refresh=true` (which, via
+app/operations/snapshot.py, ends up running all 22 sources -- these 14
+plus 8 more from the legacy-scan adapter) finish within a single
+Gunicorn worker's request timeout instead of making up to 22 fully
+sequential Azure round-trips end to end. Every envelope in the returned
+list is in the EXACT SAME documented order regardless of which
+source's collector actually finishes first -- futures are submitted in
+that fixed order and resolved (`future.result()`) in that same order,
+never in completion order. `run_full_collection()` builds ONE FLAT task
+list (Phase 1 + Phase 2 sources together) and runs it through a single
+pool, rather than nesting a second pool inside a call to
+`run_collection()` -- see `run_full_collection`'s docstring. Each
+source's own wall-clock time is stamped onto its envelope as
+`duration_ms`, independent of how many other sources happen to be
+running concurrently alongside it, so a single slow source (a
+throttled ARM call, a slow Resource Graph query, ...) is diagnosable
+without needing to reproduce the whole request.
 """
 
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from app import telemetry
 from app.operations.collectors import alerts as alerts_collector
 from app.operations.collectors import advisories as advisories_collector
 from app.operations.collectors import arg as arg_collector
@@ -44,7 +72,7 @@ from app.operations.collectors.http import (
     default_http_get,
     default_http_post,
 )
-from app.operations.config import OperationsConfig
+from app.operations.config import OPERATIONS_COLLECTION_MAX_WORKERS_HARD_CAP, OperationsConfig
 from app.operations.errors import OperationsCollectionError
 from app.operations.models import EvidenceSource, utc_now_iso
 
@@ -95,6 +123,18 @@ class CollectionEnvelope:
     # never escalated into failing the entire envelope over what was,
     # at worst, a partial/transient page fetch.
     coverage_warning: Optional[str] = None
+    # Wall-clock time (milliseconds) THIS source's own collect_*_envelope
+    # call took, stamped by _execute_source_task after the call returns
+    # (or raises) -- independent of how many other sources were running
+    # concurrently alongside it in the same bounded ThreadPoolExecutor
+    # (see run_collection/run_full_collection). None only for an
+    # envelope constructed directly (e.g. by a test, or by
+    # app.operations.snapshot._as_collection_envelope for a legacy_scan
+    # dict-shaped envelope that never went through that timing path) --
+    # never a fabricated 0.0 standing in for "unknown". Purely additive
+    # diagnostic metadata: never a subscription id, credential, or any
+    # Finding/summary content.
+    duration_ms: Optional[float] = None
 
     def __post_init__(self):
         if self.status not in _VALID_STATUSES:
@@ -111,6 +151,7 @@ class CollectionEnvelope:
             "summaries": [s.to_dict() for s in self.summaries],
             "error": self.error,
             "coverage_warning": self.coverage_warning,
+            "duration_ms": self.duration_ms,
         }
 
 
@@ -302,6 +343,129 @@ def collect_slo_envelope(
     return _collect_envelope(source, _collect)
 
 
+# ─── Bounded concurrent execution ──────────────────────────────────────
+
+def _resolve_max_workers(config: OperationsConfig, task_count: int) -> int:
+    """At least 1, never more threads than there are sources actually
+    being collected in this run (no idle worker threads for a small
+    task list), and never above
+    `OPERATIONS_COLLECTION_MAX_WORKERS_HARD_CAP` regardless of
+    `config.operations_collection_max_workers` -- that field's own
+    `OperationsConfig.__post_init__` validation already enforces this
+    same bound at config-construction time; clamping again here is a
+    cheap belt-and-suspenders bound at the actual point of use, never a
+    loophole around that validation."""
+    configured = min(config.operations_collection_max_workers, OPERATIONS_COLLECTION_MAX_WORKERS_HARD_CAP)
+    return max(1, min(configured, task_count))
+
+
+def _execute_source_task(source: str, task_fn: Callable[[], CollectionEnvelope]) -> CollectionEnvelope:
+    """Run one source's already-isolated collect_*_envelope call (each
+    of which already converts its own EXPECTED failures --
+    OperationsCollectionError/ValueError/TypeError, see
+    `_EXPECTED_SOURCE_FAILURES` -- into that source's own typed
+    envelope), stamp the result with this source's own `duration_ms`,
+    and emit an OTEL span (source/status/duration only -- see
+    `app.telemetry.collection_span`; never subscription ids,
+    credentials, or Finding/summary content).
+
+    Also the one place a genuinely UNEXPECTED exception (a real bug,
+    not a classified Azure/data failure) is contained to just this
+    source's own 'error' envelope -- mirroring
+    `app/agents/tools.py::execute_tool`'s identical last-resort
+    boundary convention. This is intentionally in ADDITION to (never a
+    replacement for) `_collect_envelope`'s typed containment above: when
+    every source ran sequentially in a plain list literal, one such bug
+    escaping a collect_*_envelope call aborted the ENTIRE
+    run_collection()/run_full_collection() return value anyway (every
+    other source's already-computed envelope was lost along with it),
+    so leaving it uncaught cost nothing extra. Running sources
+    concurrently changes that: the other N-1 sources may already be
+    complete (or still in flight) in their own worker threads when one
+    fails, so losing every one of them to a single source's bug would
+    be a strictly worse outcome than before -- exactly the regression
+    this boundary exists to prevent.
+    """
+    start = time.monotonic()
+    with telemetry.collection_span(source=source) as recorder:
+        try:
+            envelope = task_fn()
+        except Exception as exc:  # noqa: BLE001 -- last-resort per-source boundary, see docstring above
+            envelope = CollectionEnvelope(
+                source=source, status="error", collected_at=utc_now_iso(),
+                error=f"unexpected collector failure: {exc}",
+            )
+        envelope.duration_ms = round((time.monotonic() - start) * 1000, 1)
+        recorder.set_status(envelope.status)
+    return envelope
+
+
+def _run_tasks_concurrently(tasks: list, config: OperationsConfig) -> list:
+    """Execute every `(source, task_fn)` pair in `tasks` -- each an
+    independent, already-isolated collect_*_envelope call -- through ONE
+    bounded ThreadPoolExecutor sized by `_resolve_max_workers`, and
+    return their CollectionEnvelopes in the EXACT SAME ORDER `tasks` was
+    given in, regardless of which source's collector actually finishes
+    first: futures are submitted in that fixed order and resolved
+    (`future.result()`) in that same order, never in completion order.
+
+    This is what lets a single sluggish source (a throttled ARM call, a
+    slow Resource Graph query, ...) stop blocking every source queued
+    after it -- the root cause of `/api/operations/brief?refresh=true`
+    timing out a synchronous Gunicorn worker with up to 22 fully
+    sequential Azure round-trips. A task_count of 0 or 1 skips the pool
+    entirely (no concurrency benefit, no thread-pool overhead) but still
+    goes through `_execute_source_task` for its duration_ms stamp/OTEL
+    span/unexpected-exception containment.
+    """
+    if not tasks:
+        return []
+    if len(tasks) == 1:
+        source, task_fn = tasks[0]
+        return [_execute_source_task(source, task_fn)]
+    max_workers = _resolve_max_workers(config, len(tasks))
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ops-collect") as executor:
+        futures = [executor.submit(_execute_source_task, source, task_fn) for source, task_fn in tasks]
+        return [future.result() for future in futures]
+
+
+def _phase1_tasks(
+    subscription_ids: list,
+    config: OperationsConfig,
+    *,
+    locations: Optional[list],
+    openai_locations: Optional[list],
+    resource_owner_lookup: Optional[Callable[[str], str]],
+    history_provider,
+    default_workspace_id: Optional[str],
+    query_logs_fn,
+    credential_factory: CredentialFactory,
+    http_get: HttpGet,
+) -> list:
+    """The 4 Phase 1 sources as `(source, zero-arg collect thunk)` pairs,
+    in their documented fixed order -- shared by `run_collection()` and
+    `run_full_collection()` so both build the exact same task plan (see
+    `_run_tasks_concurrently`) instead of `run_full_collection()`
+    nesting a second, separate bounded pool inside a call to
+    `run_collection()`."""
+    return [
+        ("azure_monitor_alerts", lambda: collect_alerts_envelope(
+            subscription_ids, config, resource_owner_lookup=resource_owner_lookup,
+            credential_factory=credential_factory, http_get=http_get,
+        )),
+        ("activity_log_change_health", lambda: collect_change_health_envelope(
+            config, workspace_id=default_workspace_id, query_logs_fn=query_logs_fn,
+        )),
+        ("capacity", lambda: collect_capacity_envelope(
+            subscription_ids, locations or [], config, openai_locations=openai_locations,
+            history_provider=history_provider, credential_factory=credential_factory, http_get=http_get,
+        )),
+        ("workload_slo", lambda: collect_slo_envelope(
+            config, default_workspace_id=default_workspace_id, query_logs_fn=query_logs_fn,
+        )),
+    ]
+
+
 def run_collection(
     subscription_ids: list,
     *,
@@ -323,24 +487,25 @@ def run_collection(
     `app.azure_data.query_resource_graph`) -- an empty/omitted list makes
     the capacity source report 'not_configured' rather than silently
     skipping capacity checks without saying so.
+
+    The 4 sources run CONCURRENTLY (see `_run_tasks_concurrently`),
+    bounded by `OperationsConfig.operations_collection_max_workers`, but
+    the returned list is always in the same fixed order above
+    regardless of completion order -- unchanged from before this source
+    was parallelized.
     """
     if not subscription_ids:
         raise ValueError("subscription_ids must be a non-empty list")
     config = config or OperationsConfig.from_env()
     query_logs_fn = query_logs_fn or changes_collector.default_query_logs
 
-    return [
-        collect_alerts_envelope(
-            subscription_ids, config, resource_owner_lookup=resource_owner_lookup,
-            credential_factory=credential_factory, http_get=http_get,
-        ),
-        collect_change_health_envelope(config, workspace_id=default_workspace_id, query_logs_fn=query_logs_fn),
-        collect_capacity_envelope(
-            subscription_ids, locations or [], config, openai_locations=openai_locations,
-            history_provider=history_provider, credential_factory=credential_factory, http_get=http_get,
-        ),
-        collect_slo_envelope(config, default_workspace_id=default_workspace_id, query_logs_fn=query_logs_fn),
-    ]
+    tasks = _phase1_tasks(
+        subscription_ids, config, locations=locations, openai_locations=openai_locations,
+        resource_owner_lookup=resource_owner_lookup, history_provider=history_provider,
+        default_workspace_id=default_workspace_id, query_logs_fn=query_logs_fn,
+        credential_factory=credential_factory, http_get=http_get,
+    )
+    return _run_tasks_concurrently(tasks, config)
 
 
 # ─── Phase 2: operational risk/hygiene collectors ──────────────────────
@@ -740,6 +905,56 @@ def collect_retirement_advisories_envelope(
     return _collect_envelope(source, _collect)
 
 
+def _phase2_tasks(
+    subscription_ids: list,
+    config: OperationsConfig,
+    *,
+    default_workspace_id: Optional[str],
+    query_logs_fn,
+    query_resource_graph_fn,
+    telemetry_resource_ids: Optional[list],
+    credential_factory: CredentialFactory,
+    http_get: HttpGet,
+    http_post: HttpPost,
+) -> list:
+    """The 10 Phase 2 sources as `(source, zero-arg collect thunk)`
+    pairs, in their documented fixed order -- see `_phase1_tasks`."""
+    return [
+        ("defender_alerts", lambda: collect_defender_alerts_envelope(
+            subscription_ids, config, credential_factory=credential_factory, http_get=http_get,
+        )),
+        ("defender_assessments", lambda: collect_defender_assessments_envelope(
+            subscription_ids, config, credential_factory=credential_factory, http_get=http_get,
+        )),
+        ("cost_management_budget", lambda: collect_cost_budget_envelope(
+            subscription_ids, config, credential_factory=credential_factory, http_get=http_get,
+        )),
+        ("cost_management_trend", lambda: collect_cost_trend_envelope(
+            subscription_ids, config, credential_factory=credential_factory, http_post=http_post,
+        )),
+        ("azure_backup", lambda: collect_backup_envelope(
+            config, workspace_id=default_workspace_id, query_logs_fn=query_logs_fn,
+        )),
+        ("update_manager", lambda: collect_update_manager_envelope(
+            subscription_ids, config, query_resource_graph_fn=query_resource_graph_fn,
+        )),
+        ("key_vault_expiry", lambda: collect_key_vault_expiry_envelope(
+            config, credential_factory=credential_factory, http_get=http_get,
+        )),
+        ("automation_failures", lambda: collect_automation_envelope(
+            config, credential_factory=credential_factory, http_get=http_get,
+        )),
+        ("telemetry_coverage", lambda: collect_telemetry_coverage_envelope(
+            subscription_ids, config, credential_factory=credential_factory, http_get=http_get,
+            workspace_id=default_workspace_id, query_logs_fn=query_logs_fn, query_resource_graph_fn=query_resource_graph_fn,
+            extra_resource_ids=telemetry_resource_ids,
+        )),
+        ("retirement_advisories", lambda: collect_retirement_advisories_envelope(
+            subscription_ids, config, query_resource_graph_fn=query_resource_graph_fn,
+        )),
+    ]
+
+
 def run_full_collection(
     subscription_ids: list,
     *,
@@ -763,15 +978,27 @@ def run_full_collection(
     azure_backup, update_manager, key_vault_expiry, automation_failures,
     telemetry_coverage, retirement_advisories -- always in that order.
 
-    This is strictly additive over `run_collection()` (which is called
-    internally, unchanged): existing callers/tests of `run_collection()`
-    are entirely unaffected by Phase 2. Each Phase 2 source is bounded
-    and independently configurable via `OperationsConfig`'s `enable_*`
-    flags and per-domain input lists (`key_vault_monitor_uris`,
-    `automation_account_ids`, `telemetry_monitored_resource_types`/
-    `telemetry_critical_resource_ids`) -- a source with nothing
-    configured to check reports 'not_configured' rather than silently
-    skipping itself or making an expensive discovery call by default.
+    This is strictly additive over `run_collection()`: the same
+    `_phase1_tasks()` builder produces byte-for-byte the same 4 Phase 1
+    envelopes (aside from timing-dependent `collected_at`/`duration_ms`)
+    a standalone `run_collection()` call would -- existing callers/tests
+    of `run_collection()` are entirely unaffected by Phase 2. Each Phase
+    2 source is bounded and independently configurable via
+    `OperationsConfig`'s `enable_*` flags and per-domain input lists
+    (`key_vault_monitor_uris`, `automation_account_ids`,
+    `telemetry_monitored_resource_types`/`telemetry_critical_resource_ids`)
+    -- a source with nothing configured to check reports
+    'not_configured' rather than silently skipping itself or making an
+    expensive discovery call by default.
+
+    All 14 sources (Phase 1 + Phase 2 together) run through ONE FLAT
+    bounded ThreadPoolExecutor (see `_run_tasks_concurrently`) --
+    `run_collection()` is NOT called internally (that would nest a
+    second, separate bounded pool for just the 4 Phase 1 sources,
+    forcing every Phase 2 source to wait for all of Phase 1 to finish
+    first instead of all 14 sharing one bounded worker budget
+    concurrently). The returned list is still always in the exact
+    documented order above regardless of completion order.
     """
     if not subscription_ids:
         raise ValueError("subscription_ids must be a non-empty list")
@@ -779,29 +1006,17 @@ def run_full_collection(
     query_logs_fn = query_logs_fn or changes_collector.default_query_logs
     query_resource_graph_fn = query_resource_graph_fn or arg_collector.default_query_resource_graph
 
-    phase1 = run_collection(
-        subscription_ids, config=config, locations=locations, openai_locations=openai_locations,
+    tasks = _phase1_tasks(
+        subscription_ids, config, locations=locations, openai_locations=openai_locations,
         resource_owner_lookup=resource_owner_lookup, history_provider=history_provider,
         default_workspace_id=default_workspace_id, query_logs_fn=query_logs_fn,
         credential_factory=credential_factory, http_get=http_get,
+    ) + _phase2_tasks(
+        subscription_ids, config, default_workspace_id=default_workspace_id, query_logs_fn=query_logs_fn,
+        query_resource_graph_fn=query_resource_graph_fn, telemetry_resource_ids=telemetry_resource_ids,
+        credential_factory=credential_factory, http_get=http_get, http_post=http_post,
     )
-    phase2 = [
-        collect_defender_alerts_envelope(subscription_ids, config, credential_factory=credential_factory, http_get=http_get),
-        collect_defender_assessments_envelope(subscription_ids, config, credential_factory=credential_factory, http_get=http_get),
-        collect_cost_budget_envelope(subscription_ids, config, credential_factory=credential_factory, http_get=http_get),
-        collect_cost_trend_envelope(subscription_ids, config, credential_factory=credential_factory, http_post=http_post),
-        collect_backup_envelope(config, workspace_id=default_workspace_id, query_logs_fn=query_logs_fn),
-        collect_update_manager_envelope(subscription_ids, config, query_resource_graph_fn=query_resource_graph_fn),
-        collect_key_vault_expiry_envelope(config, credential_factory=credential_factory, http_get=http_get),
-        collect_automation_envelope(config, credential_factory=credential_factory, http_get=http_get),
-        collect_telemetry_coverage_envelope(
-            subscription_ids, config, credential_factory=credential_factory, http_get=http_get,
-            workspace_id=default_workspace_id, query_logs_fn=query_logs_fn, query_resource_graph_fn=query_resource_graph_fn,
-            extra_resource_ids=telemetry_resource_ids,
-        ),
-        collect_retirement_advisories_envelope(subscription_ids, config, query_resource_graph_fn=query_resource_graph_fn),
-    ]
-    return phase1 + phase2
+    return _run_tasks_concurrently(tasks, config)
 
 
 def summarize_coverage(envelopes: list) -> dict:

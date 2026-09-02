@@ -13,6 +13,7 @@ Run: python3 tests/test_operations_snapshot.py
 """
 import os
 import sys
+import time as real_time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -212,6 +213,52 @@ def ordering_full(subs, *, config, **kwargs):
 snap_order = get_snapshot(["SubG"], config=CONFIG, cache=cache8, state_store=store8, full_collect_fn=ordering_full, legacy_collect_fn=empty_legacy, now=NOW)
 test("critical severity finding ranks before low severity", snap_order.findings[0]["finding"]["id"] == critical.id)
 test("priority band is exposed (P1 for critical)", snap_order.findings[0]["priority"]["band"] == "P1")
+
+
+print("\n\U0001f9ea Test 9: get_snapshot -- full_collect_fn and legacy_collect_fn run CONCURRENTLY (not sequentially), and collection_duration_ms is stamped")
+store9 = new_store()
+cache9 = SnapshotCache(ttl_seconds=60)
+_SLEEP_SECONDS = 0.3  # generous -- real threading overhead is a few ms, nowhere close to masking this
+
+
+
+
+def slow_full_collect(subs, *, config, **kwargs):
+    real_time.sleep(_SLEEP_SECONDS)
+    return [CollectionEnvelope(source="azure_monitor_alerts", status="ok", collected_at="2025-06-01T00:00:00Z", findings=[])]
+
+
+def slow_legacy_collect(subs, **kwargs):
+    real_time.sleep(_SLEEP_SECONDS)
+    return [{"source": "legacy_resource_health", "status": "ok", "collected_at": "2025-06-01T00:00:00Z", "findings": [], "summaries": [], "error": None}]
+
+
+wall_start9 = real_time.monotonic()
+snap9 = get_snapshot(
+    ["SubH"], config=CONFIG, cache=cache9, state_store=store9,
+    full_collect_fn=slow_full_collect, legacy_collect_fn=slow_legacy_collect, now=NOW,
+)
+wall_ms9 = (real_time.monotonic() - wall_start9) * 1000
+
+test("both full and legacy envelopes are present (2 sources total)", len(snap9.envelopes) == 2)
+test(
+    "full_collect_fn and legacy_collect_fn overlapped -- wall clock is well under the SUM of their two "
+    "sleeps (a sequential call would take roughly the sum, ~2x this bound)",
+    wall_ms9 < _SLEEP_SECONDS * 1000 * 1.5,
+)
+test("collection_duration_ms is stamped on a freshly-built snapshot", snap9.collection_duration_ms is not None and snap9.collection_duration_ms > 0)
+test(
+    "collection_duration_ms reflects the overlapped (not summed) wall-clock time",
+    snap9.collection_duration_ms < _SLEEP_SECONDS * 1000 * 1.5,
+)
+
+cached9 = get_snapshot(
+    ["SubH"], config=CONFIG, cache=cache9, state_store=store9,
+    full_collect_fn=lambda *a, **k: (_ for _ in ()).throw(AssertionError("should be cache hit")),
+    legacy_collect_fn=lambda *a, **k: (_ for _ in ()).throw(AssertionError("should be cache hit")),
+    now=NOW,
+)
+test("a cache hit reuses the ORIGINAL collection_duration_ms (no re-collection happened)", cached9.collection_duration_ms == snap9.collection_duration_ms)
 
 
 _cleanup()

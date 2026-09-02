@@ -81,11 +81,31 @@ call.
 Automatic, via the distro's logging instrumentation (Python's standard
 `logging` module).
 
+### Evidence-collection sources → `AppDependencies`
+
+Every evidence source `app/operations/service.py` collects (via
+`run_collection`/`run_full_collection`, run concurrently through a
+bounded thread pool — see `docs/OPERATIONS_API.md`'s "Concurrency and
+collection performance") is wrapped in a custom span
+(`app/telemetry.py::collection_span`) with these attributes:
+
+| Attribute | Meaning |
+|---|---|
+| `ops.collection.source` | The source name (`CollectionEnvelope.source`, e.g. `azure_monitor_alerts`) |
+| `ops.collection.status` | The resulting envelope status: `ok` / `error` / `not_configured` / `not_supported` |
+
+Deliberately never a subscription id, credential, or any Finding/summary
+content — same attributes as `CollectionEnvelope.duration_ms` (the
+non-telemetry, always-populated equivalent surfaced directly in the
+`/api/operations/*` JSON response), just also visible in Application
+Insights for cross-request/cross-subscription aggregation (e.g. "which
+source is consistently the slowest across the last 24 hours").
+
 ### Optional metrics → `AppMetrics`
 
-`app/telemetry.py` also emits four low-cardinality counters/histogram
-(attributes limited to `ops.agent.key` + `gen_ai.request.model`, both bounded
-by your own six-agent/deployment configuration — never a per-request or
+`app/telemetry.py` also emits several low-cardinality counters/histograms
+(attributes limited to a small, bounded set of dimensions — agent
+key/model, or evidence-collection source name — never a per-request or
 per-user value):
 
 | Instrument | Type | Unit |
@@ -94,6 +114,8 @@ per-user value):
 | `ops_council.agent.tokens` | counter (dimensioned by `gen_ai.token.type` = `input`/`output`) | tokens |
 | `ops_council.agent.duration` | histogram | ms |
 | `ops_council.agent.cost_usd` | counter | usd |
+| `ops_council.collection.calls` | counter (dimensioned by `ops.collection.source`) | calls |
+| `ops_council.collection.duration` | histogram (dimensioned by `ops.collection.source`) | ms |
 
 These are additive to the span attributes above, not a replacement — spans
 are required for this app to be useful (correlating a specific call's
@@ -194,6 +216,22 @@ AppDependencies
 | extend estCost = todouble(Properties["ops.estimated_cost_usd"])
 | summarize calls = count(), estimatedCostUsd = sum(estCost) by bin(TimeGenerated, 1h)
 | order by TimeGenerated asc
+```
+
+**Slowest evidence-collection sources (P95 latency), last 24h -- the
+diagnostic query this app's concurrent collection refactor was built
+for (see `docs/OPERATIONS_API.md`'s "Concurrency and collection
+performance"):**
+
+```kusto
+AppDependencies
+| where TimeGenerated > ago(24h)
+| where Name == "ops_collection_source"
+| extend source = tostring(Properties["ops.collection.source"])
+| extend status = tostring(Properties["ops.collection.status"])
+| summarize calls = count(), p50 = percentile(DurationMs, 50), p95 = percentile(DurationMs, 95),
+            errorCount = countif(status == "error") by source
+| order by p95 desc
 ```
 
 **Requests/latency/errors by HTTP route (standard `AppRequests`, not custom):**

@@ -19,7 +19,8 @@ string:
 Workspace-based Application Insights maps this module's output as:
 
   * Flask HTTP requests             -> AppRequests   (via the distro)
-  * ``agent_call_span`` (below)     -> AppDependencies (Properties = the
+  * ``agent_call_span``/``tool_call_span``/``collection_span`` (below)
+                                     -> AppDependencies (Properties = the
                                         ``gen_ai.*``/``ops.*`` attributes)
   * Standard library logging        -> AppTraces      (via the distro)
   * The optional counters/histogram -> AppMetrics
@@ -67,6 +68,12 @@ _routing_decision_counter = None
 _evaluation_schema_valid_counter = None
 _evaluation_schema_invalid_counter = None
 _evaluation_unsupported_citation_counter = None
+# Evidence-collection instrumentation (see collection_span below) --
+# one span/metric pair per source per app.operations.service collection
+# run (run_collection/run_full_collection), same no-op-unless-enabled
+# convention.
+_collection_call_counter = None
+_collection_duration_histogram = None
 
 
 def init_telemetry() -> bool:
@@ -86,6 +93,7 @@ def init_telemetry() -> bool:
     global _tool_call_counter, _tool_duration_histogram, _routing_decision_counter
     global _evaluation_schema_valid_counter, _evaluation_schema_invalid_counter
     global _evaluation_unsupported_citation_counter
+    global _collection_call_counter, _collection_duration_histogram
 
     if _initialized:
         return _enabled
@@ -172,6 +180,16 @@ def init_telemetry() -> bool:
         unit="1",
         description="Evidence ids cited by a model that were not present in the evidence bundle it was given.",
     )
+    _collection_call_counter = meter.create_counter(
+        "ops_council.collection.calls",
+        unit="1",
+        description="Evidence-collection source calls (app/operations/service.py collect_*_envelope), by source and status.",
+    )
+    _collection_duration_histogram = meter.create_histogram(
+        "ops_council.collection.duration",
+        unit="ms",
+        description="Evidence-collection source latency (app/operations/service.py collect_*_envelope), by source and status.",
+    )
     _enabled = True
     return True
 
@@ -194,6 +212,7 @@ def reset_for_tests() -> None:
     global _tool_call_counter, _tool_duration_histogram, _routing_decision_counter
     global _evaluation_schema_valid_counter, _evaluation_schema_invalid_counter
     global _evaluation_unsupported_citation_counter
+    global _collection_call_counter, _collection_duration_histogram
     _initialized = False
     _enabled = False
     _tracer = None
@@ -207,6 +226,8 @@ def reset_for_tests() -> None:
     _evaluation_schema_valid_counter = None
     _evaluation_schema_invalid_counter = None
     _evaluation_unsupported_citation_counter = None
+    _collection_call_counter = None
+    _collection_duration_histogram = None
 
 
 class _SpanRecorder:
@@ -355,6 +376,66 @@ def tool_call_span(*, tool_name: str) -> Iterator[_ToolSpanRecorder]:
                 _tool_duration_histogram.record(duration_ms, attributes)
             if _tool_call_counter is not None:
                 _tool_call_counter.add(1, attributes)
+
+
+class _CollectionSpanRecorder:
+    """Same no-op-unless-enabled convention as ``_ToolSpanRecorder``
+    above, scoped to one evidence-collection source's envelope build
+    (app/operations/service.py's collect_*_envelope calls, run
+    concurrently via a bounded ThreadPoolExecutor -- see that module's
+    run_collection/run_full_collection). Records ONLY the source name
+    and its final status -- never subscription ids, credentials, or any
+    Finding/summary content."""
+
+    __slots__ = ("_span",)
+
+    def __init__(self, span):
+        self._span = span
+
+    def set_status(self, status: str) -> None:
+        if self._span is not None:
+            self._span.set_attribute("ops.collection.status", status)
+
+
+@contextmanager
+def collection_span(*, source: str) -> Iterator[_CollectionSpanRecorder]:
+    """Wrap one evidence-collection source's envelope build
+    (app/operations/service.py's collect_*_envelope calls) -- a
+    parent/child span alongside ``agent_call_span``/``tool_call_span``
+    so per-source collection latency is auditable in Application
+    Insights the same way agent/tool calls are, distinguishing a
+    genuinely slow single source from the overall snapshot's total
+    collection time (see
+    ``app.operations.snapshot.OperationsSnapshot.collection_duration_ms``).
+    Always usable regardless of whether telemetry is enabled; re-raises
+    any exception unchanged -- in practice, app.operations.service's own
+    per-task safety net (``_execute_source_task``) already catches every
+    exception before it would reach here, so this ``except`` clause is
+    defensive symmetry with ``tool_call_span`` rather than an expected
+    path."""
+    if not _enabled:
+        yield _CollectionSpanRecorder(None)
+        return
+
+    from opentelemetry.trace import Status, StatusCode
+
+    attributes = {"ops.collection.source": source}
+    start = time.monotonic()
+    with _tracer.start_as_current_span("ops_collection_source") as span:
+        span.set_attribute("ops.collection.source", source)
+        recorder = _CollectionSpanRecorder(span)
+        try:
+            yield recorder
+        except Exception as exc:
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR, str(exc)))
+            raise
+        finally:
+            duration_ms = (time.monotonic() - start) * 1000
+            if _collection_duration_histogram is not None:
+                _collection_duration_histogram.record(duration_ms, attributes)
+            if _collection_call_counter is not None:
+                _collection_call_counter.add(1, attributes)
 
 
 def record_routing_decision(*, debate: bool, specialist_count: int, coordinator_included: bool) -> None:

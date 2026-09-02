@@ -38,11 +38,32 @@ auto-discover regions -- pass `full_collect_kwargs={"locations": [...]}`
 query-string parameter). Leaving it unset is a valid, safe default:
 capacity simply reports `not_configured`, exactly as it does when
 calling run_full_collection directly.
+
+Concurrency: `full_collect_fn` (run_full_collection -- 14 sources,
+itself internally bounded/concurrent, see app/operations/service.py)
+and `legacy_collect_fn` (collect_legacy_envelopes -- 8 sources) are two
+entirely independent evidence collections with no shared state, so on
+an actual cache miss this module runs them as the two top-level tasks
+of one small (max_workers=2) ThreadPoolExecutor rather than one after
+the other -- no third top-level task, no nested unbounded pool (each
+of run_full_collection's OWN 14 sources is already a separate, bounded
+pool one level down). `full_future.result()`/`legacy_future.result()`
+are awaited in that fixed order regardless of which finishes first, so
+which one raises (if either does) is unchanged from before this was
+parallelized; the executor's own `with` block still waits for both to
+actually finish before returning/propagating, so a slow one is never
+abandoned mid-flight. The wall-clock time for this combined step is
+stamped onto the returned snapshot as `collection_duration_ms` -- the
+one number that tells you how much of a `/brief`/`/queue`/`/snapshot`
+request's total latency was spent actually talking to Azure, as
+opposed to dedup/prioritization/workflow-state-merge afterward.
 """
 
 import dataclasses
 import hashlib
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Optional
@@ -119,6 +140,18 @@ class OperationsSnapshot:
     coverage: dict
     source_errors: list
     summary: dict
+    # Total wall-clock time (milliseconds) the full_collect_fn +
+    # legacy_collect_fn step took (see get_snapshot) -- the two run
+    # concurrently, so this is effectively max(full, legacy) plus
+    # scheduling overhead, not their sum. get_snapshot always sets this
+    # to a real measured value once collection has actually run --
+    # INCLUDING on a cache hit, where the value returned is the cached
+    # snapshot's own number from when IT was first built (never
+    # re-measured, since no collection ran for that response). None
+    # only for an OperationsSnapshot constructed directly rather than
+    # via get_snapshot (e.g. app.operations.demo_fixture's canned demo
+    # snapshot, or a test fixture) -- never a fabricated 0.0.
+    collection_duration_ms: Optional[float] = None
 
     def to_dict(self) -> dict:
         return {
@@ -131,6 +164,7 @@ class OperationsSnapshot:
             "coverage": self.coverage,
             "source_errors": self.source_errors,
             "summary": self.summary,
+            "collection_duration_ms": self.collection_duration_ms,
         }
 
 
@@ -290,8 +324,24 @@ def get_snapshot(
     full_kwargs = dict(full_collect_kwargs or {})
     legacy_kwargs = dict(legacy_collect_kwargs or {})
 
-    full_envelopes = list(full_collect_fn(ordered_subs, config=config, **full_kwargs))
-    legacy_envelopes_raw = list(legacy_collect_fn(ordered_subs, **legacy_kwargs))
+    # full_collect_fn (run_full_collection, 14 sources) and
+    # legacy_collect_fn (collect_legacy_envelopes, 8 sources) are two
+    # entirely independent collections -- no shared state, see this
+    # module's docstring -- so they run as the two top-level tasks of
+    # one small (max_workers=2) pool rather than one after the other.
+    # `.result()` is awaited in this same fixed order regardless of
+    # which finishes first, so which call's exception (if either
+    # raises) propagates is unchanged from the prior sequential code;
+    # the `with` block still blocks until BOTH are done before
+    # returning/propagating, so a still-running one is never abandoned
+    # or cancelled mid-flight.
+    collection_start = time.monotonic()
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="ops-snapshot") as executor:
+        full_future = executor.submit(lambda: list(full_collect_fn(ordered_subs, config=config, **full_kwargs)))
+        legacy_future = executor.submit(lambda: list(legacy_collect_fn(ordered_subs, **legacy_kwargs)))
+        full_envelopes = full_future.result()
+        legacy_envelopes_raw = legacy_future.result()
+    collection_duration_ms = round((time.monotonic() - collection_start) * 1000, 1)
     envelopes = full_envelopes + [_as_collection_envelope(e) for e in legacy_envelopes_raw]
 
     all_findings = [f for envelope in envelopes for f in envelope.findings]
@@ -325,6 +375,7 @@ def get_snapshot(
         coverage=coverage,
         source_errors=source_errors,
         summary=_build_summary(ordered, coverage),
+        collection_duration_ms=collection_duration_ms,
     )
 
     cache.set(cache_key, snapshot)

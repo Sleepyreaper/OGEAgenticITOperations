@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 from typing import Tuple
 
-__all__ = ["OperationsConfig", "OperationsConfigError"]
+__all__ = ["OperationsConfig", "OperationsConfigError", "OPERATIONS_COLLECTION_MAX_WORKERS_HARD_CAP"]
 
 
 class OperationsConfigError(ValueError):
@@ -122,6 +122,21 @@ DEFAULT_TELEMETRY_MONITORED_RESOURCE_TYPES: Tuple[str, ...] = (
     "Microsoft.ContainerService/managedClusters",
     "Microsoft.DBforPostgreSQL/flexibleServers",
 )
+
+
+# Hard ceiling on OperationsConfig.operations_collection_max_workers,
+# regardless of what OPERATIONS_COLLECTION_MAX_WORKERS is set to --
+# app.operations.service runs every collection source (up to 22 across
+# run_full_collection + the legacy-scan adapter) through a bounded
+# ThreadPoolExecutor sized to this value (see
+# app.operations.service._resolve_max_workers), and this cap keeps one
+# misconfigured deployment from firing off dozens of simultaneous
+# outbound Azure calls per request/subscription. 12 is deliberately
+# generous relative to the default of 6 while still bounded -- if a real
+# deployment needs more, that's a signal to profile which single source
+# is slow (per-source `duration_ms`, see CollectionEnvelope) rather than
+# to raise concurrency further.
+OPERATIONS_COLLECTION_MAX_WORKERS_HARD_CAP = 12
 
 
 @dataclass
@@ -256,6 +271,18 @@ class OperationsConfig:
     # different ?subs= selection never reuses another selection's cache
     # entry. A caller can always force a rebuild (?refresh=true).
     snapshot_cache_ttl_seconds: int = 60
+    # Bounds how many of run_collection()/run_full_collection()'s
+    # independent source collectors (app/operations/service.py) run
+    # concurrently in one bounded ThreadPoolExecutor -- never more than
+    # OPERATIONS_COLLECTION_MAX_WORKERS_HARD_CAP (12) regardless of this
+    # value, so a single collection run can never fire off an unbounded
+    # number of simultaneous outbound Azure calls. This is what lets
+    # /api/operations/brief?refresh=true's ~22 sources (14 from
+    # run_full_collection + 8 legacy-scan) collect in a fraction of the
+    # old fully-sequential wall time without exceeding a Gunicorn
+    # worker's request timeout -- see run_collection/run_full_collection's
+    # docstrings in app/operations/service.py.
+    operations_collection_max_workers: int = 6
     # SQLite file path for the finding workflow-state store
     # (app/operations/state.py) -- status/owner/snooze/audit history.
     # The default is a local, working-directory-relative path suitable
@@ -336,6 +363,12 @@ class OperationsConfig:
             raise OperationsConfigError(
                 f"snapshot_cache_ttl_seconds must be positive, got {self.snapshot_cache_ttl_seconds}."
             )
+        if not (1 <= self.operations_collection_max_workers <= OPERATIONS_COLLECTION_MAX_WORKERS_HARD_CAP):
+            raise OperationsConfigError(
+                f"operations_collection_max_workers must be between 1 and "
+                f"{OPERATIONS_COLLECTION_MAX_WORKERS_HARD_CAP} (a hard cap bounding concurrent outbound "
+                f"Azure calls per collection run), got {self.operations_collection_max_workers}."
+            )
         if not self.operations_state_db_path.strip():
             raise OperationsConfigError("operations_state_db_path must not be blank.")
 
@@ -405,5 +438,6 @@ class OperationsConfig:
             retirement_warning_days=env_int("RETIREMENT_WARNING_DAYS", 180),
             enable_retirement_advisories=env_bool("ENABLE_RETIREMENT_ADVISORIES", True),
             snapshot_cache_ttl_seconds=env_int("OPERATIONS_SNAPSHOT_CACHE_TTL_SECONDS", 60),
+            operations_collection_max_workers=env_int("OPERATIONS_COLLECTION_MAX_WORKERS", 6),
             operations_state_db_path=os.environ.get("OPERATIONS_STATE_DB", "").strip() or "operations_state.db",
         )

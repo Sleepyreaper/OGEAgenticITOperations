@@ -92,7 +92,7 @@ into one `OperationsSnapshot`:
   "generated_at": "2025-01-01T00:00:00.000Z",
   "subscription_ids": ["<normalized subscription id>", "..."],
   "status": "ok" | "partial" | "error",
-  "envelopes": [ /* CollectionEnvelope.to_dict() x 22 */ ],
+  "envelopes": [ /* CollectionEnvelope.to_dict() x 22, each with its own duration_ms (see "Concurrency" below) */ ],
   "findings": [
     {
       "finding": { /* Finding.to_dict() -- see docs/EVIDENCE_MODEL.md */ },
@@ -109,7 +109,8 @@ into one `OperationsSnapshot`:
     "total_findings": 12, "by_severity": {"high": 3, "...": 0}, "by_category": {"security": 2, "...": 0},
     "by_workflow_status": {"new": 10, "acknowledged": 2}, "executive_attention_count": 3,
     "approval_required_count": 2, "source_coverage": { /* same shape as coverage above */ }
-  }
+  },
+  "collection_duration_ms": 812.4
 }
 ```
 
@@ -117,6 +118,88 @@ into one `OperationsSnapshot`:
 below) and priority-ordered (see `app/operations/priority.py`: customer
 impact, breached/at-risk SLO, severity, confidence, then age — exposed
 via `priority.factors`, never an opaque score).
+
+### Concurrency and collection performance
+
+All 22 sources used to collect fully sequentially — one Azure API call
+at a time — which could exceed a synchronous Gunicorn worker's request
+timeout on a slow subscription (the root cause of an intermittent `502`
+on `/api/operations/brief?refresh=true`). They now collect concurrently
+through TWO layers, both bounded (never an unbounded thread pool):
+
+1. `app.operations.service.run_collection`/`run_full_collection` run
+   their sources (4 and 14 respectively) through ONE flat, bounded
+   `ThreadPoolExecutor` — sized by `OperationsConfig.
+   operations_collection_max_workers` (`OPERATIONS_COLLECTION_MAX_WORKERS`,
+   default `6`, hard-capped at `12` regardless of that setting). Phase 1
+   and Phase 2 sources share ONE pool (`run_full_collection` does not
+   nest a second pool inside a call to `run_collection`), so a slow
+   Phase 1 source never blocks every Phase 2 source from starting.
+2. `app.operations.snapshot.get_snapshot` runs `full_collect_fn`
+   (`run_full_collection`, 14 sources) and `legacy_collect_fn`
+   (`collect_legacy_envelopes`, 8 sources) as the two top-level tasks of
+   a small (`max_workers=2`) pool, since they're two entirely
+   independent collections with no shared state.
+
+**Every envelope in the returned list is still in the exact documented
+order above, regardless of which source's collector actually finishes
+first** — futures are submitted in that fixed order and resolved in
+that same order. A genuinely unexpected exception in one source's
+collector (not one of the documented `error`/`not_configured`/
+`not_supported` classifications — see `docs/AZURE_DATA_SOURCES.md`) is
+contained to that one source's own `error` envelope and never crashes
+the rest of the collection run.
+
+Two additive, purely diagnostic timing fields make a slow source
+traceable without reproducing the whole request:
+
+- `CollectionEnvelope.duration_ms` — wall-clock time (milliseconds)
+  THIS source's own collector call took, independent of how many other
+  sources ran concurrently alongside it.
+- `OperationsSnapshot.collection_duration_ms` — total wall-clock time
+  for the combined `full_collect_fn` + `legacy_collect_fn` step (these
+  two run concurrently, so this is effectively `max(full, legacy)` plus
+  scheduling overhead, not their sum). `null` for an `OperationsSnapshot`
+  built outside `get_snapshot` (e.g. the demo fixture).
+
+Neither field ever contains a subscription id, credential, or
+Finding/summary content — both are purely timing metadata. When
+`APPLICATIONINSIGHTS_CONNECTION_STRING` is configured, each source's
+collection is also wrapped in an OTEL span (`app.telemetry.collection_span`
+— source name, status, duration only, landing in AppDependencies/
+AppMetrics; see `docs/TELEMETRY.md`) for the same diagnosability in
+Application Insights.
+
+`get_snapshot`'s existing per-subscription cache (see "Caching" below)
+is unaffected: a Gunicorn deployment running more than one worker
+process has a **separate, process-local** cache and workflow-state
+connection pool per worker (no cross-process/distributed cache) — the
+live showcase deployment currently runs a single Gunicorn worker
+process, so this doesn't cause redundant collection in practice; a
+multi-worker deployment would see each worker independently repopulate
+its own cache on the first request it receives, exactly as it already
+does for multi-instance/scaled-out deployments today. This change does
+not introduce a distributed/cross-process cache — that remains a
+deliberately separate, unimplemented concern (see "Caching" below).
+
+**No overall collection deadline is imposed.** Each individual outbound
+Azure call already has its own authoritative HTTP timeout (`timeout=30`
+seconds, see `app/operations/collectors/http.py`) — unchanged by this
+work — and the bounded worker pool above already bounds how many of
+those calls can be in flight at once per collection run. Python cannot
+forcibly cancel a running thread (the exact same limitation
+`app/agents/tools.py::execute_tool`'s own tool-call timeout already
+documents), so a wall-clock "give up after N seconds" deadline here
+could only mean returning whatever sources happened to finish first
+while the rest kept running unattended in the background — silently
+discarding data a caller paid for the API call to collect, and forcing
+an ambiguous new envelope status (neither `error` nor a true `ok`) that
+risks exactly the "timeout reported as success" outcome this must never
+do. Given the per-request HTTP timeouts and worker bound above already
+resolve the reported 502 (worst case is now proportional to
+`ceil(source_count / max_workers)`, not `source_count`, fully
+sequential round-trips), an additional deadline layer was judged not
+worth that risk for this change.
 
 ### Deduplication
 
