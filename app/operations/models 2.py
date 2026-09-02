@@ -289,17 +289,6 @@ class Finding:
     recommended_action: str = ""
     approval_required: bool = False
     executive_attention: bool = False
-    # Deliberately separate from `executive_attention`/`category`/
-    # `severity` -- see app.operations.priority.is_customer_impacting.
-    # True ONLY when the collector/adapter that built this Finding had
-    # deterministic, explicit evidence of real customer/workload impact
-    # (e.g. Service Health reporting an active ServiceIssue incident for
-    # this subscription, or a customer-facing SLO that has actually
-    # breached -- never inferred merely from a high severity, an
-    # executive_attention flag, or a Finding's category). Defaults to
-    # False: the absence of that specific evidence must never be
-    # silently treated as impact.
-    customer_impacting: bool = False
     metadata: dict = field(default_factory=dict)
     discriminator: str = ""
 
@@ -368,7 +357,6 @@ class Finding:
             "recommended_action": self.recommended_action,
             "approval_required": self.approval_required,
             "executive_attention": self.executive_attention,
-            "customer_impacting": self.customer_impacting,
             "metadata": self.metadata,
         }
 

@@ -4,9 +4,11 @@
 accumulation, absolute-nextLink following, the configurable max_pages/
 max_records bounds AND the hard ceilings that clamp them regardless of
 what a caller asks for, explicit (never silent) truncation surfacing,
-and that a genuine failure (auth/non-2xx/non-JSON) mid-pagination still
-raises OperationsCollectionError exactly like a single-page arm_get/
-scoped_get call would.
+a FIRST-page genuine failure (auth/non-2xx/non-JSON) still raising
+OperationsCollectionError exactly like a single-page arm_get/scoped_get
+call would, and a LATER-page failure (timeout/5xx/...) instead returning
+the already-collected earlier page(s) as an explicit partial result
+(never discarding them, never raising).
 
 All Azure calls are injected fakes; no real network calls are made.
 
@@ -18,6 +20,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
+
+import requests  # noqa: E402
 
 from app.operations.collectors import http  # noqa: E402
 from app.operations.errors import OperationsCollectionError  # noqa: E402
@@ -150,8 +154,37 @@ test("page fetches never exceed the module's hard ceiling even when a caller ask
 test("a runaway nextLink loop is still bounded, not an infinite/unbounded crawl", huge_bound_result.truncated is True)
 
 
-# ─── Explicit failures -- a genuine error mid-pagination is never swallowed ──
-print("\n\U0001f9ea Test 5: paginated_get -- a non-2xx response on page 2 still raises OperationsCollectionError")
+# ─── Explicit failures -- a FIRST-page failure is never swallowed ─────
+print("\n\U0001f9ea Test 5: paginated_get -- a first-page failure still raises OperationsCollectionError (no partial result exists yet)")
+
+
+def fails_on_page1_http_get(url, *, headers, params=None, timeout=30):
+    return FakeResponse({}, status_code=503, text="Service Unavailable")
+
+
+try:
+    http.paginated_get(
+        "/subscriptions/s/providers/Microsoft.Test/things", source="test_source",
+        credential_factory=FakeCredential, http_get=fails_on_page1_http_get,
+    )
+    test("a first-page 503 raises OperationsCollectionError instead of returning a partial/empty success", False)
+except OperationsCollectionError as exc:
+    test("a first-page 503 raises OperationsCollectionError instead of returning a partial/empty success", True)
+    test("the error identifies the failing source", exc.source == "test_source")
+
+try:
+    http.paginated_get(
+        "/subscriptions/s/providers/Microsoft.Test/things", source="test_source",
+        credential_factory=FailingCredential, http_get=multipage_http_get,
+    )
+    test("an auth failure (always on the first page's token acquisition) raises OperationsCollectionError instead of returning []", False)
+except OperationsCollectionError:
+    test("an auth failure (always on the first page's token acquisition) raises OperationsCollectionError instead of returning []", True)
+
+
+# ─── A LATER-page failure returns the already-collected pages as a
+# partial result instead of discarding them / raising ─────────────────
+print("\n\U0001f9ea Test 5b: paginated_get -- a later-page failure (timeout/503/...) does not discard earlier pages or raise")
 
 
 def fails_on_page2_http_get(url, *, headers, params=None, timeout=30):
@@ -160,24 +193,28 @@ def fails_on_page2_http_get(url, *, headers, params=None, timeout=30):
     return FakeResponse({"value": [{"id": "ok1"}], "nextLink": PAGE2_URL})
 
 
-try:
-    http.paginated_get(
-        "/subscriptions/s/providers/Microsoft.Test/things", source="test_source",
-        credential_factory=FakeCredential, http_get=fails_on_page2_http_get,
-    )
-    test("a mid-pagination 503 raises OperationsCollectionError instead of returning a partial success", False)
-except OperationsCollectionError as exc:
-    test("a mid-pagination 503 raises OperationsCollectionError instead of returning a partial success", True)
-    test("the error identifies the failing source", exc.source == "test_source")
+page2_failure_result = http.paginated_get(
+    "/subscriptions/s/providers/Microsoft.Test/things", source="test_source",
+    credential_factory=FakeCredential, http_get=fails_on_page2_http_get,
+)
+test("page 1's item is still returned, not discarded", [i["id"] for i in page2_failure_result.items] == ["ok1"])
+test("pages_fetched reflects only the successfully-fetched page (1)", page2_failure_result.pages_fetched == 1)
+test("truncated is True -- this is an explicit partial result, not a silent full success", page2_failure_result.truncated is True)
+test("partial_error carries the page-2 failure's detail, not swallowed", page2_failure_result.partial_error is not None and "test_source" in page2_failure_result.partial_error)
 
-try:
-    http.paginated_get(
-        "/subscriptions/s/providers/Microsoft.Test/things", source="test_source",
-        credential_factory=FailingCredential, http_get=multipage_http_get,
-    )
-    test("an auth failure raises OperationsCollectionError instead of returning []", False)
-except OperationsCollectionError:
-    test("an auth failure raises OperationsCollectionError instead of returning []", True)
+
+def times_out_on_page2_http_get(url, *, headers, params=None, timeout=30):
+    if "page=2" in url:
+        raise requests.exceptions.ReadTimeout("read timed out after 30s")
+    return FakeResponse({"value": [{"id": "p1a"}, {"id": "p1b"}], "nextLink": PAGE2_URL})
+
+
+timeout_result = http.paginated_get(
+    "/subscriptions/s/providers/Microsoft.Test/things", source="test_source",
+    credential_factory=FakeCredential, http_get=times_out_on_page2_http_get,
+)
+test("a real network timeout fetching page 2 still returns page 1's items rather than discarding them", [i["id"] for i in timeout_result.items] == ["p1a", "p1b"])
+test("a page-2 timeout does not abort collection -- it comes back as a bounded partial result", timeout_result.truncated is True and timeout_result.partial_error is not None)
 
 
 # ─── Single page (no nextLink) -- never truncated, matches a plain GET ──

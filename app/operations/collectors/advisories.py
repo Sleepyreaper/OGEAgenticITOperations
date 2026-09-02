@@ -36,6 +36,16 @@ __all__ = ["normalize_advisory", "collect_retirement_advisories"]
 
 SOURCE = EvidenceSource.SERVICE_HEALTH.value
 
+# Deliberately simple: every properties.* field, including the two
+# timestamps, is cast with tostring() -- never todatetime(tolong(...)).
+# That combination assumes ImpactStartTime/ImpactMitigationTime are
+# epoch-millisecond `dynamic` values; in practice they come back from
+# Resource Graph as ISO-8601 datetime strings, and tolong() on a
+# non-numeric dynamic value is what produced this query's real
+# `ParserFailure` (see docs/AZURE_DATA_SOURCES.md). Deferring the actual
+# datetime parsing to Python (ensure_utc_iso/parse_utc_iso in
+# normalize_advisory below, which already tolerates either shape) is
+# both simpler and removes the ARG-side type-coercion risk entirely.
 QUERY = (
     "ServiceHealthResources "
     "| where type =~ 'Microsoft.ResourceHealth/events' "
@@ -44,8 +54,8 @@ QUERY = (
     "| extend eventSubType = tostring(properties.EventSubType), title = tostring(properties.Title), "
     "summaryText = tostring(properties.Summary), trackingId = tostring(properties.TrackingId), "
     "priority = tostring(properties.Priority), "
-    "impactStartTime = todatetime(tolong(properties.ImpactStartTime)), "
-    "impactMitigationTime = todatetime(tolong(properties.ImpactMitigationTime)) "
+    "impactStartTime = tostring(properties.ImpactStartTime), "
+    "impactMitigationTime = tostring(properties.ImpactMitigationTime) "
     "| project id, name, subscriptionId, eventSubType, title, summaryText, trackingId, priority, impactStartTime, impactMitigationTime"
 )
 

@@ -314,11 +314,18 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                     if not policy_compliance:
                         policy_compliance = pc
                     else:
-                        for k in ("total_policies", "non_compliant_policies", "non_compliant_resources", "compliant_resources", "total_resources"):
+                        # "compliant_resources"/"compliance_pct" are
+                        # never summed directly -- either can be None
+                        # (see azure_data.compute_policy_compliance_pct) when a
+                        # single subscription's own totals are unknown/
+                        # inconsistent, and they're recomputed fresh
+                        # below from the summed raw counts anyway.
+                        for k in ("total_policies", "non_compliant_policies", "non_compliant_resources"):
                             policy_compliance[k] = policy_compliance.get(k, 0) + pc.get(k, 0)
-                        if policy_compliance.get("total_resources", 0) > 0:
-                            policy_compliance["compliance_pct"] = round(
-                                (1 - policy_compliance["non_compliant_resources"] / policy_compliance["total_resources"]) * 100, 1)
+                        policy_compliance["total_resources"] = policy_compliance.get("total_resources", 0) + pc.get("total_resources", 0)
+                        policy_compliance["compliant_resources"], policy_compliance["compliance_pct"] = azure_data.compute_policy_compliance_pct(
+                            policy_compliance["total_resources"], policy_compliance["non_compliant_resources"],
+                        )
                         policy_compliance.setdefault("top_non_compliant_assignments", []).extend(pc.get("top_non_compliant_assignments", []))
             except Exception:
                 pass
@@ -498,9 +505,15 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                 else:
                     for k in ("total_policies", "non_compliant_policies", "non_compliant_resources", "total_resources"):
                         summary[k] = summary.get(k, 0) + s.get(k, 0)
-            if summary.get("total_resources", 0) > 0:
-                summary["compliance_pct"] = round(
-                    (1 - summary.get("non_compliant_resources", 0) / summary["total_resources"]) * 100, 1)
+            if summary:
+                # Recomputed from the summed raw counts via the same
+                # never-fabricate-a-percentage helper
+                # get_policy_compliance_summary itself uses -- never a
+                # negative/invented percentage when total_resources is
+                # 0 or inconsistent with non_compliant_resources.
+                summary["compliant_resources"], summary["compliance_pct"] = azure_data.compute_policy_compliance_pct(
+                    summary.get("total_resources", 0), summary.get("non_compliant_resources", 0),
+                )
             return jsonify({
                 "summary": summary,
                 "non_compliant_resources": non_compliant,

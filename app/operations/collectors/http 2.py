@@ -154,13 +154,6 @@ class PagedListResult:
     items: list = field(default_factory=list)
     truncated: bool = False
     pages_fetched: int = 0
-    # Set only when a LATER page (not the first) failed mid-pagination
-    # and `items`/`pages_fetched` reflect a partial, not exhaustive,
-    # result because of that failure specifically (as opposed to a
-    # max_pages/max_records bound). None when truncation, if any, was
-    # bound-related instead. Never set on a first-page failure -- that
-    # case still raises (see paginated_get).
-    partial_error: Optional[str] = None
 
 
 def paginated_get(
@@ -202,20 +195,9 @@ def paginated_get(
     whose `truncated` flag is explicit and logs a warning (visible in
     AppTraces via this codebase's OpenTelemetry logging integration --
     see app/telemetry.py) so truncation is surfaced, never silent.
-    A genuine failure (auth, a non-2xx page, a non-JSON body) on the
-    FIRST page still raises OperationsCollectionError via `scoped_get`,
-    exactly as a single-page `arm_get`/`scoped_get` call would -- there
-    is no partial result to return yet, so this must never be masked as
-    an empty/partial success.
-
-    The SAME failure on any LATER page (e.g. a transient timeout/5xx
-    fetching page 2 of 3) does NOT raise and does NOT discard the
-    page(s) already successfully collected: it stops pagination right
-    there and returns those items as an explicit, bounded partial result
-    (`truncated=True`, `partial_error` set to the failure's message).
-    One later page failing to fetch must never blank out the data
-    already gathered, nor abort the caller's/orchestrator's entire
-    collection run over what is often a transient condition.
+    Genuine failures (auth, a non-2xx page, a non-JSON body) still raise
+    OperationsCollectionError via `scoped_get`, exactly as a single-page
+    `arm_get`/`scoped_get` call would.
     """
     max_pages = max(1, min(max_pages, _HARD_MAX_PAGES))
     max_records = max(1, min(max_records, _HARD_MAX_RECORDS))
@@ -227,20 +209,10 @@ def paginated_get(
     next_link = None
 
     for _ in range(max_pages):
-        try:
-            body = scoped_get(
-                url, source=source, scope=scope, params=current_params,
-                credential_factory=credential_factory, http_get=http_get, timeout=timeout,
-            )
-        except OperationsCollectionError as exc:
-            if pages_fetched == 0:
-                raise  # no partial result exists yet -- a first-page failure is a genuine, total failure
-            _logger.warning(
-                "%s: paginated_get stopped after %d page(s)/%d item(s) because fetching a later page failed "
-                "(%s) -- returning the partial result already collected instead of discarding it.",
-                source, pages_fetched, len(items), exc,
-            )
-            return PagedListResult(items=items, truncated=True, pages_fetched=pages_fetched, partial_error=str(exc))
+        body = scoped_get(
+            url, source=source, scope=scope, params=current_params,
+            credential_factory=credential_factory, http_get=http_get, timeout=timeout,
+        )
         pages_fetched += 1
         items.extend(body.get(value_key) or [])
         next_link = body.get("nextLink")

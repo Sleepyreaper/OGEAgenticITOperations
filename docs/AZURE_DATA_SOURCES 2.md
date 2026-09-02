@@ -92,14 +92,7 @@ into one inventory.
 - **Minimum RBAC role**: `Reader` at subscription scope.
 - **Configuration**: `CAPACITY_WARNING_PCT` / `CAPACITY_CRITICAL_PCT`
   (default `75` / `90`); `locations` is supplied by the caller (e.g.
-  discovered via Resource Graph, or -- when calling
-  `app.operations.service.run_collection`/`run_full_collection` directly
-  -- an explicit list). The product-facing routes in
-  `app/operations/routes.py` instead read `CAPACITY_LOCATIONS`, a
-  comma-separated, validated list of ARM region slugs (e.g.
-  `eastus2,westeurope`; see `OperationsConfig.capacity_locations` in
-  `app/operations/config.py`), and forward it as both `locations` and
-  `openai_locations` -- there is no `?locations=` query-string override.
+  discovered via Resource Graph), not read from env.
 - **Envelope status**: `not_configured` when no `locations` are
   supplied; otherwise `ok` or `error`.
 - **Limitations**: Azure OpenAI quota here is a subscription+region
@@ -217,14 +210,8 @@ into one inventory.
 - **Configuration**: `BACKUP_LOOKBACK_HOURS` (default `24`),
   `BACKUP_STALE_RECOVERY_POINT_DAYS` (default `3`), `ENABLE_BACKUP`
   (default `true`).
-- **Envelope status**: `not_configured` when disabled, OR when
-  `AddonAzureBackupJobs`/`CoreAzureBackup` doesn't exist yet in the
-  target workspace -- a KQL "table not found" semantic error (Azure's
-  own error text: `...Failed to resolve table or column ... expression
-  named '<table>'`), which means no Recovery Services vault has ever
-  sent diagnostics there, as distinct from a transient/auth/network
-  failure (see `service._classify_log_analytics_table_error`); otherwise
-  `ok` or `error`.
+- **Envelope status**: `not_configured` when disabled; otherwise `ok` or
+  `error`.
 - **Why Log Analytics instead of per-vault Recovery Services REST
   calls**: this generically covers every vault sending diagnostics to
   one workspace in two queries total, with no vault enumeration or
@@ -353,11 +340,7 @@ into one inventory.
 - **Envelope status**: `not_configured` when disabled, or when the
   combined (discovered + pinned) resource-id set is empty; `error` only
   when EVERY resource's diagnostic-settings check fails (a total
-  failure); ALSO `not_configured` (never `error`) when the `Heartbeat`
-  table doesn't exist yet in the target workspace (no Azure Monitor
-  Agent/Log Analytics agent has ever reported in) -- the same KQL
-  "table not found" classification `azure_backup` uses, see
-  `service._classify_log_analytics_table_error`; otherwise `ok`.
+  failure); otherwise `ok`.
 - **Why not "every resource in the subscription"**: most Azure resource
   types don't support `Microsoft.Insights/diagnosticSettings` at all,
   and Resource Graph does not index diagnostic settings as a queryable
@@ -391,19 +374,12 @@ into one inventory.
   severity), `ENABLE_RETIREMENT_ADVISORIES` (default `true`).
 - **Envelope status**: `not_configured` when disabled; otherwise `ok` or
   `error`.
-- **Deadline extraction**: `ImpactMitigationTime`/`ImpactStartTime` are
-  pulled via `tostring(properties.*)` -- deliberately NOT Microsoft's
-  own published `todatetime(tolong(...))` sample query pattern, which
-  assumes an epoch-millisecond `dynamic` representation. In practice
-  these properties come back from Resource Graph as ISO-8601 datetime
-  strings, and `tolong()` against that non-numeric `dynamic` value is
-  what produced this query's real `ParserFailure`. The actual datetime
-  parsing/validation happens in Python instead
-  (`app.operations.models.ensure_utc_iso`/`parse_utc_iso`, which already
-  tolerate either a datetime or an ISO string) -- simpler and removes
-  the ARG-side type-coercion risk entirely. `metadata.deadline` is set
-  when Azure has published one; advisories with no published deadline
-  are `low` severity rather than assigned an invented one.
+- **Deadline extraction**: `ImpactMitigationTime` (converted from its
+  epoch-millisecond `dynamic` representation via KQL's
+  `todatetime(tolong(...))`, per Microsoft's own published sample
+  query) becomes the Finding's `metadata.deadline` when Azure has
+  published one; advisories with no published deadline are `low`
+  severity rather than assigned an invented one.
 - **Scope (explicit assumption)**: this collects ALL active
   `HealthAdvisory` events, not filtered to `EventSubType == 'Retirement'`
   only. Microsoft's own documentation states "all upcoming service
@@ -427,20 +403,20 @@ exists.
 - **Native Cost Management anomaly detection** -- see
   `cost_management_trend` above. Revisit once Microsoft ships a stable,
   documented REST API for the portal's anomaly-detection feature.
-- ~~Azure Advisor recommendations~~ / ~~Azure Policy compliance /
-  Policy Insights~~ -- **already implemented**, just not by a Phase 1/2
-  collector above: `app.operations.collectors.legacy_scan.advisor_findings`
-  / `policy_compliance_findings` normalize
-  `app.azure_data.get_advisor_recommendations` (high-impact-only) and
-  `get_policy_compliance_summary`/`get_non_compliant_resources` into
-  Findings, wired into `collect_legacy_envelopes`'s `legacy_advisor`/
-  `legacy_policy_compliance` sources (see
-  `docs/OPERATIONS_API.md`'s "Existing-scan adapter" section). Advisor's raw
-  data function calls Microsoft.Advisor's ARM REST API directly (never
-  the `azure-mgmt-advisor` SDK, which is not a dependency of this
-  project). `get_policy_compliance_summary` never fabricates a
-  compliance percentage from an inconsistent/zero `totalResources`
-  denominator -- see `azure_data.compute_policy_compliance_pct`.
+- **Azure Advisor recommendations** (`EvidenceSource.ADVISOR`) --
+  the enum value exists (reserved since Phase 1) and
+  `app.azure_data.get_advisor_recommendations` already exists as a raw
+  data function, but no collector normalizes Advisor output into
+  Findings yet. Advisor's cost/reliability/performance recommendations
+  overlap partially with `defender_assessments` (security/compliance)
+  and `capacity` (some cost/performance signals); a future collector
+  should de-duplicate against those before normalizing Advisor data
+  wholesale.
+- **Azure Policy compliance / Policy Insights**
+  (`EvidenceSource.POLICY_INSIGHTS`) -- the enum value is reserved but
+  unused; `app.azure_data.get_policy_compliance_summary` and
+  `get_non_compliant_resources` already exist as raw data functions.
+  Not yet normalized into Findings.
 - **Per-vault Recovery Services Backup REST API** (`Backup Jobs`/
   `Backup Protected Items` under `Microsoft.RecoveryServices/vaults/...`)
   -- an alternative to the Log Analytics-based `azure_backup` collector

@@ -101,6 +101,25 @@ except ValueError:
     test("a non-positive warning_days raises ValueError", True)
 
 
+# ─── Query contract -- the exact ServiceHealthResources KQL text ───────
+print("\n\U0001f9ea Test 3: QUERY contract -- never todatetime(tolong(...)) (the real ParserFailure cause), correct table/filters")
+test("queries the ServiceHealthResources table", advisories.QUERY.startswith("ServiceHealthResources"))
+test("filters to Microsoft.ResourceHealth/events", "Microsoft.ResourceHealth/events" in advisories.QUERY)
+test("filters to HealthAdvisory events", "eventType == 'HealthAdvisory'" in advisories.QUERY)
+test("filters to Active status", "status =~ 'Active'" in advisories.QUERY)
+test("never uses todatetime(tolong(...)) -- the real cause of this query's ParserFailure", "tolong(" not in advisories.QUERY and "todatetime(" not in advisories.QUERY)
+test("ImpactStartTime/ImpactMitigationTime are cast with tostring(), deferring datetime parsing to Python", (
+    "impactStartTime = tostring(properties.ImpactStartTime)" in advisories.QUERY
+    and "impactMitigationTime = tostring(properties.ImpactMitigationTime)" in advisories.QUERY
+))
+test("projects every field normalize_advisory reads", all(
+    field in advisories.QUERY for field in (
+        "id", "name", "subscriptionId", "eventSubType", "title", "summaryText",
+        "trackingId", "priority", "impactStartTime", "impactMitigationTime",
+    )
+))
+
+
 # ─── Summary ────────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
 print(f"  Results: {PASS} passed, {FAIL} failed")

@@ -249,6 +249,14 @@ def slo_summaries_to_findings(summaries: list) -> list:
             ),
             approval_required=False,
             executive_attention=summary.state == "breached" and summary.criticality == "customer_facing",
+            # Deterministic evidence of real customer impact: the SLO
+            # has actually breached (not merely at_risk) AND is
+            # customer_facing -- see Finding.customer_impacting's
+            # contract. An at_risk SLO, or a breached internal/
+            # best_effort-criticality workload, is a real reliability
+            # risk but is NOT yet (or never definitionally) customer
+            # impact.
+            customer_impacting=summary.state == "breached" and summary.criticality == "customer_facing",
             metadata={"workload": summary.workload, "error_budget_remaining_pct": summary.error_budget_remaining_pct},
             discriminator=summary.workload,
         ))

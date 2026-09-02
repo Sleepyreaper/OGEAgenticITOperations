@@ -197,7 +197,7 @@ def _query_total_cost(
     total cost, or None if the period returned no rows (no cost data,
     never treated as zero-cost)."""
     body = arm_post(
-        f"/subscriptions/{subscription_id}/providers/Microsoft.CostManagement/query?api-version={QUERY_API_VERSION}",
+        f"/subscriptions/{subscription_id}/providers/Microsoft.CostManagement/query",
         source=TREND_SOURCE,
         json_body={
             "type": "ActualCost",

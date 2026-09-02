@@ -47,11 +47,25 @@ test("category is reliability", all(f.category == FindingCategory.RELIABILITY.va
 test("Unavailable maps to HIGH severity", next(f for f in findings if "vm3" in (f.resource_id or "")).severity == Severity.HIGH.value)
 test("Degraded maps to MEDIUM severity", next(f for f in findings if "vm2" in (f.resource_id or "")).severity == Severity.MEDIUM.value)
 test("resource_id is correctly constructed", findings[0].resource_id == "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/virtualMachines/vm2")
+test("no Resource Health finding is customer_impacting by default (no explicit impact evidence)", all(f.customer_impacting is False for f in findings))
 test("HIGH severity finding has executive_attention", next(f for f in findings if f.severity == Severity.HIGH.value).executive_attention is True)
 
 # Deterministic ID: re-running with the same rows produces the same ids
 findings2 = legacy_scan.resource_health_findings(rows, subscription_id="sub1", now=NOW)
 test("same input -> same deterministic ids across runs", {f.id for f in findings} == {f.id for f in findings2})
+
+print("\n\U0001f9ea Test 1b: resource_health_findings -- an authorized stop (reasonType == UserInitiated) is downgraded, never customer-impacting")
+authorized_stop_rows = [
+    {"name": "vm4", "resourceGroup": "rg1", "type": "Microsoft.Compute/virtualMachines", "status": "Unavailable",
+     "summary": "This virtual machine is stopped.", "title": "", "location": "eastus", "reasonType": "UserInitiated"},
+]
+authorized_stop_findings = legacy_scan.resource_health_findings(authorized_stop_rows, subscription_id="sub1", now=NOW)
+test("an authorized-stop Unavailable VM still produces a Finding (never silently dropped)", len(authorized_stop_findings) == 1)
+authorized_stop_finding = authorized_stop_findings[0]
+test("severity is downgraded to informational (not HIGH, unlike a genuine platform failure)", authorized_stop_finding.severity == Severity.INFORMATIONAL.value)
+test("executive_attention is False for an authorized stop", authorized_stop_finding.executive_attention is False)
+test("customer_impacting is False for an authorized stop", authorized_stop_finding.customer_impacting is False)
+test("metadata.authorized_stop is True", authorized_stop_finding.metadata["authorized_stop"] is True)
 
 
 # ─── service_health_findings ─────────────────────────────────────────────
@@ -60,13 +74,18 @@ events = [
     {"title": "Active incident", "status": "Active", "level": "Critical", "eventType": "Incident", "impactStart": "2025-05-31T00:00:00Z", "services": ["Storage"], "regions": ["eastus"], "summary": "outage"},
     {"title": "Resolved incident", "status": "Resolved", "level": "Warning", "eventType": "Incident", "impactStart": "2025-05-30T00:00:00Z", "services": ["Storage"], "regions": [], "summary": ""},
     {"title": "Retirement notice", "status": "Active", "level": "Warning", "eventType": "HealthAdvisory", "impactStart": "2025-05-01T00:00:00Z", "services": ["Compute"], "regions": [], "summary": "retiring"},
+    {"title": "Active planned maintenance", "status": "Active", "level": "Informational", "eventType": "PlannedMaintenance", "impactStart": "2025-05-31T00:00:00Z", "services": ["Compute"], "regions": [], "summary": "maintenance"},
 ]
 findings = legacy_scan.service_health_findings(events, subscription_id="sub1", now=NOW)
-test("only the active, non-HealthAdvisory event becomes a Finding", len(findings) == 1)
-test("category is incident", findings[0].category == "incident")
-test("severity HIGH for Critical level", findings[0].severity == Severity.HIGH.value)
-test("first_seen preserves impactStart", findings[0].first_seen == "2025-05-31T00:00:00.000Z")
-test("last_seen is the collection time (still active)", findings[0].last_seen == "2025-06-01T00:00:00.000Z")
+test("both active, non-HealthAdvisory events become Findings", len(findings) == 2)
+incident_finding = next(f for f in findings if f.title == "Active incident")
+maintenance_finding = next(f for f in findings if f.title == "Active planned maintenance")
+test("category is incident", all(f.category == "incident" for f in findings))
+test("severity HIGH for Critical level", incident_finding.severity == Severity.HIGH.value)
+test("first_seen preserves impactStart", incident_finding.first_seen == "2025-05-31T00:00:00.000Z")
+test("last_seen is the collection time (still active)", incident_finding.last_seen == "2025-06-01T00:00:00.000Z")
+test("an active ServiceIssue/Incident event IS customer_impacting -- explicit, deterministic evidence Azure scoped this event to the subscription", incident_finding.customer_impacting is True)
+test("an active PlannedMaintenance event is NOT customer_impacting -- expected/scheduled, not an unplanned incident", maintenance_finding.customer_impacting is False)
 
 
 # ─── security_drift_findings ─────────────────────────────────────────────

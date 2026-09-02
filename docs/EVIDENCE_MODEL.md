@@ -149,6 +149,7 @@ dump, and never a credential.
 | `recommended_action` | str | May be empty (e.g. a resolved alert). |
 | `approval_required` | bool | True when acting on this Finding needs human sign-off (e.g. a rollback). |
 | `executive_attention` | bool | True when this belongs on an executive-facing view. |
+| `customer_impacting` | bool | Deliberately separate from `executive_attention`/`category`/`severity` — see Priority below. Defaults `False`; a collector sets it `True` ONLY on deterministic evidence of real customer/workload impact (e.g. an active `ServiceIssue` Service Health incident, or a breached `customer_facing` SLO), never inferred from severity/category/executive_attention alone. |
 | `metadata` | dict | Free-form, collector-specific detail (e.g. `{"workload": "checkout-api"}` for SLO linkage — see Priority below). |
 
 ### ActionItem, SLOSummary, CapacitySummary, BudgetSummary, TelemetryCoverageSummary
@@ -184,8 +185,15 @@ whenever `(category, source, resource_id)` alone wouldn't be unique.
 most-urgent-first into four explainable bands (`P1`-`P4`) and returns the
 **factors** behind each ranking on `PrioritizedFinding.factors`:
 
-- `customer_impact` — deterministic: True when `executive_attention` is
-  set, or the category is `incident`/`reliability`.
+- `customer_impact` — mirrors `Finding.customer_impacting` exactly (see
+  `app.operations.priority.is_customer_impacting`): True ONLY when the
+  Finding itself was built with explicit, deterministic impact evidence.
+  NEVER derived from `executive_attention`, `severity`, or `category`
+  alone — a compliance/capacity/security/cost Finding, an
+  executive-attention reliability Finding with no impact evidence (e.g.
+  Resource Health "Unavailable" for an authorized VM stop), and an
+  at_risk-but-not-yet-breached SLO are real operational risk but are
+  NOT customer impact.
 - `severity_rank` — 0 (critical) .. 4 (informational).
 - `slo_state` / `slo_state_rank` — joined via `finding.metadata["workload"]`
   against a caller-supplied `{workload: SLOSummary.state}` map; a Finding
@@ -373,6 +381,7 @@ A `Finding` (`to_dict()` output) for a correlated change→health event:
   "recommended_action": "Review the listed change(s) for a causal link to the health degradation; roll back if confirmed.",
   "approval_required": true,
   "executive_attention": true,
+  "customer_impacting": false,
   "metadata": {"correlation_window_minutes": 60, "matched_change_count": 1}
 }
 ```

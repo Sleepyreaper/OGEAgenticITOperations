@@ -95,10 +95,12 @@ test("a critical budget demands executive attention", critical_finding.executive
 print("\n\U0001f9ea Test 3: collect_cost_trend -- material growth raises a Finding, with no fake anomaly")
 
 _calls = []
+_urls = []
 
 
 def http_post_growth(url, *, headers, json=None, timeout=30):
     _calls.append(json)
+    _urls.append(url)
     if len(_calls) == 1:
         return FakeResponse({"columns": [{"name": "Cost"}], "rows": [[150.0]]})
     return FakeResponse({"columns": [{"name": "Cost"}], "rows": [[100.0]]})
@@ -108,6 +110,10 @@ trend_findings = cost.collect_cost_trend("sub1", lookback_days=30, growth_pct_th
 test("a 50% period-over-period increase (>= 20% threshold) raises exactly one Finding", len(trend_findings) == 1)
 test("the trend Finding is category cost, medium severity", trend_findings[0].category == "cost" and trend_findings[0].severity == "medium")
 test("growth_pct is exposed in metadata, not hidden in a score", trend_findings[0].metadata["growth_pct"] == 50.0)
+test("both requests hit the exact Microsoft.CostManagement/query URL with the documented api-version (2023-11-01) -- never MissingApiVersionParameter", all(
+    u == f"https://management.azure.com/subscriptions/sub1/providers/Microsoft.CostManagement/query?api-version={cost.QUERY_API_VERSION}"
+    for u in _urls
+) and cost.QUERY_API_VERSION == "2023-11-01")
 
 
 def http_post_below_threshold(url, *, headers, json=None, timeout=30):
