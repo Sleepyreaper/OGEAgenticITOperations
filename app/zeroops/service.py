@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from app import ado_integration
 from app.agents import analysis as analysis_service
+from app.operations.models import FindingCategory, Severity
 from app.zeroops import cost as cost_model
 from app.zeroops import scenarios as scenario_mod
 from app.zeroops.ledger import get_ledger
@@ -88,6 +89,10 @@ def escalate(*, question: str = "", source: str = "sre-agent", incident_ref: str
         question = question or scenario.escalation_question
     if not question or not question.strip():
         raise ValueError("question is required (or pass a known scenario_id)")
+    if severity and severity not in {m.value for m in Severity}:
+        raise ValueError(f"severity {severity!r} must be one of {[m.value for m in Severity]}")
+    if category and category not in {m.value for m in FindingCategory}:
+        raise ValueError(f"category {category!r} must be one of {sorted(m.value for m in FindingCategory)}")
     if not _subscription_ids():
         raise ValueError("no subscription configured (ZEROOPS_SUBSCRIPTION_ID or AZURE_SUBSCRIPTION_ID)")
 
