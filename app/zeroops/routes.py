@@ -6,6 +6,7 @@ from flask import Blueprint, jsonify, request
 from app.zeroops import cost as cost_model
 from app.zeroops import scenarios as scenario_mod
 from app.zeroops import service
+from app.zeroops import sre_agent
 from app.zeroops.ledger import get_ledger
 from app.zeroops.mcp_server import api_key_configured
 
@@ -23,6 +24,7 @@ def overview():
     return jsonify({
         "mcp": {"endpoint": "/mcp", "enabled": api_key_configured(), "server_name": "ogeops"},
         "demo": config.public(),
+        "sre_agent": {"configured": sre_agent.configured(), "subagent": sre_agent.subagent()},
         "scenarios": scenario_mod.list_scenarios(config),
         "cost_model": cost_model.monthly_baseline(),
         "ledger": get_ledger().summary(),
@@ -32,6 +34,54 @@ def overview():
 @zeroops_bp.route("/scenarios", methods=["GET"])
 def scenarios():
     return jsonify({"scenarios": scenario_mod.list_scenarios()})
+
+
+@zeroops_bp.route("/scenarios/<scenario_id>/probe", methods=["GET"])
+def scenario_probe(scenario_id):
+    if scenario_id not in scenario_mod.SCENARIOS_BY_ID:
+        return jsonify({"error": f"unknown scenario {scenario_id!r}"}), 404
+    try:
+        return jsonify(scenario_mod.probe(scenario_id))
+    except scenario_mod.ScenarioError as exc:
+        return jsonify({"error": str(exc)}), 409
+
+
+def _handoff_summary(scenario, body: dict) -> str:
+    seconds = body.get("detected_in_seconds")
+    when = f" {float(seconds):.0f}s after the change" if isinstance(seconds, (int, float)) else ""
+    return (f"OGE ZeroOps detector flagged scenario '{scenario.title}'{when}. "
+            f"Source: {str(body.get('source') or 'detector')[:120]}. Signal: {str(body.get('signal') or 'n/a')[:600]}")
+
+
+@zeroops_bp.route("/scenarios/<scenario_id>/handoff", methods=["POST"])
+def scenario_handoff(scenario_id):
+    """Route a fast detection by tier: SRE-solo scenarios open an SRE Agent thread, squad scenarios escalate."""
+    scenario = scenario_mod.SCENARIOS_BY_ID.get(scenario_id)
+    if scenario is None:
+        return jsonify({"error": f"unknown scenario {scenario_id!r}"}), 404
+    body = _body()
+    summary = _handoff_summary(scenario, body)
+    if scenario.tier == "sre":
+        message = (f"{summary}\nTriage with your skills in Review mode: confirm the change in the Activity Log, "
+                   f"assess blast radius, and propose the fix for human approval. "
+                   f"Escalate to the OGE squad (ogeops MCP) only if it is not runbook-shaped.")
+        try:
+            result = sre_agent.start_thread(message)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except sre_agent.SreAgentError as exc:
+            return jsonify({"route": "sre-agent", "status": "error", "error": str(exc)}), 502
+        if result["status"] == "not_configured":
+            result["hint"] += "; the Activity Log alert will still reach the SRE Agent in ~5 minutes"
+        return jsonify({"route": "sre-agent", **result})
+    try:
+        record = service.escalate(
+            scenario_id=scenario_id, source="detector", incident_ref=f"detector-{scenario_id}",
+            sre_summary=summary, debate=bool(body.get("debate", True)), wait_seconds=0,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"route": "squad", "status": "ok", "escalation_id": record["id"]}), 202
 
 
 @zeroops_bp.route("/scenarios/<scenario_id>/<action>", methods=["POST"])

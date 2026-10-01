@@ -29,7 +29,8 @@ def _cleanup_db():
 _cleanup_db()
 os.environ["OPERATIONS_STATE_DB"] = DB_PATH
 for key in list(os.environ):
-    if key.startswith("ZEROOPS_") or key in ("MCP_API_KEY", "SRE_AGENT_AAU_PRICE_USD", "SRE_AGENT_MODEL"):
+    if key.startswith("ZEROOPS_") or key in ("MCP_API_KEY", "SRE_AGENT_AAU_PRICE_USD", "SRE_AGENT_MODEL",
+                                               "SRE_AGENT_ENDPOINT", "SRE_AGENT_SUBAGENT"):
         os.environ.pop(key)
 
 from app.agents import analysis as analysis_mod  # noqa: E402
@@ -190,6 +191,94 @@ out = scen_mod.run("open-door", "inject")
 test("ARM failure is an explicit error step", out["status"] == "error" and "403" in out["steps"][0]["error"])
 scen_mod._call = fake_call
 
+print("\n\u2500\u2500 Fast detection probes \u2500\u2500")
+RG_ROWS = {}
+RG_QUERIES = []
+
+
+def fake_rg(config, query):
+    RG_QUERIES.append(query)
+    for key, rows in RG_ROWS.items():
+        if key in query:
+            return rows
+    return []
+
+
+scen_mod._rg_rows = fake_rg
+p = scen_mod.probe("open-door")
+test("open-door probe clean when no exposed rule", p["detected"] is False and p["tier"] == "sre" and "probe_ms" in p)
+test("open-door probe is scoped to the demo NSG", "nsg-demo" in RG_QUERIES[-1] and "rg-demo" in RG_QUERIES[-1])
+RG_ROWS["networkSecurityGroups"] = [{"nsg": "nsg-demo", "rule": scen_mod.CHAOS_NSG_RULE, "port": "22", "priority": 110}]
+p = scen_mod.probe("open-door")
+test("open-door probe detects internet-exposed 22", p["detected"] and "port 22" in p["signal"] and "Resource Graph" in p["source"])
+RG_ROWS["serverfarms"] = [{"plan": "plan-demo", "sku": "B1", "tier": "Basic", "capacity": 1}]
+test("storm-surge probe clean at B1 x1", scen_mod.probe("storm-surge")["detected"] is False)
+RG_ROWS["serverfarms"] = [{"plan": "plan-demo", "sku": "P0v3", "tier": "Premium0V3", "capacity": 3}]
+p = scen_mod.probe("storm-surge")
+test("storm-surge probe detects P0v3 x3", p["detected"] and "P0v3 x3" in p["signal"])
+RG_ROWS["storageAccounts"] = [{"account": "stdemo", "publicBlob": False, "minTls": "TLS1_2"}]
+test("rogue-hotfix probe clean when hardened", scen_mod.probe("rogue-hotfix")["detected"] is False)
+RG_ROWS["storageAccounts"] = [{"account": "stdemo", "publicBlob": False, "minTls": "TLS1_0"}]
+p = scen_mod.probe("rogue-hotfix")
+test("rogue-hotfix probe detects TLS 1.0 even if policy reverted public access", p["detected"] and "TLS1_0" in p["signal"] and "anonymous" not in p["signal"])
+test("KQL values are quote-stripped", "'" not in scen_mod._kql("a'b"))
+
+
+class FakeResp:
+    def __init__(self, code):
+        self.status_code = code
+
+
+real_get = scen_mod.requests.get
+scen_mod.requests.get = lambda url, **k: FakeResp(503)
+p = scen_mod.probe("bad-deploy")
+test("bad-deploy probe detects HTTP 5xx", p["detected"] and "503" in p["signal"] and "web-demo.azurewebsites.net" in p["signal"])
+scen_mod.requests.get = lambda url, **k: FakeResp(200)
+test("bad-deploy probe clean on 200", scen_mod.probe("bad-deploy")["detected"] is False)
+
+
+def timeout_get(url, **k):
+    raise scen_mod.requests.Timeout("slow")
+
+
+scen_mod.requests.get = timeout_get
+p = scen_mod.probe("bad-deploy")
+test("bad-deploy probe treats timeout as down", p["detected"] and "Timeout" in p["signal"])
+scen_mod.requests.get = real_get
+
+
+def cert_call(method, url, *, scope=scen_mod.ARM_SCOPE, body=None, params=None, text=None):
+    if "/secrets/" in url:
+        return {"attributes": {"exp": int(time.time()) + 48 * 3600}}
+    return {"value": [{"properties": {"status": "Failed"}}]}
+
+
+scen_mod._call = cert_call
+p = scen_mod.probe("2am-cert")
+test("2am-cert probe detects expiring bundle + failed renewal", p["detected"] and "expires in" in p["signal"] and "Failed" in p["signal"])
+
+
+def cert_clean(method, url, *, scope=scen_mod.ARM_SCOPE, body=None, params=None, text=None):
+    if "/secrets/" in url:
+        raise scen_mod.ScenarioError("GET /secrets -> 404: not found")
+    return {"value": []}
+
+
+scen_mod._call = cert_clean
+test("2am-cert probe clean when secret absent and no failed jobs", scen_mod.probe("2am-cert")["detected"] is False)
+scen_mod._call = failing_call
+try:
+    scen_mod.probe("2am-cert")
+    test("probe failure is an explicit error, not 'not detected'", False)
+except scen_mod.ScenarioError as exc:
+    test("probe failure is an explicit error, not 'not detected'", "probe failed" in str(exc) and "403" in str(exc))
+scen_mod._call = fake_call
+try:
+    scen_mod.probe("nope")
+    test("probe unknown scenario raises", False)
+except KeyError:
+    test("probe unknown scenario raises", True)
+
 print("\n\u2500\u2500 Escalation service \u2500\u2500")
 rec = service_mod.escalate(scenario_id="rogue-hotfix", source="simulated", sre_summary="policy + security", wait_seconds=10)
 test("scenario escalation completes to proposed", rec["status"] == "proposed")
@@ -340,6 +429,65 @@ r = client.post("/api/zeroops/scenarios/nope/inject")
 test("unknown scenario 404", r.status_code == 404)
 r = client.post("/api/zeroops/scenarios/open-door/explode")
 test("unknown action 400", r.status_code == 400)
+r = client.get("/api/zeroops/scenarios/open-door/probe")
+test("probe route works with chaos disabled (read-only)", r.status_code == 200 and r.get_json()["detected"] is True)
+test("probe route 404 on unknown scenario", client.get("/api/zeroops/scenarios/nope/probe").status_code == 404)
+test("overview reports SRE Agent hand-off not configured", client.get("/api/zeroops/overview").get_json()["sre_agent"]["configured"] is False)
+r = client.post("/api/zeroops/scenarios/open-door/handoff", json={"detected_in_seconds": 7.4, "source": "Azure Resource Graph", "signal": "port 22 open"})
+test("SRE-tier hand-off without endpoint is explicit not_configured", r.status_code == 200 and r.get_json()["route"] == "sre-agent"
+     and r.get_json()["status"] == "not_configured" and "Activity Log" in r.get_json()["hint"])
+from app.zeroops import sre_agent as sre_mod  # noqa: E402
+POSTS = []
+
+
+class FakePost:
+    status_code = 201
+    content = b"x"
+
+    def json(self):
+        return {"id": "thread-123", "title": "t"}
+
+
+def fake_post(url, json=None, headers=None, timeout=None):
+    POSTS.append((url, json, headers))
+    return FakePost()
+
+
+os.environ["SRE_AGENT_ENDPOINT"] = "https://agent.example/"
+sre_mod._token = lambda: "tok"
+sre_mod.requests.post = fake_post
+r = client.post("/api/zeroops/scenarios/open-door/handoff", json={"detected_in_seconds": 7.4, "source": "Azure Resource Graph", "signal": "port 22 open"})
+d = r.get_json()
+test("SRE-tier hand-off opens an SRE Agent thread", r.status_code == 200 and d["status"] == "ok" and d["thread_id"] == "thread-123")
+test("thread POST uses /api/v1/threads with StartMessage.text", POSTS[-1][0] == "https://agent.example/api/v1/threads" and "text" in POSTS[-1][1]["StartMessage"])
+test("thread message addresses zeroops-triage and carries the detection", POSTS[-1][1]["StartMessage"]["text"].startswith("/agent zeroops-triage")
+     and "7s after the change" in POSTS[-1][1]["StartMessage"]["text"] and "port 22 open" in POSTS[-1][1]["StartMessage"]["text"])
+os.environ["SRE_AGENT_SUBAGENT"] = ""
+test("blank SRE_AGENT_SUBAGENT falls back to zeroops-triage", sre_mod.subagent() == "zeroops-triage")
+os.environ["SRE_AGENT_SUBAGENT"] = "none"
+test("SRE_AGENT_SUBAGENT=none addresses the default agent", sre_mod.subagent() == "")
+os.environ.pop("SRE_AGENT_SUBAGENT")
+test("thread POST is bearer-authenticated", POSTS[-1][2]["Authorization"].startswith("Bearer "))
+
+
+class RejectPost(FakePost):
+    status_code = 403
+
+    @property
+    def text(self):
+        return "forbidden"
+
+
+sre_mod.requests.post = lambda *a, **k: RejectPost()
+r = client.post("/api/zeroops/scenarios/open-door/handoff", json={})
+test("SRE Agent rejection surfaces as 502 with error", r.status_code == 502 and "403" in r.get_json()["error"])
+os.environ.pop("SRE_AGENT_ENDPOINT")
+r = client.post("/api/zeroops/scenarios/rogue-hotfix/handoff", json={"detected_in_seconds": 9, "source": "Azure Resource Graph", "signal": "TLS1_0"})
+d = r.get_json()
+test("squad-tier hand-off escalates as detector", r.status_code == 202 and d["route"] == "squad" and d["escalation_id"])
+rec = get_ledger().get(d["escalation_id"])
+test("detector escalation records source + detection summary", rec["source"] == "detector" and "9s after the change" in rec["sre_summary"])
+test("handoff unknown scenario 404", client.post("/api/zeroops/scenarios/nope/handoff", json={}).status_code == 404)
 r = client.get("/api/zeroops/escalations")
 test("list escalations with summary", r.status_code == 200 and r.get_json()["summary"]["count"] >= 3)
 r = client.post(f"/api/zeroops/escalations/{sim_id}/propose")

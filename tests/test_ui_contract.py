@@ -139,7 +139,8 @@ test("showView('council') wired to the secondary nav", "showView('council')" in 
 test("showView('agents') wired to the secondary nav", "showView('agents')" in html)
 test('view-council container present (chat/debate preserved)', 'id="view-council"' in html)
 test('view-agents container present (crew bios preserved)', 'id="view-agents"' in html)
-test("chaos demo (runChaos) still reachable", "runChaos()" in html)
+test("old chaos demo retired in favour of ZeroOps", "runChaos()" not in html and "showView('zeroops')" in html)
+test("ZeroOps fast detection wired (probe + tiered hand-off)", "zeroopsDetect(" in html and "/probe" in html and "/handoff" in html)
 test("morning briefing still reachable", "runMorningBriefing()" in html)
 test("remediation generation still reachable", "generateRemediation()" in html)
 test("demo scenarios (runDemo) still reachable", "runDemo(" in html)
@@ -182,9 +183,11 @@ test("evidence/findings routes are registered on the Flask app", any(
 ) and any(r.startswith("/api/operations/findings/") for r in registered_rules))
 
 print("\n\U0001f9ea Test 12: pre-existing routes are preserved unchanged")
-for route in ("/api/health", "/api/demos", "/api/ask", "/api/ask/stream", "/api/scan/overview", "/api/chaos/create",
+for route in ("/api/health", "/api/demos", "/api/ask", "/api/ask/stream", "/api/scan/overview",
               "/api/ado/proposals", "/api/ado/inspect-and-propose"):
     test(f"{route} still registered", route in registered_rules)
+for route in ("/api/chaos/create", "/api/chaos/cleanup"):
+    test(f"{route} retired", route not in registered_rules)
 
 _cleanup_db()
 

@@ -109,7 +109,7 @@ All responses stream via Server-Sent Events — you watch the crew debate live.
 - Finding detail/evidence drawer with acknowledge / assign / start / resolve / dismiss (reason required) / snooze (expiry required) controls — client-side validated, API errors surfaced inline, never a silent no-op
 - "AI Analyze" — grounded operations analysis (`/api/operations/analyze`): routing explanation, evidence citations, confidence, missing evidence, recommended actions with approval tier, specialist debate collapsed by default
 - Supporting strips: current health/source coverage, capacity watch, recent changes, and a "Deep Intelligence" findings-by-category breakdown — all sourced from the same snapshot/handoff, never a second scattered API call
-- Tools & Guided Demo (secondary, collapsible): Morning Briefing, 💥 chaos demo, demo scenarios, Compliance → ADO proposal scan/approve/reject, and crew status — see [docs/UI_WORKFLOW.md](docs/UI_WORKFLOW.md) for the guided demo script
+- Tools & Guided Demo (secondary, collapsible): Morning Briefing, ⚡ link to the ZeroOps live demos, demo scenarios, Compliance → ADO proposal scan/approve/reject, and crew status — see [docs/UI_WORKFLOW.md](docs/UI_WORKFLOW.md) for the guided demo script
 
 ### Ops Council Chat (secondary view)
 - Streaming multi-agent debate with custom-styled personalities
@@ -168,7 +168,6 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for the full step-by-step guide, and
 | Monitoring Reader | Subscription | Metrics, alerts, diagnostics |
 | Key Vault Secrets User | Key Vault (resource) | Read secrets only |
 | Cognitive Services OpenAI User | OpenAI Accounts (your Azure regions) | Call models across both regions |
-| Network Contributor | NSG (resource, demo only) | Chaos demo NSG rule create/delete |
 
 ## API Endpoints
 
@@ -182,8 +181,6 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for the full step-by-step guide, and
 | `/api/demo/<id>/stream` | POST | SSE streaming demo scenario |
 | `/api/remediate` | POST | Generate Terraform/CLI fix |
 | `/api/digest` | GET | Morning briefing (SSE) |
-| `/api/chaos/create` | POST | Create chaos NSG rule |
-| `/api/chaos/cleanup` | POST | Remove chaos NSG rule |
 | `/api/operations/snapshot` | GET | Deterministic, evidence-backed operations snapshot (no LLM call) — see [docs/OPERATIONS_API.md](docs/OPERATIONS_API.md) |
 | `/api/operations/brief` | GET | Executive brief (feeds the Executive Brief view) |
 | `/api/operations/queue` | GET | Filtered/paginated priority queue (feeds the Operations Center view) |
@@ -196,6 +193,8 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for the full step-by-step guide, and
 | `/mcp` | POST | MCP server (Streamable HTTP, `X-API-Key`) used by the Azure SRE Agent — `escalate`, `get_escalation`, `propose_fix`, … |
 | `/api/zeroops/overview` | GET | ZeroOps status, escalation summary and cost baseline |
 | `/api/zeroops/scenarios/<id>/<inject\|cleanup\|escalate>` | POST | Run a ZeroOps demo scenario action |
+| `/api/zeroops/scenarios/<id>/probe` | GET | Read-only fast detection probe (Resource Graph / HTTP / Key Vault) |
+| `/api/zeroops/scenarios/<id>/handoff` | POST | Route a detection by tier: SRE Agent thread or squad escalation |
 | `/api/zeroops/escalations[/<id>[/propose\|/decision]]` | GET/POST | Escalation ledger, proposals and approve/reject/resolve |
 
 ## Configuration & Customization

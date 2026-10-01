@@ -481,27 +481,6 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
             "evaluation": agent_evaluation.get_aggregate_summary(),
         })
 
-    # ─── Chaos Demo ─────────────────────────────────────────
-
-    @app.route("/api/chaos/create", methods=["POST"])
-    def chaos_create():
-        """Create a security problem — opens SSH to the world on an NSG."""
-        try:
-            result = azure_data.create_chaos_nsg_rule()
-            return jsonify({"status": "chaos_created", "detail": result})
-        except Exception as e:
-            traceback.print_exc()
-            return jsonify({"error": str(e)}), 500
-
-    @app.route("/api/chaos/cleanup", methods=["POST"])
-    def chaos_cleanup():
-        """Clean up the chaos rule."""
-        try:
-            result = azure_data.cleanup_chaos_nsg_rule()
-            return jsonify(result)
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-
     @app.route("/api/scan/security", methods=["GET"])
     def scan_security():
         """Quick security drift scan — checks for open dangerous ports."""

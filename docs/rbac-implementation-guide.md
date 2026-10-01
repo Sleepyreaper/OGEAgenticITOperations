@@ -102,7 +102,8 @@ az role assignment create \
 
 # ═══════════════════════════════════════════════════════
 # Step 6 (OPTIONAL — Demo only): Network Contributor
-# for the chaos demo NSG. REMOVE for production.
+# on a demo NSG. Not needed for ZeroOps: infra/zeroops-demo/
+# grants scoped roles on its own demo resource group.
 # ═══════════════════════════════════════════════════════
 # NSG_RESOURCE_ID=$(az network nsg show \
 #   --name <DEMO_NSG_NAME> \
@@ -138,7 +139,7 @@ These roles are scoped to specific resources within the Ops Council's own resour
 |---|------|-------------------|-------|---------|-------------|
 | 4 | **Key Vault Secrets User** | `4633458b-17de-408a-b874-0445c86b69e6` | Ops Council Key Vault | Read API keys and secrets | `keyvault.bicep` |
 | 5 | **Cognitive Services OpenAI User** | `5e0bd9bd-7b93-4f28-af87-19fc36ad61bd` | Azure OpenAI Account(s) | Call deployed models (chat completions) | `openai-rbac.bicep` |
-| 6 | **Network Contributor** ⚠️ | `4d97b98b-1d4f-4787-a291-c67834d212e7` | Demo NSG only | Chaos demo — create/delete NSG rule. **REMOVE IN PRODUCTION.** | Manual |
+| 6 | **Network Contributor** ⚠️ | `4d97b98b-1d4f-4787-a291-c67834d212e7` | Demo NSG only | Legacy demo NSG writes (the old chaos button is retired; ZeroOps demo roles come from `infra/zeroops-demo/`). **REMOVE IN PRODUCTION.** | Manual |
 
 ### Total: 5 read-only roles + 1 scoped demo role on 1 Managed Identity
 
@@ -406,7 +407,7 @@ echo "❌ If any show ERROR, check role assignments for the Managed Identity."
 | `SecretNotFound` from Key Vault | Missing **Key Vault Secrets User** | Check KV role + ensure secret exists |
 | `ForbiddenError` on Policy Insights | Missing **Reader** (Policy Insights needs Reader) | Run `subscription-rbac.bicep` |
 | No subscriptions discovered | Identity has no Reader on any subscription | Grant Reader on at least one sub |
-| Can't create chaos demo rules | Missing **Network Contributor** on demo NSG | Grant scoped to specific NSG (demo only) |
+| ZeroOps inject fails with 403 | App identity lacks roles on the demo RG | Redeploy `infra/zeroops-demo/` with `opsAppPrincipalId` |
 
 ---
 

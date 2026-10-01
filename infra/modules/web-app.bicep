@@ -40,7 +40,7 @@ param foundryProjectEndpoint string = ''
 @description('Foundry runtime settings (see main.bicep): agentPrefix, modelDeployment, enableTools, maxToolRounds, maxToolOutputChars, maxParallelSpecialists.')
 param foundrySettings object = {}
 
-@description('ZeroOps / Azure SRE Agent settings (see main.bicep): mcpApiKeySecretName, chaosEnabled, subscriptionId, demoResourceGroup, demoNsg, demoWebapp, demoPlan, demoStorage, demoKeyvault, demoAutomation, sreAgentAauPriceUsd, sreAgentModel.')
+@description('ZeroOps / Azure SRE Agent settings (see main.bicep): mcpApiKeySecretName, chaosEnabled, subscriptionId, demoResourceGroup, demoNsg, demoWebapp, demoPlan, demoStorage, demoKeyvault, demoAutomation, sreAgentAauPriceUsd, sreAgentModel, sreAgentEndpoint, sreAgentSubagent.')
 param zeroopsSettings object = {}
 
 @description('Additional Azure OpenAI accounts for per-agent endpoint routing (see main.bicep). Only .endpoint is used here, surfaced as AZURE_OPENAI_ENDPOINT_<NAME>.')
@@ -205,6 +205,8 @@ var zeroopsSettingFieldNames = {
   demoAutomation: 'ZEROOPS_DEMO_AUTOMATION'
   sreAgentAauPriceUsd: 'SRE_AGENT_AAU_PRICE_USD'
   sreAgentModel: 'SRE_AGENT_MODEL'
+  sreAgentEndpoint: 'SRE_AGENT_ENDPOINT'
+  sreAgentSubagent: 'SRE_AGENT_SUBAGENT'
 }
 var zeroopsTuningSettings = [for item in items(zeroopsSettingFieldNames): {
   name: item.value

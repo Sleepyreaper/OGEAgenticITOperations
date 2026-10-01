@@ -126,7 +126,9 @@ mcpApiKeySecretName (name of a Key Vault secret in this template's vault holding
 the endpoint returns 503 until it is set), chaosEnabled (true only for demo environments),
 subscriptionId, demoResourceGroup, demoNsg, demoWebapp, demoPlan, demoStorage, demoKeyvault,
 demoAutomation (outputs of infra/zeroops-demo/), sreAgentAauPriceUsd (default 0.10 -- check the
-Azure Retail Prices API for your region), sreAgentModel (default gpt-5.2).
+Azure Retail Prices API for your region), sreAgentModel (default gpt-5.2), sreAgentEndpoint (the
+agent's data-plane agentEndpoint; enables fast-detection hand-off threads -- grant the app identity
+SRE Agent Standard User on the agent), sreAgentSubagent (default zeroops-triage).
 Example: { mcpApiKeySecretName: 'mcp-api-key' }
 ''')
 param zeroopsSettings object = {}

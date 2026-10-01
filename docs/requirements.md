@@ -27,7 +27,7 @@
 ### Ops Center (Christopher/Shane's view)
 - Real-time environment scanning with auto-refresh
 - Deep intelligence beyond Azure Advisor (architecture smells, cross-resource correlation)
-- Chaos demo — create a real security problem, detect in 10 seconds
+- ZeroOps live demos — create a real problem, detect in seconds, hand off to the SRE Agent or squad
 - Morning Briefing — overnight digest from the crew
 - Generate Remediation — Terraform/CLI code following organizational standards
 
@@ -46,7 +46,7 @@
 
 ### 2. Observability / Proactive Monitoring
 - **Status**: ✅ Built — Flare Stack + auto-refresh + Morning Briefing + Service Health
-- **Demo**: Morning Briefing, chaos detection, service health events
+- **Demo**: Morning Briefing, ZeroOps fast detection (seconds), service health events
 
 ### 3. Cost Optimization with Standards Balance
 - **Status**: ✅ Built — Barrel Counter vs The Roughneck debate system
@@ -72,7 +72,7 @@
 
 ## Success Criteria (from the call)
 
-- ✅ "Eye-catching and potentially have significant use" — Custom branding, crew personalities, chaos demo
+- ✅ "Eye-catching and potentially have significant use" — Custom branding, crew personalities, ZeroOps live break/fix demos
 - ✅ "Super scalable — one person could do it, AI manages the rest" — Managed Identity scans everything automatically
 - ✅ "Spark curiosity with leadership" — Executive Reliability view with scores
 - ✅ "Art of the possible" — deep intelligence, streaming debate, remediation code
