@@ -3,25 +3,19 @@
   "name": "zeroops-response",
   "properties": {
     "incidentPlatform": "AzMonitor",
-    "impactedService": "",
-    "priorities": ["Sev0", "Sev1", "Sev2", "Sev3", "Sev4"],
-    "incidentType": "",
-    "alertId": "",
-    "titleContains": "ZeroOps",
-    "titleContainsAll": [],
-    "titleContainsAny": [],
-    "titleNotContains": [],
-    "agentMode": "Review",
-    "handlingAgent": "zeroops-triage",
-    "handlingAgents": null,
-    "owningTeamId": "",
-    "owningTeamIds": [],
-    "maxAutomatedInvestigationAttempts": 2,
-    "deepInvestigationEnabled": false,
-    "mergeEnabled": true,
-    "mergeWindowHours": 1,
     "isEnabled": true,
-    "icmFilterSettings": null,
-    "azMonitorFilterSettings": {"targetResourceType": "", "targetResource": ""}
+    "priorities": [
+      "Sev0",
+      "Sev1",
+      "Sev2",
+      "Sev3",
+      "Sev4"
+    ],
+    "titleContains": "ZeroOps",
+    "handlingAgent": "zeroops-triage",
+    "agentMode": "Review",
+    "maxAutomatedInvestigationAttempts": 2,
+    "mergeEnabled": true,
+    "mergeWindowHours": 1
   }
 }

@@ -1,7 +1,15 @@
 {
-  "_comment": "MCP connector that gives the SRE Agent the ogeops_* tools. The connector name 'ogeops' becomes the tool prefix (ogeops_escalate, ...). @@OGE_APP_URL@@ and @@MCP_API_KEY@@ are substituted by scripts/configure-sre-agent.sh; never commit a real key.",
+  "_comment": "ARM body for Microsoft.App/agents/connectors/ogeops (api-version 2025-05-01-preview). The connector name 'ogeops' becomes the tool prefix (ogeops_escalate, ...). scripts/configure-sre-agent.sh builds this body with the real values; never commit a real key.",
   "name": "ogeops",
-  "type": "http",
-  "endpoint": "@@OGE_APP_URL@@/mcp",
-  "headers": {"X-API-Key": "@@MCP_API_KEY@@"}
+  "properties": {
+    "dataConnectorType": "Mcp",
+    "dataSource": "ogeops-mcp",
+    "extendedProperties": {
+      "type": "http",
+      "endpoint": "@@OGE_APP_URL@@/mcp",
+      "authType": "BearerToken",
+      "bearerToken": "@@MCP_API_KEY@@"
+    },
+    "identity": "system"
+  }
 }

@@ -12,7 +12,7 @@ model and demo script, see [docs/ZEROOPS_SRE_AGENT.md](../docs/ZEROOPS_SRE_AGENT
 | `skills/webapp-bad-deploy-revert/` | Solo runbook: App Service broken by a config/startup change |
 | `triggers/incident-filter.json` | Response plan: Azure Monitor alerts titled "ZeroOps…" → `zeroops-triage` (Review mode) |
 | `triggers/scheduled-task.json` | Weekday sweep: escalate the top business-impacting open finding |
-| `connectors/ogeops-mcp.json` | MCP connector shape (`ogeops` → `<app>/mcp`, `X-API-Key` header) |
+| `connectors/ogeops-mcp.json` | ARM connector body (`ogeops` → `<app>/mcp`, bearer token = `MCP_API_KEY`) |
 | `scripts/configure-sre-agent.sh` | Idempotent installer for everything above (`DRY_RUN=1` to preview) |
 
 ```bash
@@ -21,6 +21,7 @@ export SRE_AGENT_RESOURCE_GROUP=<rg> SRE_AGENT_NAME=<agent> \
 ./sre-agent/scripts/configure-sre-agent.sh
 ```
 
-Requirements: Azure CLI (signed in), python3 with PyYAML, and optionally `azmcp`
-(`npm i -g @azure/mcp@latest`) for the MCP connector. Without `azmcp`, the script prints the portal steps.
+Requirements: Azure CLI (signed in), python3 with PyYAML. The connector is created as the ARM child resource
+`Microsoft.App/agents/connectors`; optionally install `azmcp` (`npm i -g @azure/mcp@latest`) and the script also
+verifies that the agent discovered the `ogeops_*` tools.
 The SRE Agent also needs network egress to the app and Reader access on the monitored resource groups.
