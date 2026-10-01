@@ -18,6 +18,7 @@ tools:
 
 ### 2. Find the change
 - `az monitor activity-log list -g <rg> --offset 2h --query "[?contains(operationName.value,'Microsoft.Web/sites')].{op:operationName.value,who:caller,when:eventTimestamp}" -o table`
+- Query the Activity Log by resource group (`-g`), not `--resource-id` on child resources such as `sites/config`.
 - `az webapp config show -g <rg> -n <app> --query "{cmd:appCommandLine,stack:linuxFxVersion}"`
 
 ### 3. Decide
