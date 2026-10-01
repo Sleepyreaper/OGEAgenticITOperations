@@ -274,6 +274,25 @@ def call(name, args, msg_id=10):
     return resp.get_json()["result"]
 
 
+from app.zeroops import mcp_server as mcp_mod  # noqa: E402
+from app.agents.tools import ToolResult  # noqa: E402
+TOOL_CALLS = []
+_real_execute = mcp_mod.agent_tools.execute_tool
+
+
+def _fake_execute(name, arguments, **_):
+    TOOL_CALLS.append((name, arguments))
+    if arguments.get("finding_id") == "missing":
+        return ToolResult(tool_name=name, status="error", data=None, result_count=0, duration_ms=0.0, error="not found")
+    return ToolResult(tool_name=name, status="ok", data={"items": []}, result_count=0, duration_ms=1.0)
+
+
+mcp_mod.agent_tools.execute_tool = _fake_execute
+res = call("list_findings", {"category": "security"})
+test("list_findings scoped to configured subscription", not res.get("isError") and TOOL_CALLS[-1][1]["subscription_ids"] and TOOL_CALLS[-1][1]["category"] == "security")
+res = call("get_evidence", {"finding_id": "missing"})
+test("non-ok squad tool result is an MCP tool error", res["isError"] and "not found" in res["content"][0]["text"])
+mcp_mod.agent_tools.execute_tool = _real_execute
 res = call("escalate", {"bogus": 1})
 test("unknown argument is a tool error", res["isError"] and "unknown argument" in res["content"][0]["text"])
 res = call("escalate", {"severity": "apocalyptic", "question": "q"})

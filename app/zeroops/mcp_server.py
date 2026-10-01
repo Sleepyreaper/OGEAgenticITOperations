@@ -144,6 +144,17 @@ def _validate(tool: dict, args: dict) -> dict:
     return args
 
 
+def _scoped_tool(tool_name: str, tool_args: dict) -> dict:
+    """Run a read-only squad tool scoped to the ZeroOps subscription(s); non-ok results become tool errors."""
+    subscription_ids = service._subscription_ids()
+    if not subscription_ids:
+        raise ToolInputError("no subscription configured (ZEROOPS_SUBSCRIPTION_ID or AZURE_SUBSCRIPTION_ID)")
+    out = agent_tools.execute_tool(tool_name, {"subscription_ids": subscription_ids, **tool_args}).to_dict()
+    if out.get("status") != "ok":
+        raise ToolInputError(f"{tool_name}: {out.get('status')}: {out.get('error')}")
+    return out
+
+
 def _escalation_view(record: dict) -> dict:
     if not record:
         return {}
@@ -195,9 +206,9 @@ def call_tool(name: str, args: dict) -> dict:
                 "next_step": "A human must approve this proposal in the OGE ops ZeroOps view (or ADO) before anything changes."}
     if name == "list_findings":
         tool_args = {k: v for k, v in args.items() if k in ("category", "severity", "status", "page_size")}
-        return agent_tools.execute_tool("list_prioritized_findings", tool_args).to_dict()
+        return _scoped_tool("list_prioritized_findings", tool_args)
     if name == "get_evidence":
-        return agent_tools.execute_tool("get_finding_evidence", {"finding_id": args["finding_id"]}).to_dict()
+        return _scoped_tool("get_finding_evidence", {"finding_id": args["finding_id"]})
     if name == "agent_catalog":
         health = agent_backend.backend_health()
         agents = build_agent_catalog(settings.agents, backend=health["active_backend"], foundry_agent_prefix=health["foundry_agent_prefix"])

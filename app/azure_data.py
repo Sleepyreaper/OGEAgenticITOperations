@@ -313,6 +313,19 @@ def detect_insecure_storage(subscription_id: str = None,
     )
 
 
+def detect_storage_security_gaps(subscription_id: str = None,
+                                 subscription_ids: list[str] = None) -> list[dict]:
+    """Storage accounts with public blob access enabled OR a minimum TLS version below 1.2."""
+    return query_resource_graph(
+        "Resources | where type =~ 'Microsoft.Storage/storageAccounts' "
+        "| extend tls=tostring(properties.minimumTlsVersion) "
+        "| where properties.allowBlobPublicAccess == true or tls in~ ('TLS1_0', 'TLS1_1') "
+        "| project name, resourceGroup, location, publicAccess=properties.allowBlobPublicAccess, "
+        "minimumTlsVersion=tls, subscriptionId",
+        subscription_id, subscription_ids,
+    )
+
+
 # ─── Azure Service Health & Resource Health ──────────────────────
 
 def get_resource_health_statuses(subscription_id: str = None) -> list[dict]:
