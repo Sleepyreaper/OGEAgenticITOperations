@@ -29,6 +29,9 @@ Display names describe the job (Operations Coordinator, Cost & Capacity Analyst,
 ### D9 — Client-ready repo (Lead)
 `main` must contain no tenant, subscription, resource or personal identifiers — examples use `<placeholders>`. Customer-specific overlays live on `showcase/<customer>` branches.
 
+### D10 — ZeroOps: Azure SRE Agent is tier 1, the squad is tier 2 (Lead)
+The Azure SRE Agent triages and fixes runbook-shaped incidents; it escalates ambiguous, cross-domain or business-impacting ones over MCP (`/mcp`, connector `ogeops`, API-key auth, 503 when unset). The squad never changes Azure: it returns analysis, a script and a proposal that a human approves. The escalation ledger (SQLite) is the source of truth because ADO proposals are per-worker in memory. Cost = SRE AAU estimate (published token profiles × `SRE_AGENT_AAU_PRICE_USD`) + measured Foundry tokens. Demo chaos only runs when `ZEROOPS_CHAOS_ENABLED=true` against `ZEROOPS_DEMO_*` resources. `tests/test_zeroops.py` keeps `sre-agent/` in sync with the MCP tool list.
+
 ## Governance
 
 - All meaningful changes require team consensus

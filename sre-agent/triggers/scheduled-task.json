@@ -1,0 +1,13 @@
+{
+  "_comment": "Daily ZeroOps posture sweep. The triage agent pulls the OGE squad's open findings and escalates the top business-impacting one so the morning starts with a proposal, not an investigation. Applied by scripts/configure-sre-agent.sh.",
+  "name": "zeroops-daily-sweep",
+  "properties": {
+    "name": "zeroops-daily-sweep",
+    "description": "Daily ZeroOps sweep: review open OGE findings and escalate the top business-impacting one.",
+    "cronExpression": "0 13 * * 1-5",
+    "agentPrompt": "Run the ZeroOps daily sweep. Call ogeops_list_findings with severity=high and page_size=10. Summarize the top 5 in a table (finding, resource, why it matters). For the single most business-impacting finding that has no open escalation, call ogeops_escalate with a one-sentence question and your summary as sre_summary, then poll ogeops_get_escalation and post the squad's conclusion and remediation script. Do not execute any change.",
+    "agent": "zeroops-triage",
+    "agentMode": "Review",
+    "isEnabled": true
+  }
+}

@@ -40,6 +40,9 @@ param foundryProjectEndpoint string = ''
 @description('Foundry runtime settings (see main.bicep): agentPrefix, modelDeployment, enableTools, maxToolRounds, maxToolOutputChars, maxParallelSpecialists.')
 param foundrySettings object = {}
 
+@description('ZeroOps / Azure SRE Agent settings (see main.bicep): mcpApiKeySecretName, chaosEnabled, subscriptionId, demoResourceGroup, demoNsg, demoWebapp, demoPlan, demoStorage, demoKeyvault, demoAutomation, sreAgentAauPriceUsd, sreAgentModel.')
+param zeroopsSettings object = {}
+
 @description('Additional Azure OpenAI accounts for per-agent endpoint routing (see main.bicep). Only .endpoint is used here, surfaced as AZURE_OPENAI_ENDPOINT_<NAME>.')
 param additionalOpenAiAccounts object = {}
 
@@ -188,7 +191,33 @@ var foundryTuningSettings = [for item in items(foundrySettingFieldNames): {
 var foundrySettingsRaw = concat([{ name: 'FOUNDRY_PROJECT_ENDPOINT', value: foundryProjectEndpoint }], foundryTuningSettings)
 var foundryAppSettings = filter(foundrySettingsRaw, setting => !empty(setting.value))
 
-var appSettings = concat(baseAppSettings, namedEndpointSettings, agentOverrideSettings, operationsAppSettings, foundryAppSettings)
+// ZeroOps settings -> env var names (see app/zeroops/). MCP_API_KEY is
+// only ever a Key Vault reference to a secret the operator creates.
+var zeroopsSettingFieldNames = {
+  chaosEnabled: 'ZEROOPS_CHAOS_ENABLED'
+  subscriptionId: 'ZEROOPS_SUBSCRIPTION_ID'
+  demoResourceGroup: 'ZEROOPS_DEMO_RESOURCE_GROUP'
+  demoNsg: 'ZEROOPS_DEMO_NSG'
+  demoWebapp: 'ZEROOPS_DEMO_WEBAPP'
+  demoPlan: 'ZEROOPS_DEMO_PLAN'
+  demoStorage: 'ZEROOPS_DEMO_STORAGE'
+  demoKeyvault: 'ZEROOPS_DEMO_KEYVAULT'
+  demoAutomation: 'ZEROOPS_DEMO_AUTOMATION'
+  sreAgentAauPriceUsd: 'SRE_AGENT_AAU_PRICE_USD'
+  sreAgentModel: 'SRE_AGENT_MODEL'
+}
+var zeroopsTuningSettings = [for item in items(zeroopsSettingFieldNames): {
+  name: item.value
+  value: contains(zeroopsSettings, item.key) ? string(zeroopsSettings[item.key]) : ''
+}]
+var mcpApiKeySecretName = string(zeroopsSettings.?mcpApiKeySecretName ?? '')
+var zeroopsSettingsRaw = concat(zeroopsTuningSettings, [{
+  name: 'MCP_API_KEY'
+  value: empty(mcpApiKeySecretName) ? '' : '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/${mcpApiKeySecretName})'
+}])
+var zeroopsAppSettings = filter(zeroopsSettingsRaw, setting => !empty(setting.value))
+
+var appSettings = concat(baseAppSettings, namedEndpointSettings, agentOverrideSettings, operationsAppSettings, foundryAppSettings, zeroopsAppSettings)
 
 resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   name: webAppName

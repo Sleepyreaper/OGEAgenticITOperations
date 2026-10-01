@@ -121,6 +121,17 @@ Example: { agentPrefix: 'oge-ops', maxToolRounds: 4, maxParallelSpecialists: 4 }
 param foundrySettings object = {}
 
 @description('''
+Optional ZeroOps / Azure SRE Agent settings (see docs/ZEROOPS_SRE_AGENT.md). Recognized keys, all optional:
+mcpApiKeySecretName (name of a Key Vault secret in this template's vault holding the /mcp API key --
+the endpoint returns 503 until it is set), chaosEnabled (true only for demo environments),
+subscriptionId, demoResourceGroup, demoNsg, demoWebapp, demoPlan, demoStorage, demoKeyvault,
+demoAutomation (outputs of infra/zeroops-demo/), sreAgentAauPriceUsd (default 0.10 -- check the
+Azure Retail Prices API for your region), sreAgentModel (default gpt-5.2).
+Example: { mcpApiKeySecretName: 'mcp-api-key' }
+''')
+param zeroopsSettings object = {}
+
+@description('''
 Optional operations evidence layer settings (app/operations/, see
 docs/EVIDENCE_MODEL.md, docs/AZURE_DATA_SOURCES.md) — an object param (rather than dozens of flat
 params) so it stays maintainable as the evidence layer grows. Recognized
@@ -282,6 +293,7 @@ module webApp 'modules/web-app.bicep' = {
     agentBackend: agentBackend
     foundryProjectEndpoint: resolvedFoundryProjectEndpoint
     foundrySettings: foundrySettings
+    zeroopsSettings: zeroopsSettings
   }
   dependsOn: [
     foundryNew

@@ -86,6 +86,7 @@
           <div id="nav-more-menu" class="hidden absolute left-0 top-full mt-1 bg-brand-gray-800 border border-brand-gray-700 rounded-lg shadow-xl w-60 py-1 z-50" role="menu" aria-label="Secondary views">
             <button role="menuitem" onclick="showView('council'); closeMoreMenu()" id="nav-council" class="nav-secondary w-full text-left px-4 py-2 text-sm text-brand-gray-200 hover:bg-brand-gray-700">Ops Council (chat &amp; debate)</button>
             <button role="menuitem" onclick="showView('agents'); closeMoreMenu()" id="nav-agents" class="nav-secondary w-full text-left px-4 py-2 text-sm text-brand-gray-200 hover:bg-brand-gray-700">Agent Squad</button>
+            <button role="menuitem" onclick="showView('zeroops'); closeMoreMenu()" id="nav-zeroops" class="nav-secondary w-full text-left px-4 py-2 text-sm text-brand-gray-200 hover:bg-brand-gray-700">ZeroOps (SRE Agent + Squad)</button>
           </div>
         </div>
       </div>
@@ -468,6 +469,53 @@
     </div>
   </div>
 
+  <!-- ═══ ZEROOPS VIEW -- Azure SRE Agent (tier 1) + squad (tier 2); data from /api/zeroops (app/zeroops/) ═══ -->
+  <div id="view-zeroops" class="view-content hidden" role="tabpanel" aria-labelledby="nav-zeroops">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      <div>
+        <h1 class="text-xl font-bold mb-1">ZeroOps: SRE Agent + Agent Squad</h1>
+        <p class="text-sm text-brand-gray-400">The Azure SRE Agent watches repos, logs and monitoring and fixes the runbook-shaped problems itself. When an incident is cross-domain, business-impacting or has no safe runbook, it escalates to the squad over MCP. The squad reasons about impact and returns a fix or script that a human approves. Nothing changes without approval.</p>
+      </div>
+
+      <!-- Architecture flow -->
+      <div class="bg-white rounded-xl border border-brand-gray-100 p-6">
+        <h2 class="font-bold mb-4">How it fits together</h2>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-3 text-sm items-stretch">
+          <div class="rounded-lg bg-brand-gray-50 border border-brand-gray-100 p-3"><div class="text-2xl">📡</div><div class="font-semibold">Signals</div><div class="text-xs text-brand-gray-500">Azure Monitor alerts, App Insights, Log Analytics, Activity Log, GitHub/ADO repos, schedules</div></div>
+          <div class="rounded-lg bg-blue-50 border border-blue-100 p-3"><div class="text-2xl">🛟</div><div class="font-semibold">Tier 1: Azure SRE Agent</div><div class="text-xs text-brand-gray-500">Triage skills, runbooks, log and metric queries. Known fixes are proposed in Review mode.</div></div>
+          <div class="rounded-lg bg-amber-50 border border-amber-100 p-3"><div class="text-2xl">🔀</div><div class="font-semibold">Escalate over MCP</div><div class="text-xs text-brand-gray-500">The <code>oge_ops_escalation</code> agent calls <code>ogeops_escalate</code> when the escalation policy matches</div></div>
+          <div class="rounded-lg bg-purple-50 border border-purple-100 p-3"><div class="text-2xl">🧠</div><div class="font-semibold">Tier 2: Agent Squad</div><div class="text-xs text-brand-gray-500">Foundry agents: routed specialists, debate, coordinator. Grounded, cited, and every token metered.</div></div>
+          <div class="rounded-lg bg-green-50 border border-green-100 p-3"><div class="text-2xl">✅</div><div class="font-semibold">Human approves</div><div class="text-xs text-brand-gray-500">Proposal plus script appears here or in ADO. A human approves, the change runs, the SRE Agent verifies.</div></div>
+        </div>
+        <div id="zeroops-status" class="mt-4 flex flex-wrap gap-2 text-xs"></div>
+      </div>
+
+      <!-- Scenarios -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-bold">Demo scenarios</h2>
+          <span class="text-xs text-brand-gray-400">🛟 handled by the SRE Agent &middot; 🧠 escalated to the squad</span>
+        </div>
+        <div id="zeroops-scenarios" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"><div class="text-sm text-brand-gray-400">Loading&hellip;</div></div>
+      </div>
+
+      <!-- Timeline + cost -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div class="lg:col-span-2 bg-white rounded-xl border border-brand-gray-100 p-6">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="font-bold">Escalation timeline</h2>
+            <button onclick="loadZeroOps()" class="text-xs px-3 py-1 rounded-md border border-brand-gray-200 hover:bg-brand-gray-50">Refresh</button>
+          </div>
+          <div id="zeroops-timeline" class="space-y-3 text-sm"><div class="text-brand-gray-400">No escalations yet.</div></div>
+        </div>
+        <div class="bg-white rounded-xl border border-brand-gray-100 p-6">
+          <h2 class="font-bold mb-3">What it costs</h2>
+          <div id="zeroops-cost" class="text-sm space-y-2 text-brand-gray-700"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══ Finding detail / evidence drawer (Operations Center) ═══ -->
   <div id="finding-drawer" class="hidden fixed inset-0 z-[60]">
     <div class="absolute inset-0 bg-black/40" onclick="closeDrawer()"></div>
@@ -662,6 +710,144 @@
       }
       if (view === 'executive') loadExecutiveBrief();
       if (view === 'ops') loadOpsCenter();
+      if (view === 'zeroops') loadZeroOps();
+    }
+
+    // ─── ZeroOps (SRE Agent tier 1 + squad tier 2) ──
+    let zeroopsPoll = null;
+    const ZEROOPS_STATUS_STYLE = {
+      received: 'bg-brand-gray-100 text-brand-gray-700', analyzing: 'bg-amber-100 text-amber-800',
+      proposed: 'bg-blue-100 text-blue-800', approved: 'bg-green-100 text-green-800',
+      rejected: 'bg-red-100 text-red-800', resolved: 'bg-green-600 text-white', failed: 'bg-red-600 text-white',
+    };
+    const usd = v => '$' + Number(v || 0).toFixed(Number(v || 0) < 1 ? 4 : 2);
+
+    async function loadZeroOps() {
+      try {
+        const [ov, esc] = await Promise.all([
+          fetch('/api/zeroops/overview').then(r => r.json()),
+          fetch('/api/zeroops/escalations?limit=25').then(r => r.json()),
+        ]);
+        renderZeroOpsStatus(ov);
+        renderZeroOpsScenarios(ov);
+        renderZeroOpsTimeline(esc.escalations || []);
+        renderZeroOpsCost(ov.cost_model, esc.summary || {});
+        const busy = (esc.escalations || []).some(e => e.status === 'received' || e.status === 'analyzing');
+        clearTimeout(zeroopsPoll);
+        if (busy && !document.getElementById('view-zeroops').classList.contains('hidden')) zeroopsPoll = setTimeout(loadZeroOps, 5000);
+      } catch (e) {
+        document.getElementById('zeroops-scenarios').innerHTML = `<div class="text-sm text-red-600">Failed to load ZeroOps: ${escapeHtml(e.message)}</div>`;
+      }
+    }
+
+    function renderZeroOpsStatus(ov) {
+      const pill = (ok, label) => `<span class="px-2 py-0.5 rounded-full ${ok ? 'bg-green-100 text-green-800' : 'bg-brand-gray-100 text-brand-gray-500'}">${ok ? '●' : '○'} ${label}</span>`;
+      document.getElementById('zeroops-status').innerHTML =
+        pill(ov.mcp.enabled, `MCP endpoint ${ov.mcp.endpoint} ${ov.mcp.enabled ? 'enabled' : 'disabled (set MCP_API_KEY)'}`) +
+        pill(ov.demo.chaos_enabled, `Chaos ${ov.demo.chaos_enabled ? 'enabled' : 'disabled'}`) +
+        pill(ov.ledger.count > 0, `${ov.ledger.count} escalation(s), ${usd(ov.ledger.total_estimated_usd)} total`);
+    }
+
+    function renderZeroOpsScenarios(ov) {
+      const chaos = ov.demo.chaos_enabled;
+      document.getElementById('zeroops-scenarios').innerHTML = ov.scenarios.map(s => {
+        const tier = s.tier === 'sre'
+          ? '<span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">🛟 SRE Agent solo</span>'
+          : '<span class="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">🧠 Escalates to squad</span>';
+        const canChaos = chaos && s.configured;
+        const btn = (cls, label, onclick, enabled = true) =>
+          `<button ${enabled ? `onclick="${onclick}"` : 'disabled'} class="text-xs px-3 py-1.5 rounded-md ${enabled ? cls : 'bg-brand-gray-100 text-brand-gray-400 cursor-not-allowed'}">${label}</button>`;
+        return `<div class="bg-white rounded-xl border border-brand-gray-100 p-5 flex flex-col">
+          <div class="flex items-start justify-between gap-2"><div class="text-3xl">${s.emoji}</div>${tier}</div>
+          <h3 class="font-bold mt-2">${escapeHtml(s.title)}</h3>
+          <p class="text-sm text-brand-gray-700 mt-1">${escapeHtml(s.tagline)}</p>
+          <details class="mt-2 text-xs text-brand-gray-500">
+            <summary class="cursor-pointer font-semibold text-brand-gray-700">Story, signals and playbook</summary>
+            <p class="mt-2">${escapeHtml(s.story)}</p>
+            <p class="mt-2"><strong>Signals:</strong> ${s.signals.map(escapeHtml).join('; ')}</p>
+            <ol class="list-decimal ml-4 mt-2 space-y-0.5">${s.sre_playbook.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ol>
+            ${s.why_escalate ? `<p class="mt-2"><strong>Why escalate:</strong> ${escapeHtml(s.why_escalate)}</p>` : ''}
+            <p class="mt-2"><strong>Human gate:</strong> ${escapeHtml(s.human_approval)}</p>
+            <pre class="mt-2 bg-brand-gray-50 border border-brand-gray-100 rounded p-2 whitespace-pre-wrap text-[11px]">${escapeHtml(s.remediation_script)}</pre>
+            ${s.configured ? '' : `<p class="mt-2 text-amber-700">Not configured: ${s.missing_settings.map(escapeHtml).join(', ')}</p>`}
+          </details>
+          <div class="mt-auto pt-3 flex flex-wrap gap-2">
+            ${btn('bg-brand-red text-white hover:opacity-90', '💣 Inject', `zeroopsScenario('${s.id}','inject')`, canChaos)}
+            ${btn('border border-brand-gray-200 hover:bg-brand-gray-50', '🧹 Clean up', `zeroopsScenario('${s.id}','cleanup')`, canChaos)}
+            ${s.tier === 'squad' ? btn('bg-purple-600 text-white hover:opacity-90', '🧠 Simulate escalation', `zeroopsScenario('${s.id}','escalate')`) : ''}
+          </div>
+          <div id="zeroops-result-${s.id}" class="text-xs mt-2"></div>
+        </div>`;
+      }).join('');
+    }
+
+    async function zeroopsScenario(id, action) {
+      const out = document.getElementById('zeroops-result-' + id);
+      out.innerHTML = `<span class="text-brand-gray-400">${action}&hellip;</span>`;
+      try {
+        const resp = await fetch(`/api/zeroops/scenarios/${id}/${action}`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({debate: true}),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || resp.statusText);
+        if (action === 'escalate') {
+          out.innerHTML = `<span class="text-purple-700">Escalated as <code>${escapeHtml(data.id)}</code>; the squad is reasoning (watch the timeline).</span>`;
+        } else {
+          out.innerHTML = data.steps.map(st => `<div class="${st.status === 'ok' ? 'text-green-700' : 'text-red-600'}">${st.status === 'ok' ? '✔' : '✖'} ${escapeHtml(st.step)}${st.error ? ': ' + escapeHtml(st.error) : ''}</div>`).join('');
+        }
+        loadZeroOps();
+      } catch (e) {
+        out.innerHTML = `<span class="text-red-600">${escapeHtml(e.message)}</span>`;
+      }
+    }
+
+    function renderZeroOpsTimeline(items) {
+      const el = document.getElementById('zeroops-timeline');
+      if (!items.length) { el.innerHTML = '<div class="text-brand-gray-400">No escalations yet. Inject a 🧠 scenario and let the SRE Agent escalate, or click "Simulate escalation".</div>'; return; }
+      el.innerHTML = items.map(e => {
+        const r = e.result || {}, c = e.cost || {};
+        const actions = (r.recommended_actions || []).map(a => `<li><span class="font-semibold">[${escapeHtml(a.urgency || '')}]</span> ${escapeHtml(a.description || '')}</li>`).join('');
+        const sourceIcon = e.source === 'sre-agent' ? '🛟 SRE Agent' : e.source === 'simulated' ? '🎬 Simulated' : '🔌 API';
+        const gate = e.status === 'proposed'
+          ? `<div class="flex gap-2 mt-2">
+               ${e.proposal_id ? '' : `<button onclick="zeroopsAct('${e.id}','propose')" class="text-xs px-2 py-1 rounded border border-brand-gray-200 hover:bg-brand-gray-50">Raise proposal</button>`}
+               <button onclick="zeroopsAct('${e.id}','approve')" class="text-xs px-2 py-1 rounded bg-green-600 text-white">Approve</button>
+               <button onclick="zeroopsAct('${e.id}','reject')" class="text-xs px-2 py-1 rounded bg-red-600 text-white">Reject</button></div>`
+          : e.status === 'approved' ? `<div class="mt-2"><button onclick="zeroopsAct('${e.id}','resolve')" class="text-xs px-2 py-1 rounded bg-green-700 text-white">Mark resolved (SRE Agent verified)</button></div>` : '';
+        return `<div class="border border-brand-gray-100 rounded-lg p-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs px-2 py-0.5 rounded-full ${ZEROOPS_STATUS_STYLE[e.status] || ''}">${escapeHtml(e.status)}</span>
+            <span class="text-xs text-brand-gray-500">${sourceIcon}</span>
+            ${e.scenario_id ? `<span class="text-xs bg-brand-gray-100 px-2 py-0.5 rounded-full">${escapeHtml(e.scenario_id)}</span>` : ''}
+            <span class="text-xs text-brand-gray-400 ml-auto">${escapeHtml(e.created_at)} &middot; <code>${escapeHtml(e.id)}</code></span>
+          </div>
+          <div class="mt-1 font-medium">${escapeHtml(r.conclusion || e.question.split('\n')[0])}</div>
+          ${r.business_impact ? `<div class="text-xs text-brand-gray-500 mt-1"><strong>Impact:</strong> ${escapeHtml(r.business_impact)}</div>` : ''}
+          ${actions ? `<ul class="text-xs mt-1 ml-4 list-disc space-y-0.5">${actions}</ul>` : ''}
+          ${r.remediation_script ? `<details class="text-xs mt-1"><summary class="cursor-pointer">Remediation script</summary><pre class="bg-brand-gray-50 rounded p-2 whitespace-pre-wrap">${escapeHtml(r.remediation_script)}</pre></details>` : ''}
+          ${e.error ? `<div class="text-xs text-red-600 mt-1">${escapeHtml(e.error)}</div>` : ''}
+          ${c.total_estimated_usd !== undefined ? `<div class="text-xs text-brand-gray-500 mt-1">💰 ${usd(c.total_estimated_usd)} = SRE Agent ~${c.sre_agent.active_aau} AAU (${usd(c.sre_agent.estimated_usd)}) + squad ${Number(c.squad.total_tokens).toLocaleString()} tokens / ${c.squad.model_calls} calls (${usd(c.squad.estimated_usd)})${r.specialists ? ' &middot; ' + r.specialists.length + ' specialist(s)' + (r.debate_used ? ' + debate' : '') : ''}</div>` : ''}
+          ${gate}
+        </div>`;
+      }).join('');
+    }
+
+    async function zeroopsAct(id, action) {
+      const url = action === 'propose' ? `/api/zeroops/escalations/${id}/propose` : `/api/zeroops/escalations/${id}/decision`;
+      const body = action === 'propose' ? {} : {decision: action, by: 'ops-console'};
+      const resp = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+      if (!resp.ok) { const d = await resp.json().catch(() => ({})); alert(d.error || resp.statusText); }
+      loadZeroOps();
+    }
+
+    function renderZeroOpsCost(cm, summary) {
+      const p = cm.task_profiles_aau || {};
+      document.getElementById('zeroops-cost').innerHTML = `
+        <div><strong>SRE Agent always-on:</strong> ${cm.always_on_aau_per_hour} AAU/hr &rarr; ${cm.always_on_aau_per_month.toLocaleString()} AAU/mo &asymp; ${usd(cm.always_on_usd_per_month)}/mo at ${usd(cm.aau_price_usd)}/AAU</div>
+        <div><strong>SRE Agent active flow</strong> (${escapeHtml(cm.sre_model.model)}): quick question ~${p.quick_question} AAU, investigation ~${p.incident_investigation} AAU, full remediation ~${p.full_remediation} AAU</div>
+        <div><strong>Squad (Foundry):</strong> metered per escalation from real token usage (see timeline)</div>
+        <div class="border-t border-brand-gray-100 pt-2"><strong>So far:</strong> ${summary.count || 0} escalation(s), ${Number(summary.total_squad_tokens || 0).toLocaleString()} squad tokens, ${usd(summary.total_estimated_usd)} estimated</div>
+        <p class="text-xs text-brand-gray-400">${escapeHtml(cm.note)}</p>`;
     }
 
     function toggleMoreMenu() {

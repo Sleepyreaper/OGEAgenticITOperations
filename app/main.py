@@ -20,6 +20,8 @@ from app.agents.analysis_routes import agent_analysis_bp
 from app.agents import backend as agent_backend
 from app.agents import evaluation as agent_evaluation
 from app.agents.catalog import build_agent_catalog
+from app.zeroops.mcp_server import mcp_bp
+from app.zeroops.routes import zeroops_bp
 
 
 def create_app():
@@ -48,6 +50,12 @@ def create_app():
     # backend; kept separate from operations_bp so that module's
     # "no LLM call" invariant stays true and easy to verify.
     app.register_blueprint(agent_analysis_bp)
+
+    # ZeroOps: Azure SRE Agent (tier 1) escalates to the squad over MCP
+    # (/mcp), plus the demo console API (/api/zeroops). See
+    # docs/ZEROOPS_SRE_AGENT.md.
+    app.register_blueprint(mcp_bp)
+    app.register_blueprint(zeroops_bp)
 
     # ─── Pages ──────────────────────────────────────────────
 

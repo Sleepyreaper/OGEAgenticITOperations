@@ -1,0 +1,7 @@
+{
+  "_comment": "MCP connector that gives the SRE Agent the ogeops_* tools. The connector name 'ogeops' becomes the tool prefix (ogeops_escalate, ...). @@OGE_APP_URL@@ and @@MCP_API_KEY@@ are substituted by scripts/configure-sre-agent.sh; never commit a real key.",
+  "name": "ogeops",
+  "type": "http",
+  "endpoint": "@@OGE_APP_URL@@/mcp",
+  "headers": {"X-API-Key": "@@MCP_API_KEY@@"}
+}

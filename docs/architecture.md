@@ -5,7 +5,7 @@
 A multi-agent AI operations platform running on Azure, purpose-built for Cloud Ops teams.
 
 **Key architectural decisions:**
-- Custom-built (not dependent on Azure Copilot Agents preview or SRE Agent)
+- Custom-built multi-agent squad on Azure AI Foundry; **pairs with the Azure SRE Agent** as tier 1 (ZeroOps — the SRE Agent triages and escalates over MCP; see [ZEROOPS_SRE_AGENT.md](ZEROOPS_SRE_AGENT.md))
 - Reuses existing Azure OpenAI deployments and App Service Plan
 - Secure by default — VNet, private endpoints, Managed Identity, RBAC
 - Two-view design: Executive Reliability (leadership) and Ops Center (engineering)
@@ -50,6 +50,20 @@ A multi-agent AI operations platform running on Azure, purpose-built for Cloud O
 └──────────────────────────────────────────────────────────────┘
          All access via Managed Identity (Reader RBAC)
 ```
+
+## ZeroOps: Azure SRE Agent → OGE squad
+
+```
+Azure Monitor alert ─► Azure SRE Agent (zeroops-triage + skills) ─► SOLO fix (human approves in Review mode)
+                                   │
+                                   └─ MCP ogeops_escalate ─► POST /mcp ─► escalation ledger
+                                                               └─► Foundry squad (route → specialists → debate → final)
+                                                                    └─► remediation script + ADO proposal ─► human approves
+```
+
+`app/zeroops/` holds the MCP server, escalation ledger, scenarios, cost model and `/api/zeroops`
+routes. `sre-agent/` holds the SRE Agent custom agent, skills, response plan and setup script.
+`infra/zeroops-demo/` holds the breakable demo resources. Full design: [ZEROOPS_SRE_AGENT.md](ZEROOPS_SRE_AGENT.md).
 
 ## Azure Resources ({PREFIX}_RG Resource Group)
 
