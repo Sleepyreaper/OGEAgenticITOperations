@@ -1,177 +1,229 @@
-# Foundry Architecture: current runtime vs. a concrete migration plan
+# Foundry Architecture: the runtime squad on Azure AI Foundry
 
-**Honest, up-front statement:** this application calls **Azure OpenAI
-directly** today, via `DirectAzureOpenAIBackend`
-(`app/agents/backend.py`) and `app/agents/runner.py::call_agent` (the
-pre-existing council path). It does **not** use Azure AI Foundry Agent
-Service, Foundry threads, Foundry-managed tool-calling, or Foundry
-evaluations at runtime, anywhere in this codebase, as of this writing.
-Any place in this repo that mentions "Foundry" (`FoundryConfig`,
-`FoundryAgentServiceBackend`, `foundry-gpt` deployment names, etc.) is
-either inert configuration metadata or an explicitly-`NotImplementedError`
-stub -- never a functional integration dressed up to look like one. This
-doc exists so that gap is never accidentally papered over, and so a real
-migration has a concrete, actionable plan to follow.
+The operations analysis layer (`/api/operations/analyze`,
+`/api/operations/briefing`) is a **squad**: a deterministic coordinator
+routes a bounded evidence bundle to the right specialists (scout,
+cost_sentinel, diagnostics_sre, standards_architect,
+compliance_inspector), optionally runs a rebuttal round, and has the
+orchestrator synthesize one cited answer. Since this release the squad
+can run on **Azure AI Foundry Agent Service** — each specialist is a real,
+versioned Foundry agent — and every run reports a token ledger so model
+spend is a first-class operations KPI.
 
-## Why "direct" today, and why that's a reasonable starting point
+> Pattern credit: the "squad" shape (specialists + coordinator, parallel
+> fan-out, persistent team memory, human approval gate) follows the
+> open-source [`bradygaster/squad`](https://github.com/bradygaster/squad) project. The repo's
+> *Build Squad* (the agents that develop this app) lives in `.squad/`;
+> the *runtime squad* described here lives in `profiles/<profile>/`.
 
-The existing `/api/ask` council (`app/agents/runner.py`) and this
-repo's new evidence-grounded analysis layer (`app/agents/analysis.py`,
-see `docs/AGENT_INTELLIGENCE.md`) both need exactly one thing from a
-model backend: "given these messages, return text (ideally
-schema-constrained JSON)." `DirectAzureOpenAIBackend` does that with the
-`openai` Python SDK's `chat.completions.create`, `AzureADTokenProvider`-
-based auth (`azure.identity`), and `response_format={"type":
-"json_schema", ...}` for structured output when the deployment supports
-it. This is simple, well-understood, and already has real OTEL
-telemetry (`app/telemetry.py`) and per-agent model/endpoint/cost
-configuration (`app/config.py`) built around it.
+## Backends
 
-## The seam: `ModelBackend` protocol (`app/agents/backend.py`)
+`AGENT_BACKEND` selects one implementation of the `ModelBackend`
+protocol (`app/agents/backend.py`):
 
-```python
-class ModelBackend(Protocol):
-    name: str
-    def complete(self, agent_config, messages, *, json_schema=None, schema_name="") -> BackendCompletion: ...
+| Backend | What it does | When to use |
+|---|---|---|
+| `direct` (default) | Azure OpenAI chat completions per agent call (`app/agents/runner.py`) | Simple deployments, no Foundry project |
+| `foundry` | One versioned Foundry agent per specialist, invoked through the Foundry Responses API with a bounded tool loop | Agents visible/governed in the Foundry portal, function tools, Foundry tracing/evals, token governance |
+
+Routing (`app/agents/routing.py`), evidence selection
+(`app/agents/evidence.py`), approvals (`app/approval.py`) and evaluation
+(`app/agents/evaluation.py`) are **identical** for both. Foundry changes
+the transport of a routing decision — it never decides routing, scope,
+or execution.
+
+## How the Foundry backend works
+
+```
+analyze_operations()                      (deterministic Python)
+  ├─ route(bundle) ──► [specialists]      CATEGORY_AGENT_MAP, never a model
+  ├─ fan-out (ThreadPool, ANALYSIS_MAX_PARALLEL_SPECIALISTS)
+  │    └─ FoundryAgentServiceBackend.complete(agent, messages, tool_context)
+  │         ├─ ensure_agent(): publish version only if definition hash changed
+  │         ├─ responses.create(agent_reference=<prefix>-<agent>-<schema>)
+  │         ├─ while function_call and rounds < FOUNDRY_MAX_TOOL_ROUNDS:
+  │         │     execute_tool(name, args + server-bound subscription scope)
+  │         │     responses.create(function_call_output, previous_response_id)
+  │         └─ usage → telemetry.record_usage + returned usage dict
+  ├─ optional rebuttal round (same fan-out)
+  ├─ orchestrator synthesis
+  └─ citation validation, approval metadata, evaluation, usage_summary
 ```
 
-`app/agents/analysis.py` (and, in the future, `app/agents/runner.py`)
-only ever talk to this protocol -- never to the `openai` SDK directly.
-That means a real Foundry integration is a SECOND implementation of this
-same interface (`FoundryAgentServiceBackend`), not a rewrite of the
-orchestration/routing/evidence layers above it. Selecting a backend is
-one environment variable: `AGENT_BACKEND=direct` (default) or
-`AGENT_BACKEND=foundry` (today: fails loudly with `NotImplementedError`
--> HTTP 501, on purpose -- see `app/agents/backend.py::FoundryAgentServiceBackend`).
+### Agents
 
-## Concrete migration plan (not yet implemented)
+* **Naming:** `<FOUNDRY_AGENT_PREFIX>-<agent-key>-<schema>`, e.g.
+  `oge-ops-cost-sentinel-agent-analysis-result` (≤ 63 chars, alphanumeric
+  ends). One agent per (specialist, output schema) because Foundry
+  rejects a per-call `text` format when an agent is referenced — the JSON
+  schema must be baked into the agent version.
+* **Definition:** `PromptAgentDefinition` = the agent's system prompt
+  (instructions), model deployment, temperature (if supported), the
+  structured-output JSON schema, and the read-only tool registry as
+  `FunctionTool`s.
+* **Versioning:** the definition is hashed; `ensure_agent()` publishes a
+  new version **only** when the hash differs from the latest version's
+  `metadata.definition_hash` (cached per process). Prompt edits in
+  `profiles/*/prompts/` therefore become new Foundry agent versions
+  automatically on next use, and are visible/diffable in the portal.
+* **Model:** the agent's own deployment (`AGENT_<KEY>_DEPLOYMENT` or the
+  profile default) unless `FOUNDRY_MODEL_DEPLOYMENT` forces one for all.
+  Deployment names must exist in the Foundry project.
 
-### 1. Tools -> Foundry Agent Service tool definitions
+### Tools
 
-`app/agents/tools.py`'s registry (`get_executive_brief`,
-`list_prioritized_findings`, `get_finding_evidence`,
-`get_capacity_watch`, `get_recent_changes`, `get_source_coverage`) is
-already shaped for this: each `ToolDefinition.parameters_schema` is a
-plain JSON Schema, which is exactly the shape Foundry Agent Service (and
-OpenAI-style function calling generally) expects for a tool/function
-definition. The migration work is:
+The six read-only tools in `app/agents/tools.py` are exposed as Foundry
+function tools. Safety properties:
 
-* Register each `ToolDefinition` as a Foundry Agent Service tool
-  (`name`, `description`, `parameters_schema` map directly).
-* Wire Foundry's tool-call events to `app.agents.tools.execute_tool` as
-  the handler -- the read-only/authorization/timeout/result-bound
-  behavior in `execute_tool` needs no changes; only the transport
-  (Foundry's tool-call protocol instead of a direct Python call) does.
-* No new tool needs to be invented, and -- deliberately -- no generic
-  ARM/KQL execution tool should EVER be added, in Foundry or otherwise;
-  every tool stays a named, bounded, read-only wrapper over an existing
-  operations service.
+* `subscription_ids` and `force_refresh` are **removed** from the
+  model-facing schema and **bound server-side** from `ToolContext`
+  (the request's snapshot scope). Any model-supplied value is overwritten.
+  With no scope bound, tools return an explicit error.
+* Tool output is truncated to `FOUNDRY_MAX_TOOL_OUTPUT_CHARS`.
+* The loop is bounded by `FOUNDRY_MAX_TOOL_ROUNDS`; hitting the limit
+  returns `finish_reason = "tool_round_limit"` (never an unbounded loop).
+* `FOUNDRY_ENABLE_TOOLS=false` publishes agents with no tools.
+* There is deliberately **no generic ARM/KQL/shell/HTTP tool**.
 
-### 2. Threads: per-incident and per-day
+### Auth
 
-Foundry Agent Service's thread model maps naturally onto two units this
-app already has:
+`ManagedIdentityCredential(client_id=AZURE_CLIENT_ID)` when
+`AZURE_CLIENT_ID` is set (App Service), else `DefaultAzureCredential`
+(local `az login`). No keys. The identity needs **Foundry User**
+(role `53ca6127-db72-4b80-b1b0-d745d6d5456d`, formerly "Azure AI User")
+on the Foundry account — it covers both publishing agent versions and
+calling the Responses API.
 
-* **Per-incident thread** -- one Foundry thread per `Finding.id` (or per
-  correlated incident group), so a specialist's reasoning about one
-  finding persists/accumulates across follow-up questions instead of
-  re-deriving context from scratch on every call (today's stateless
-  `messages` list rebuild in `app/agents/analysis.py::_build_messages`).
-* **Per-day thread** -- one Foundry thread per day per subscription
-  scope, backing `/api/operations/briefing`'s daily executive briefing,
-  so "what changed since yesterday's briefing" becomes a natural thread
-  continuation instead of the current `app.operations.handoff`-style
-  timestamp diffing.
+### Live-verified API notes (`azure-ai-projects` 2.7.0, `openai` 3.x)
 
-Both would still be seeded EXCLUSIVELY from `EvidenceBundle`s (never raw
-Azure data) -- the grounding discipline in `docs/AGENT_INTELLIGENCE.md`
-does not change just because the transport does.
+* Input items must carry `"type": "message"` (else 400 *Invalid value ''*).
+* Per-call `text`/JSON-schema is rejected with an agent reference
+  (*Not allowed when agent is specified*) → schema lives on the agent.
+* The system prompt goes in agent `instructions`; any other system
+  message in the conversation is sent as a `developer` message.
+* Tool results go back as `{"type": "function_call_output", "call_id",
+  "output"}` with `previous_response_id`.
+* `usage.input_tokens`/`output_tokens` are summed across tool rounds.
 
-### 3. Managed identity auth
+## Token usage as an ops KPI
 
-`DirectAzureOpenAIBackend` already authenticates via
-`azure.identity.ManagedIdentityCredential`/`DefaultAzureCredential`
-(`app/agents/runner.py::_get_client`) -- no API keys anywhere in this
-app. A Foundry backend should use the exact same credential chain
-against the Foundry project endpoint (`FoundryConfig.project_endpoint`),
-so the migration doesn't regress this app's existing "no static
-secrets for model auth" posture.
+Every `/api/operations/analyze` response (and `/briefing`) includes a
+`usage_summary`. Illustrative shape (5-specialist debate run on the demo
+snapshot, live Foundry, `gpt-5.6-luna`, ~30 s with parallel fan-out):
 
-### 4. Tracing
+```json
+"usage_summary": {
+  "prompt_tokens": 57800, "completion_tokens": 7600, "total_tokens": 65400,
+  "estimated_cost_usd": 0.0,
+  "tool_calls": 0, "model_calls": 11,
+  "per_round_tokens": {"specialists": 23271, "rebuttals": 34719, "synthesis": 7410},
+  "per_agent_tokens": {"scout": 10854, "cost_sentinel": 11363, "orchestrator": 7410, "...": "..."},
+  "cited_finding_count": 1,
+  "tokens_per_cited_finding": 65400
+}
+```
 
-`app/telemetry.py` already emits OTEL spans for every agent call
-(`agent_call_span`), every tool call (`tool_call_span`), and routing
-decisions (`record_routing_decision`) -- all content-free (tool
-name/result count/duration/status only, never prompts/responses/tool
-arguments). A Foundry backend should emit into the SAME
-`app.telemetry` spans/counters (parent span per analysis request, child
-spans per agent/tool call) rather than introducing a second, parallel
-telemetry surface -- so existing KQL queries/dashboards
-(`docs/TELEMETRY.md`) keep working unchanged regardless of which backend
-served a given request.
+Note the rebuttal round is ~60% of specialist+rebuttal spend in that
+run — exactly the kind of signal the KPIs below are for.
 
-### 5. Evaluations
+Each specialist/rebuttal/final outcome also carries its own `usage`
+(`prompt_tokens`, `completion_tokens`, `tool_calls`, `tool_rounds`,
+`foundry_agent`), and `app/telemetry.py` emits the same numbers as OTEL
+metrics/span attributes into Application Insights (see
+`docs/TELEMETRY.md`).
 
-`app/agents/evaluation.py`'s deterministic metrics (schema validity,
-citation validity/coverage, unsupported-citation count, action-policy
-adherence) are backend-agnostic by construction -- they're computed from
-the already-parsed `AgentAnalysisResult`, not from anything
-Foundry-specific. A Foundry migration should ALSO wire Foundry's own
-native evaluation/observability features (if/when adopted) as an
-ADDITIONAL signal, not a replacement -- this app's own deterministic
-evaluation should keep running regardless of backend, since it's the
-one guarantee that doesn't depend on trusting a third-party evaluation
-pipeline.
+Suggested KPIs for the ops review / weekly retro:
 
-### 6. Prompt Shields / Task Adherence (Azure AI Content Safety)
+| KPI | Source | Why |
+|---|---|---|
+| Tokens per cited finding | `usage_summary.tokens_per_cited_finding` | Efficiency of grounded output |
+| Debate premium | `per_round_tokens.rebuttals / total_tokens` | Is the rebuttal round worth it? |
+| Tokens per agent | `per_agent_tokens` | Right-size model tiers per specialist |
+| Tool calls per run | `usage_summary.tool_calls` | Agents pulling extra evidence vs. bundle |
+| Citation validity at cost | `evaluation.citation_validity_pct` vs tokens | Accuracy per token |
+| Cost per resolved finding | `estimated_cost_usd` / findings resolved | Business value of agent spend |
 
-Two DISTINCT existing Azure AI Foundry/Content Safety features are
-relevant here, and neither is implemented in this repo today:
+`estimated_cost_usd` is computed from per-agent pricing
+(`AGENT_<KEY>_INPUT_COST_PER_MILLION` / `_OUTPUT_COST_PER_MILLION`, see
+`docs/MODEL_CONFIGURATION.md`) and is 0 until you set it. Azure Cost
+Management and the Foundry portal's usage views remain billing truth.
 
-* **Prompt Shields** -- detects prompt-injection attempts (e.g. an
-  Azure Activity Log entry or Advisor recommendation title crafted to
-  contain instructions for the model). Since this app's evidence bundle
-  DOES include free-text fields sourced from Azure (finding titles/
-  summaries/business_impact -- see `docs/AGENT_INTELLIGENCE.md`'s
-  evidence-bundle schema), a real deployment ingesting untrusted/
-  attacker-influenced Azure resource metadata should run the evidence
-  bundle's text fields through Prompt Shields before they reach a model
-  prompt. This is a genuine, currently-open gap this repo does not
-  claim to close.
-* **Task Adherence** (Azure AI Foundry's own agent-evaluator feature) --
-  a MODEL-based check that an agent's output stayed within its intended
-  task scope. This is complementary to, not a replacement for, this
-  repo's own DETERMINISTIC task-adherence guarantee (`app/approval.py`'s
-  `analysis_action_metadata` hardcoding `auto_executable: false` for the
-  read-only analysis surface -- see `docs/AGENT_INTELLIGENCE.md`). The
-  deterministic guarantee should remain the primary control even after
-  adopting Foundry's Task Adherence evaluator, since it holds even if
-  the evaluator itself is wrong/bypassed/unavailable.
+## Configuration
 
-## Model routing (current state, and what Foundry adds)
+| Variable | Default | Purpose |
+|---|---|---|
+| `AGENT_BACKEND` | `direct` | `foundry` to enable |
+| `FOUNDRY_PROJECT_ENDPOINT` | — | `https://<account>.services.ai.azure.com/api/projects/<project>` (required) |
+| `FOUNDRY_AGENT_PREFIX` | `oge-ops` | Agent name prefix (use per-environment prefixes to share a project) |
+| `FOUNDRY_MODEL_DEPLOYMENT` | — | Force one deployment for all agents |
+| `FOUNDRY_ENABLE_TOOLS` | `true` | Expose the read-only tool registry |
+| `FOUNDRY_MAX_TOOL_ROUNDS` | `4` | Tool loop bound |
+| `FOUNDRY_MAX_TOOL_OUTPUT_CHARS` | `12000` | Per-tool-result truncation |
+| `ANALYSIS_MAX_PARALLEL_SPECIALISTS` | `4` | Fan-out width (both backends); `1` = sequential |
 
-Today, "model routing" means: `app/config.py`'s per-agent
-`deployment`/`endpoint`/`api_version` configuration (profile-driven, see
-`docs/MODEL_CONFIGURATION.md`) plus `app/agents/routing.py`'s
-category-to-specialist mapping (see `docs/AGENT_INTELLIGENCE.md`) --
-i.e. "which Azure OpenAI deployment, behind which specialist persona."
-A Foundry Agent Service migration would ADD a second routing dimension:
-Foundry's own agent/thread orchestration could, in principle, route a
-conversation to a pre-registered Foundry agent definition instead of a
-raw chat-completion call -- but the CATEGORY -> SPECIALIST mapping
-itself should stay exactly as deterministic as it is today (see
-`app/agents/routing.py`'s `CATEGORY_AGENT_MAP`); Foundry should change
-the TRANSPORT of a routing decision, never decide the routing itself.
+`/api/health` → `backend` reports `active_backend`, `foundry_configured`,
+`foundry_implemented: true` and `foundry_agent_prefix`.
 
-## Non-goals of this migration plan
+## Infrastructure
 
-* This is a plan, not a partially-built integration -- there is no
-  Foundry SDK dependency added to `requirements.txt` by this repo, and
-  no Bicep infrastructure provisioned for Foundry, until this plan is
-  actually implemented (see `.env.example`'s `FOUNDRY_*` variables,
-  which are documented as inert metadata-only today).
-* Foundry adoption should never become a way to relax this repo's
-  existing guarantees (bounded evidence, citation validation, strict
-  schema parsing, deterministic approval tiers, no auto-execution from a
-  read-only surface) -- every one of those must hold identically
-  regardless of which `ModelBackend` implementation is active.
+Both IaC flavors support reusing an existing Foundry project or creating one.
+
+**Bicep** (`infra/main.bicep`):
+
+| Param | Meaning |
+|---|---|
+| `foundryMode` | `none` (default) / `existing` (grant Foundry User on `foundryAccountName` in `foundryResourceGroup`) / `new` (create account + project + `foundryModelDeployments` + RBAC + diagnostics to the app's Log Analytics) |
+| `foundryProjectEndpoint` | Endpoint for `existing`/`none` (derived for `new`) |
+| `foundrySettings` | `{ agentPrefix, modelDeployment, enableTools, maxToolRounds, maxToolOutputChars, maxParallelSpecialists }` |
+| `agentBackend` | Set to `foundry` to switch the app |
+
+Modules: `infra/modules/foundry.bicep` (new) and
+`infra/modules/foundry-rbac.bicep` (existing).
+
+**Terraform** (`infra/terraform/foundry/`): `mode = "existing" | "new"`,
+outputs `project_endpoint` and the app settings to apply. See its
+`README.md`.
+
+Example — reuse an existing project:
+
+```bicep
+param agentBackend = 'foundry'
+param foundryMode = 'existing'
+param foundryAccountName = '<your-foundry-account>'
+param foundryResourceGroup = '<your-foundry-resource-group>'
+param foundryProjectEndpoint = 'https://<your-foundry-account>.services.ai.azure.com/api/projects/<your-project>'
+param agentOverrides = {
+  orchestrator: { deployment: 'gpt-5.6-terra' }
+  standards_architect: { deployment: 'gpt-5.6-terra' }
+  cost_sentinel: { deployment: 'gpt-5.6-sol' }
+  diagnostics_sre: { deployment: 'gpt-5.6-sol' }
+  compliance_inspector: { deployment: 'gpt-5.6-sol' }
+  scout: { deployment: 'gpt-5.6-luna' }
+}
+```
+
+## Roadmap (not yet implemented)
+
+1. **Threads per finding / per day** — persist a Foundry conversation per
+   `Finding.id` and per daily briefing so follow-ups continue context
+   instead of rebuilding it; still seeded only from `EvidenceBundle`s.
+2. **Ralph as a scheduled job** — a Container Apps job that runs the
+   daily briefing and posts a token/finding digest (Squad "Ralph" pattern).
+3. **Ceremonies** — daily briefing, weekly eval + token retro driven by
+   the KPIs above.
+4. **Foundry evaluations** — wire Foundry's evaluators (incl. Task
+   Adherence) as an *additional* signal; the deterministic
+   `app/agents/evaluation.py` and `auto_executable: false` stay primary.
+5. **Prompt Shields** — evidence bundles include Azure-sourced free text
+   (finding titles/summaries); screen them before they reach a prompt.
+   This is an open gap.
+6. **New specialists** — AKS SRE, network/ExpressRoute, observability,
+   FinOps — each justified by eval accuracy gain vs. token cost.
+7. **Token dashboard** — Workbook over the OTEL token metrics.
+
+## Non-negotiables (both backends)
+
+Bounded evidence, citation validation, strict schema parsing,
+deterministic routing and approval tiers, no generic query tools, and no
+auto-execution from a read-only surface hold identically regardless of
+which `ModelBackend` is active.

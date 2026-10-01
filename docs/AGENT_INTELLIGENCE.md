@@ -24,8 +24,8 @@ app/agents/
   routing.py              CATEGORY_AGENT_MAP, route() -- selective
                         specialist/debate routing policy.
   backend.py              ModelBackend protocol, DirectAzureOpenAIBackend
-                        (what actually runs today), FoundryAgentServiceBackend
-                        (NOT implemented -- see docs/FOUNDRY_ARCHITECTURE.md).
+                        (default), FoundryAgentServiceBackend
+                        (AGENT_BACKEND=foundry -- see docs/FOUNDRY_ARCHITECTURE.md).
   evaluation.py            Lightweight deterministic online evaluation +
                         in-process aggregate counters.
   analysis.py              analyze_operations() / build_briefing() --
@@ -221,9 +221,10 @@ already behaves for the deterministic executive brief.
 
 ## Typed tool registry (`app/agents/tools.py`)
 
-A Foundry-ready, read-only tool boundary -- see
-`docs/FOUNDRY_ARCHITECTURE.md` for how this maps onto Foundry Agent
-Service's tool-calling model. Six tools, each wrapping exactly one
+A read-only tool boundary, exposed to Foundry agents as function tools
+when `AGENT_BACKEND=foundry` (see `docs/FOUNDRY_ARCHITECTURE.md`;
+`subscription_ids`/`force_refresh` are stripped from the model-facing
+schema and bound server-side). Six tools, each wrapping exactly one
 already-bounded operations service:
 
 | Tool | Wraps | Max items |
@@ -318,18 +319,25 @@ telemetry is configured) -- satisfying "persist aggregate counters OR
 emit OTEL metrics" with both, since the in-process counters are directly
 testable without a real Application Insights backend.
 
-## Current runtime (honest statement)
+## Current runtime
 
-This app calls **Azure OpenAI directly** via
-`DirectAzureOpenAIBackend` (`app/agents/backend.py`) for every agent
-call in this layer, exactly like the existing `/api/ask` council. It
-does **not** use Azure AI Foundry Agent Service at runtime.
-`FoundryAgentServiceBackend` exists as a second implementation of the
-same `ModelBackend` protocol, but its `.complete()` always raises
-`NotImplementedError` -- setting `AGENT_BACKEND=foundry` fails loudly
-(HTTP 501) rather than silently continuing to use Direct while claiming
-otherwise. See `docs/FOUNDRY_ARCHITECTURE.md` for the concrete migration
-plan.
+Two implementations of the same `ModelBackend` protocol
+(`app/agents/backend.py`), selected by `AGENT_BACKEND`:
+
+- **`direct`** (default) -- `DirectAzureOpenAIBackend` calls Azure OpenAI
+  chat completions directly, exactly like the existing `/api/ask` council.
+- **`foundry`** -- `FoundryAgentServiceBackend` runs every specialist as a
+  versioned **Azure AI Foundry agent** (Foundry Agent Service, Responses
+  API), with the read-only tool registry below exposed as function tools
+  and subscription scope bound server-side. It fails loudly (never
+  silently falls back to `direct`) if `FOUNDRY_PROJECT_ENDPOINT` is unset.
+  See `docs/FOUNDRY_ARCHITECTURE.md`.
+
+Routing, evidence selection, approvals and evaluation are identical for
+both -- Foundry only carries the model calls. Specialist and rebuttal
+rounds fan out in parallel (`ANALYSIS_MAX_PARALLEL_SPECIALISTS`, default
+4), and every analysis response carries a `usage_summary` token ledger
+(see `docs/FOUNDRY_ARCHITECTURE.md`'s "Token usage as an ops KPI").
 
 `/api/health` and every analysis/briefing response include
 `agent_definition_version` (a version fingerprint for the loaded
