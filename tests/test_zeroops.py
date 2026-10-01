@@ -204,6 +204,12 @@ try:
     test("cannot propose a failed escalation", False)
 except ValueError:
     test("cannot propose a failed escalation", True)
+for bad in ({"category": "change-management"}, {"severity": "urgent"}):
+    try:
+        service_mod.escalate(question="bad input", source="api", **bad)
+        test(f"escalate rejects invalid {list(bad)[0]} synchronously", False)
+    except ValueError as exc:
+        test(f"escalate rejects invalid {list(bad)[0]} synchronously", "must be one of" in str(exc))
 out = service_mod.propose_fix(rec["id"])
 test("propose_fix creates pending proposal", out["proposal"]["status"] == "pending" and out["escalation"]["proposal_id"] == out["proposal"]["id"])
 test("proposal description includes script", "az storage account update" in out["proposal"]["description"])
@@ -254,6 +260,8 @@ res = call("escalate", {"bogus": 1})
 test("unknown argument is a tool error", res["isError"] and "unknown argument" in res["content"][0]["text"])
 res = call("escalate", {"severity": "apocalyptic", "question": "q"})
 test("enum validated", res["isError"])
+res = call("escalate", {"category": "change-management", "question": "q"})
+test("category enum validated over MCP", res["isError"] and "security" in res["content"][0]["text"])
 res = call("escalate", {"question": "Storage was opened by a hotfix; revert?", "incident_ref": "alert-42",
                         "sre_summary": "Policy + Defender alerts; unknown dependency", "severity": "high", "debate": True, "wait_seconds": 10})
 test("escalate returns structured result", not res["isError"] and res["structuredContent"]["status"] == "proposed")

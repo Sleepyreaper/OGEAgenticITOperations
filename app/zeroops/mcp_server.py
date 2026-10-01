@@ -24,6 +24,7 @@ from app.agents import backend as agent_backend
 from app.agents import tools as agent_tools
 from app.agents.catalog import build_agent_catalog
 from app.config import settings
+from app.operations.models import FindingCategory
 from app.zeroops import cost as cost_model
 from app.zeroops import scenarios as scenario_mod
 from app.zeroops import service
@@ -34,6 +35,7 @@ SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 SERVER_NAME = "ogeops"
 
 _SEVERITIES = ["critical", "high", "medium", "low", "informational"]
+_CATEGORIES = sorted(member.value for member in FindingCategory)
 
 
 def _tool(name, description, properties, required=(), read_only=True):
@@ -57,7 +59,7 @@ TOOL_DEFINITIONS = [
             "incident_ref": {"type": "string", "description": "Alert/incident id or URL."},
             "scenario_id": {"type": "string", "description": "Known demo scenario id, if this incident matches one (see list_scenarios)."},
             "severity": {"type": "string", "enum": _SEVERITIES},
-            "category": {"type": "string", "description": "Optional finding category filter (e.g. security, cost, reliability, compliance)."},
+            "category": {"type": "string", "enum": _CATEGORIES, "description": "Optional finding category to focus the squad on."},
             "debate": {"type": "boolean", "description": "Force a cross-specialist debate round (more tokens, better for trade-offs)."},
             "wait_seconds": {"type": "integer", "minimum": 0, "maximum": service.MAX_WAIT_SECONDS},
         },
