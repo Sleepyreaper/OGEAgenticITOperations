@@ -248,7 +248,7 @@ class AdoClient:
         the plan output + code, then merges → pipeline runs terraform apply.
         """
         if not proposal.pr_file_changes:
-            raise ValueError("PR proposal has no file changes — Roughneck didn't generate fix code")
+            raise ValueError("PR proposal has no file changes — the remediation agent (standards_architect) didn't generate fix code")
 
         # Step 1: Create branch from main and push fix files
         commit_msg = (
