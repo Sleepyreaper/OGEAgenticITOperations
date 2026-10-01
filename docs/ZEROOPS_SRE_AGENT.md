@@ -116,6 +116,10 @@ state. Alert rule names start with `ZeroOps <scenario-id>`, so the SRE response 
 | 🩹 | `rogue-hotfix` | Escalated | Hotfix enabled public blob access and TLS 1.0 | Squad weighs security vs. breaking the hotfix | Security & Monitoring, Policy & Governance, Resilience & Hygiene |
 | ⏰ | `2am-cert` | Escalated | TLS secret expires in 48h **and** the renewal runbook failed | Squad builds the renewal plan and script before the deadline | Incident & Change, Resilience & Hygiene, Policy & Governance |
 
+> **Key Vault behind policy.** `2am-cert` writes and reads the demo secret through ARM (control plane),
+> so it works when Azure Policy disables the vault's public network access. Cleanup "renews" the
+> bundle (new version, expiry +1 year) because ARM cannot delete secrets.
+
 > **Azure Policy may already help.** Many tenants assign a *modify* policy that forces
 > `allowBlobPublicAccess=false`. In that case `rogue-hotfix` lands only half-way: public access is
 > reverted by policy in the same request, while TLS 1.0 sticks. The SRE Agent will find the
@@ -134,7 +138,7 @@ independent signal; it does not read back what inject wrote.
 | `bad-deploy` | HTTP synthetic probe of the web app (5xx or timeout) | 30–90 s (restart) |
 | `storm-surge` | Azure Resource Graph: plan SKU ≠ B1 or capacity > 1 | 5–20 s |
 | `rogue-hotfix` | Azure Resource Graph: anonymous blob access or min TLS 1.0/1.1 | 5–20 s |
-| `2am-cert` | Key Vault secret expiry ≤ 7 days + Automation renewal job `Failed` | 10–60 s |
+| `2am-cert` | Key Vault secret expiry ≤ 7 days, read via ARM (recent failed renewal jobs add context) | 5–15 s |
 
 On a hit, the card shows **⚡ Detected in N s via &lt;source&gt;** and hands off by tier
 (`POST /api/zeroops/scenarios/<id>/handoff`):

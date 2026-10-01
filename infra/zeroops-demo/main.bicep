@@ -21,7 +21,7 @@ param location string = resourceGroup().location
 @maxLength(8)
 param prefix string = 'zeroops'
 
-@description('Principal (object) ID of the OGE app managed identity. Gets Contributor on each demo resource (not the resource group) and Key Vault Secrets Officer on the demo vault so it can inject/clean up scenarios. Leave empty to assign roles yourself.')
+@description('Principal (object) ID of the OGE app managed identity. Gets Contributor on each demo resource including the vault (not the resource group) and Key Vault Secrets Officer on the demo vault so it can inject/clean up scenarios. Leave empty to assign roles yourself.')
 param opsAppPrincipalId string = ''
 
 @description('Principal IDs (object IDs) of the Azure SRE Agent identities. Each gets Reader + Monitoring Reader on this resource group (add Contributor yourself if you want SRE-solo fixes to run after approval).')
@@ -197,6 +197,18 @@ resource opsContributorStorage 'Microsoft.Authorization/roleAssignments@2022-04-
 resource opsContributorAutomation 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(opsAppPrincipalId)) {
   name: guid(automation.id, opsAppPrincipalId, roles.contributor)
   scope: automation
+  properties: {
+    principalId: opsAppPrincipalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.contributor)
+  }
+}
+
+// Contributor on the vault lets the app manage the demo secret through ARM (control plane), which keeps
+// working when Azure Policy disables the vault's public network access.
+resource opsContributorKv 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(opsAppPrincipalId)) {
+  name: guid(kv.id, opsAppPrincipalId, roles.contributor)
+  scope: kv
   properties: {
     principalId: opsAppPrincipalId
     principalType: 'ServicePrincipal'
