@@ -72,7 +72,7 @@ TOOL_DEFINITIONS = [
           {"escalation_id": {"type": "string"}}, ["escalation_id"], read_only=False),
     _tool("list_findings", "Priority-ordered operations findings from the deterministic evidence layer.",
           {"category": {"type": "string"}, "severity": {"type": "string"}, "status": {"type": "string"},
-           "page_size": {"type": "integer", "minimum": 1, "maximum": 50}}),
+           "page_size": {"type": "integer", "minimum": 1, "maximum": agent_tools._MAX_FINDINGS_PAGE_SIZE}}),
     _tool("get_evidence", "Bounded evidence for exactly one finding id.", {"finding_id": {"type": "string"}}, ["finding_id"]),
     _tool("agent_catalog", "Who is on the OGE squad, what each agent handles and how.", {}),
     _tool("list_scenarios", "ZeroOps demo scenarios and whether each is SRE-solo or squad-escalated.", {}),

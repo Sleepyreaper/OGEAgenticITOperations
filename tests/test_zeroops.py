@@ -293,6 +293,8 @@ test("list_findings scoped to configured subscription", not res.get("isError") a
 res = call("get_evidence", {"finding_id": "missing"})
 test("non-ok squad tool result is an MCP tool error", res["isError"] and "not found" in res["content"][0]["text"])
 mcp_mod.agent_tools.execute_tool = _real_execute
+lf_schema = next(t for t in mcp_mod.TOOL_DEFINITIONS if t["name"] == "list_findings")["inputSchema"]["properties"]["page_size"]
+test("list_findings page_size bound matches squad tool", lf_schema["maximum"] == mcp_mod.agent_tools._MAX_FINDINGS_PAGE_SIZE)
 res = call("escalate", {"bogus": 1})
 test("unknown argument is a tool error", res["isError"] and "unknown argument" in res["content"][0]["text"])
 res = call("escalate", {"severity": "apocalyptic", "question": "q"})
