@@ -20,7 +20,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-API_VERSION="2025-05-01-preview"
+API_VERSION="2025-05-01-preview"  # ARM api-version for Microsoft.App/agents
 
 : "${SRE_AGENT_RESOURCE_GROUP:?set SRE_AGENT_RESOURCE_GROUP}"
 : "${SRE_AGENT_NAME:?set SRE_AGENT_NAME}"
@@ -69,22 +69,29 @@ if [[ "$probe" == "200" ]]; then ok "${OGE_APP_URL}/mcp answers tools/list"
 else warn "${OGE_APP_URL}/mcp returned HTTP ${probe} — check MCP_API_KEY, App Service auth exclusions and networking"; fi
 
 step 2 "MCP connector 'ogeops'"
-HEADERS_JSON="$(python3 -c 'import json,os;print(json.dumps({"X-API-Key":os.environ["MCP_API_KEY"]}))')"
+# ARM child resource Microsoft.App/agents/connectors (same as the official SRE Agent Bicep recipes).
+# BearerToken auth: the OGE MCP server accepts "Authorization: Bearer <MCP_API_KEY>" as well as X-API-Key.
+CONN_URL="https://management.azure.com${AGENT_ID}/connectors/ogeops?api-version=${API_VERSION}"
 if [[ "$DRY_RUN" == "1" ]]; then
-  echo "azmcp sreagent connectors create mcp --name ogeops --type http --endpoint ${OGE_APP_URL}/mcp --headers-json <redacted>"
-elif command -v azmcp >/dev/null; then
-  if azmcp sreagent connectors create mcp --subscription "$SUB" --resource-group "$SRE_AGENT_RESOURCE_GROUP" \
-      --agent "$SRE_AGENT_NAME" --name ogeops --type http --endpoint "${OGE_APP_URL}/mcp" \
-      --headers-json "$HEADERS_JSON" >/tmp/zeroops-azmcp.$$ 2>&1; then
-    ok "connector ogeops -> ${OGE_APP_URL}/mcp"
-  else
-    warn "azmcp connector create failed: $(grep -v -i 'api-key' /tmp/zeroops-azmcp.$$ | tail -3)"
-  fi
-  rm -f /tmp/zeroops-azmcp.$$
+  echo "PUT ${CONN_URL}  {dataConnectorType: Mcp, endpoint: ${OGE_APP_URL}/mcp, authType: BearerToken, bearerToken: <redacted>}"
 else
-  warn "azmcp not found (npm i -g @azure/mcp@latest). Add the connector in the portal instead:"
-  echo "      SRE Agent > Settings > Connectors > Add > MCP server (HTTP)"
-  echo "      Name: ogeops   URL: ${OGE_APP_URL}/mcp   Header: X-API-Key = <MCP_API_KEY>"
+  CONN_BODY="$(mktemp)"; chmod 600 "$CONN_BODY"
+  OGE_APP_URL="$OGE_APP_URL" python3 -c 'import json,os;print(json.dumps({"properties":{"dataConnectorType":"Mcp","dataSource":"ogeops-mcp","extendedProperties":{"type":"http","endpoint":os.environ["OGE_APP_URL"]+"/mcp","authType":"BearerToken","bearerToken":os.environ["MCP_API_KEY"]},"identity":"system"}}))' >"$CONN_BODY"
+  state="$(az rest --method PUT --url "$CONN_URL" --body "@${CONN_BODY}" --query properties.provisioningState -o tsv 2>/tmp/zeroops-conn.$$ || true)"
+  rm -f "$CONN_BODY"
+  if [[ "$state" == "Succeeded" ]]; then ok "connector ogeops -> ${OGE_APP_URL}/mcp (tools: ogeops_*)"
+  else
+    warn "connector create returned '${state:-error}': $(grep -v -i bearer /tmp/zeroops-conn.$$ | tail -2)"
+    echo "      Fallback: SRE Agent > Settings > Connectors > Add > MCP server (HTTP)"
+    echo "      Name: ogeops   URL: ${OGE_APP_URL}/mcp   Auth: Bearer token = <MCP_API_KEY>"
+  fi
+  rm -f /tmp/zeroops-conn.$$
+fi
+if command -v azmcp >/dev/null && [[ "$DRY_RUN" != "1" ]]; then
+  TENANT="$(az account show --query tenantId -o tsv)"
+  n="$(azmcp sreagent connectors test --name ogeops --agent "$SRE_AGENT_NAME" --subscription "$SUB" \
+       --resource-group "$SRE_AGENT_RESOURCE_GROUP" --tenant "$TENANT" 2>/dev/null | grep -o '"ogeops_[a-z_]*"' | sort -u | wc -l | tr -d ' ')"
+  [[ "$n" -gt 0 ]] && ok "agent discovered ${n} ogeops_* tools" || warn "could not verify tool discovery (azmcp connectors test)"
 fi
 
 step 3 "Skills"
@@ -120,12 +127,8 @@ agent_put "/api/v2/extendedAgent/agents/zeroops-triage" "$body" "agent zeroops-t
 
 step 5 "Response plan (incident filter)"
 body="$(python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));d.pop("_comment",None);d["type"]="IncidentFilter";d["tags"]=[];print(json.dumps(d))' "$ROOT/triggers/incident-filter.json")"
-if ! agent_put "/api/v2/extendedAgent/incidentFilters/zeroops-response" "$body" "response plan zeroops-response"; then
-  if [[ "$DRY_RUN" != "1" ]]; then
-    az rest --method PUT --url "https://management.azure.com${AGENT_ID}/incidentFilters/zeroops-response?api-version=${API_VERSION}" \
-      --body "$body" --output none && ok "response plan zeroops-response (ARM)" || warn "create the response plan in the portal: title contains 'ZeroOps' -> zeroops-triage"
-  fi
-fi
+agent_put "/api/v2/extendedAgent/incidentFilters/zeroops-response" "$body" "response plan zeroops-response" \
+  || warn "create it in the portal: Response plans > New > title contains 'ZeroOps' > agent zeroops-triage > Review"
 
 if [[ "${SKIP_SCHEDULED_TASK:-0}" != "1" ]]; then
   step 6 "Scheduled task zeroops-daily-sweep"

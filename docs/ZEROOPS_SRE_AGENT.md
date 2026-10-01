@@ -162,7 +162,7 @@ export SRE_AGENT_RESOURCE_GROUP=<rg> SRE_AGENT_NAME=<agent> \
 ```
 
 It creates the following:
-- the `ogeops` MCP connector (via `azmcp`, or prints portal steps)
+- the `ogeops` MCP connector (ARM `Microsoft.App/agents/connectors`, bearer-token auth; prints portal steps on failure)
 - three skills
 - the `zeroops-triage` custom agent
 - the `zeroops-response` response plan (alert title contains "ZeroOps" → zeroops-triage, Review mode)
