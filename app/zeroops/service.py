@@ -64,7 +64,7 @@ def _run(esc_id: str, *, question: str, scenario, severity, category, debate: bo
             question=question, subscription_ids=_subscription_ids(), severity=severity or None,
             category=category or (scenario.category if scenario else None) or None,
             requested_agents=list(scenario.expected_agents) if scenario and scenario.expected_agents else None,
-            force_debate=debate,
+            force_debate=debate, force_refresh=True,
         )
         result = _compact_result(analysis)
         if scenario:
