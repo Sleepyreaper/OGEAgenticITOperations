@@ -18,6 +18,14 @@ tools:
 
 ### 2. Who and when
 - `az monitor activity-log list -g <rg> --offset 2h --query "[?contains(operationName.value,'securityRules/write')].{who:caller,when:eventTimestamp,rule:resourceId}" -o table`
+- Always query by resource group (`-g`). `--resource-id` on a rule (a child resource) returns a
+  `ValidationError`.
+
+### 2b. Blast radius
+- `az network nsg show -g <rg> -n <nsg> --query "{nics:networkInterfaces[].id,subnets:subnets[].id}"`
+- With no NIC or subnet attached, the rule exposes nothing yet: deletion is low-risk.
+- Stop here. Once the rule, writer and attachments are known, skip App Insights and Log Analytics
+  unless these checks suggest wider impact.
 
 ### 3. Decide
 - Exactly one offending rule added recently and nothing depends on it → **SOLO**.
