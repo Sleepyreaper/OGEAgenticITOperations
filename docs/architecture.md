@@ -74,12 +74,12 @@ profile's recommended GPT-5.6 model mapping:
 
 | Agent key | Default ("power") display name | Model tier | Why this tier |
 |-------|-------------------|------|----------------|
-| `orchestrator` | Grid Coordinator | GPT-5.6 Sol (deep/flagship) | Synthesizes every specialist's output into one recommendation |
+| `orchestrator` | Operations Coordinator | GPT-5.6 Sol (deep/flagship) | Synthesizes every specialist's output into one recommendation |
 | `cost_sentinel` | Cost & Capacity Analyst | GPT-5.6 Terra (balanced) | Structured cost/rightsizing analysis |
-| `standards_architect` | Reliability Engineer | GPT-5.6 Terra (balanced) | Explains rationale, defends decisions |
-| `diagnostics_sre` | Incident Investigator | GPT-5.6 Sol (deep/flagship) | Complex multi-step root cause analysis |
-| `scout` | Operations Monitor | GPT-5.6 Luna (fast/efficient) | High-throughput scanning/alerting |
-| `compliance_inspector` | Compliance Advisor | GPT-5.6 Terra (balanced) | Deep-enough reasoning for policy classification |
+| `standards_architect` | Resilience & Hygiene Engineer | GPT-5.6 Terra (balanced) | Explains rationale, defends decisions |
+| `diagnostics_sre` | Incident & Change Investigator | GPT-5.6 Sol (deep/flagship) | Complex multi-step root cause analysis |
+| `scout` | Security & Monitoring Analyst | GPT-5.6 Luna (fast/efficient) | High-throughput scanning/alerting |
+| `compliance_inspector` | Policy & Governance Advisor | GPT-5.6 Terra (balanced) | Deep-enough reasoning for policy classification |
 
 The legacy `oge` profile maps these same six keys onto its original
 `foundry-gpt` / `foundry-reasoning` / `foundry-nano` deployments and persona

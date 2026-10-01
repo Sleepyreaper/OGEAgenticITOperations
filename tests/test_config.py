@@ -194,7 +194,7 @@ print("\n\U0001f9ea Test 8: Settings() with the default profile is the 'power' r
 default_settings = Settings()
 test("defaults to the 'power' profile", default_settings.profile_id == "power")
 test("has all six agents", set(default_settings.agents) == set(AGENT_KEYS))
-test("orchestrator is named Grid Coordinator", default_settings.agents["orchestrator"].name == "Grid Coordinator")
+test("orchestrator is named Operations Coordinator", default_settings.agents["orchestrator"].name == "Operations Coordinator")
 test(
     "cost_sentinel is named Cost & Capacity Analyst",
     default_settings.agents["cost_sentinel"].name == "Cost & Capacity Analyst",
@@ -210,12 +210,12 @@ test(
 
 print("\n\U0001f9ea Test 8b: default ('power') profile maps agents to the recommended GPT-5.6 tiers")
 expected_power_mapping = {
-    "orchestrator": ("Grid Coordinator", "gpt-5.6-sol"),
+    "orchestrator": ("Operations Coordinator", "gpt-5.6-sol"),
     "cost_sentinel": ("Cost & Capacity Analyst", "gpt-5.6-terra"),
-    "standards_architect": ("Reliability Engineer", "gpt-5.6-terra"),
-    "diagnostics_sre": ("Incident Investigator", "gpt-5.6-sol"),
-    "scout": ("Operations Monitor", "gpt-5.6-luna"),
-    "compliance_inspector": ("Compliance Advisor", "gpt-5.6-terra"),
+    "standards_architect": ("Resilience & Hygiene Engineer", "gpt-5.6-terra"),
+    "diagnostics_sre": ("Incident & Change Investigator", "gpt-5.6-sol"),
+    "scout": ("Security & Monitoring Analyst", "gpt-5.6-luna"),
+    "compliance_inspector": ("Policy & Governance Advisor", "gpt-5.6-terra"),
 }
 for key, (expected_name, expected_deployment) in expected_power_mapping.items():
     cfg = default_settings.agents[key]
@@ -244,7 +244,7 @@ test(
 print("\n\U0001f9ea Test 9: Settings() with the 'generic' profile is fully re-branded")
 generic_settings = Settings(profile_id="generic")
 test("brand differs from the default profile", generic_settings.brand.app_name != default_settings.brand.app_name)
-test("orchestrator renamed", generic_settings.agents["orchestrator"].name == "Orchestrator")
+test("orchestrator renamed", generic_settings.agents["orchestrator"].name == "Operations Coordinator")
 test("still has all six agents", set(generic_settings.agents) == set(AGENT_KEYS))
 test(
     "generic profile also has explicit conservative controls",
@@ -280,7 +280,7 @@ with temp_env(
     test("deployment overridden", cfg.deployment == "gpt-4o")
     test("temperature overridden", cfg.temperature == 0.2)
     test("supports_temperature overridden", cfg.supports_temperature is True)
-    test("other agents untouched", overridden.agents["orchestrator"].name == "Grid Coordinator")
+    test("other agents untouched", overridden.agents["orchestrator"].name == "Operations Coordinator")
     test(
         "overriding one field doesn't clobber that agent's other unrelated fields",
         overridden.agents["cost_sentinel"].max_completion_tokens

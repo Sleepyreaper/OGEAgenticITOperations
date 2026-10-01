@@ -51,7 +51,7 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 
 ## Act 3: Meet the Crew (2 minutes)
 
-**Do**: Click **The Crew** tab. Walk through quickly.
+**Do**: Open **More → Agent Squad**. Walk through quickly.
 
 - ⚡ **Pipeline** — coordinates everything
 - 🛢️ **Barrel Counter** — every dollar is a barrel
