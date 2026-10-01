@@ -1,6 +1,7 @@
 // ZeroOps demo environment: small, cheap, real Azure resources that the
 // ZeroOps scenarios (app/zeroops/scenarios.py) break and repair on purpose.
-// Deploy into a DEDICATED resource group -- never into production.
+// Deploy into a dedicated resource group (recommended) or alongside the ops
+// app: alerts and RBAC are scoped to the demo resources only, never the RG.
 //
 //   az group create -n <rg> -l <location>
 //   az deployment group create -g <rg> -f infra/zeroops-demo/main.bicep \
@@ -20,7 +21,7 @@ param location string = resourceGroup().location
 @maxLength(8)
 param prefix string = 'zeroops'
 
-@description('Principal (object) ID of the OGE app managed identity. Gets Contributor on this resource group and Key Vault Secrets Officer on the demo vault so it can inject/clean up scenarios. Leave empty to assign roles yourself.')
+@description('Principal (object) ID of the OGE app managed identity. Gets Contributor on each demo resource (not the resource group) and Key Vault Secrets Officer on the demo vault so it can inject/clean up scenarios. Leave empty to assign roles yourself.')
 param opsAppPrincipalId string = ''
 
 @description('Principal IDs (object IDs) of the Azure SRE Agent identities. Each gets Reader + Monitoring Reader on this resource group (add Contributor yourself if you want SRE-solo fixes to run after approval).')
@@ -153,8 +154,49 @@ var roles = {
   kvSecretsOfficer: 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
 }
 
-resource opsContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(opsAppPrincipalId)) {
-  name: guid(resourceGroup().id, opsAppPrincipalId, roles.contributor)
+resource opsContributorWeb 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(opsAppPrincipalId)) {
+  name: guid(web.id, opsAppPrincipalId, roles.contributor)
+  scope: web
+  properties: {
+    principalId: opsAppPrincipalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.contributor)
+  }
+}
+
+resource opsContributorPlan 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(opsAppPrincipalId)) {
+  name: guid(plan.id, opsAppPrincipalId, roles.contributor)
+  scope: plan
+  properties: {
+    principalId: opsAppPrincipalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.contributor)
+  }
+}
+
+resource opsContributorNsg 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(opsAppPrincipalId)) {
+  name: guid(nsg.id, opsAppPrincipalId, roles.contributor)
+  scope: nsg
+  properties: {
+    principalId: opsAppPrincipalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.contributor)
+  }
+}
+
+resource opsContributorStorage 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(opsAppPrincipalId)) {
+  name: guid(storage.id, opsAppPrincipalId, roles.contributor)
+  scope: storage
+  properties: {
+    principalId: opsAppPrincipalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.contributor)
+  }
+}
+
+resource opsContributorAutomation 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(opsAppPrincipalId)) {
+  name: guid(automation.id, opsAppPrincipalId, roles.contributor)
+  scope: automation
   properties: {
     principalId: opsAppPrincipalId
     principalType: 'ServicePrincipal'
@@ -191,28 +233,33 @@ resource sreMonitoringReader 'Microsoft.Authorization/roleAssignments@2022-04-01
 }]
 
 // ── Scenario alerts (names start with "ZeroOps <scenario-id>") ──
-// Activity Log alerts fire on the successful write that injects each scenario.
+// Activity Log alerts fire on the successful write that injects each scenario,
+// filtered to the single demo resource (so other resources in the RG never trigger them).
 // Cleanup writes may fire them again; the response plan merges repeats into the
 // open incident thread (mergeEnabled), where the agent confirms the revert.
 var activityAlerts = [
   {
     name: 'ZeroOps open-door - NSG inbound rule changed'
     operation: 'Microsoft.Network/networkSecurityGroups/securityRules/write'
+    scope: nsg.id
     description: 'A security rule was written on the demo NSG. Check for Internet-exposed management ports.'
   }
   {
     name: 'ZeroOps bad-deploy - web app config changed'
     operation: 'Microsoft.Web/sites/config/write'
+    scope: web.id
     description: 'Demo web app configuration changed. Correlate with availability/5xx.'
   }
   {
     name: 'ZeroOps storm-surge - App Service plan scaled'
     operation: 'Microsoft.Web/serverfarms/write'
+    scope: plan.id
     description: 'Demo App Service plan SKU/instance count changed. Cost vs. performance decision.'
   }
   {
     name: 'ZeroOps rogue-hotfix - storage security config changed'
     operation: 'Microsoft.Storage/storageAccounts/write'
+    scope: storage.id
     description: 'Demo storage account configuration changed. Check public access and TLS.'
   }
 ]
@@ -224,7 +271,7 @@ resource activityAlert 'Microsoft.Insights/activityLogAlerts@2020-10-01' = [for 
   properties: {
     enabled: true
     description: a.description
-    scopes: [resourceGroup().id]
+    scopes: [a.scope]
     condition: {
       allOf: [
         { field: 'category', equals: 'Administrative' }
