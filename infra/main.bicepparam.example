@@ -80,5 +80,20 @@ param otelServiceName = ''
 // public demo deployment (weaker isolation — see DEPLOYMENT.md).
 param publicNetworkAccess = 'Disabled'
 
+// ── Azure AI Foundry runtime squad (optional — docs/FOUNDRY_ARCHITECTURE.md) ──
+// 'direct' calls Azure OpenAI; 'foundry' runs each specialist as a
+// versioned Foundry agent in the project below.
+param agentBackend = 'direct'
+// 'none' | 'existing' (grant the app identity Foundry User on an existing
+// account) | 'new' (create account + project + model deployments).
+param foundryMode = 'none'
+param foundryAccountName = ''
+param foundryResourceGroup = '<FOUNDRY_RESOURCE_GROUP>'
+// For 'existing': https://<account>.services.ai.azure.com/api/projects/<project>
+param foundryProjectEndpoint = ''
+// Optional: { agentPrefix, modelDeployment, enableTools, maxToolRounds,
+// maxToolOutputChars, maxParallelSpecialists }
+param foundrySettings = {}
+
 // Deployer's Azure AD object ID — retrieve with: az ad signed-in-user show --query id -o tsv
 param deployerPrincipalId = ''

@@ -1,0 +1,23 @@
+# Example — copy to terraform.tfvars (git-ignored) and fill in.
+
+subscription_id     = "<SUBSCRIPTION_ID>"
+resource_group_name = "<FOUNDRY_RESOURCE_GROUP>"
+
+# "existing": reuse an existing Foundry account/project (RBAC only).
+# "new":      create account + project + model deployments + RBAC.
+mode         = "existing"
+account_name = "<FOUNDRY_ACCOUNT_NAME>"
+project_name = "<FOUNDRY_PROJECT_NAME>"
+
+# Web app user-assigned managed identity principal (object) ID —
+# `managedIdentityPrincipalId` output of infra/main.bicep.
+app_principal_ids = ["<MANAGED_IDENTITY_PRINCIPAL_ID>"]
+
+# Only for mode = "new":
+# location = "eastus2"
+# model_deployments = [
+#   { name = "gpt-5.6-sol",   model = "gpt-5.6-sol",   version = "2026-07-09", sku = "GlobalStandard", capacity = 100 },
+#   { name = "gpt-5.6-terra", model = "gpt-5.6-terra", version = "2026-07-09", sku = "GlobalStandard", capacity = 50 },
+#   { name = "gpt-5.6-luna",  model = "gpt-5.6-luna",  version = "2026-07-09", sku = "GlobalStandard", capacity = 50 },
+# ]
+# log_analytics_workspace_id = "/subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.OperationalInsights/workspaces/<LAW>"

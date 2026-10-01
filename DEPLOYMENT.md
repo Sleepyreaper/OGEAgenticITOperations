@@ -92,9 +92,9 @@ per-agent rationale. In short:
 
 | Deployment Name (example) | Model Tier | Used By | Purpose |
 |----------------|-----------|---------|---------|
-| `gpt-5.6-sol` | GPT-5.6 Sol (deep/flagship) | Grid Coordinator, Incident Investigator | Synthesis, multi-step root-cause analysis |
-| `gpt-5.6-terra` | GPT-5.6 Terra (balanced production) | Cost & Capacity Analyst, Reliability Engineer, Compliance Advisor | Structured, rules-based analysis |
-| `gpt-5.6-luna` | GPT-5.6 Luna (fast/efficient) | Operations Monitor | High-throughput scanning/alerting |
+| `gpt-5.6-sol` | GPT-5.6 Sol (deep/flagship) | Operations Coordinator, Incident & Change Investigator | Synthesis, multi-step root-cause analysis |
+| `gpt-5.6-terra` | GPT-5.6 Terra (balanced production) | Cost & Capacity Analyst, Resilience & Hygiene Engineer, Policy & Governance Advisor | Structured, rules-based analysis |
+| `gpt-5.6-luna` | GPT-5.6 Luna (fast/efficient) | Security & Monitoring Analyst | High-throughput scanning/alerting |
 
 > The Azure AI Foundry model catalog name for the mid tier is **"GPT-5.6
 > Terra"** — deployment names remain entirely customer-defined; the
@@ -104,9 +104,9 @@ per-agent rationale. In short:
 
 | Deployment Name | Model Type | Used By (default profiles) | Purpose |
 |----------------|-----------|---------|---------|
-| `foundry-gpt` | General-purpose LLM (e.g., GPT-4o, GPT-4.1, GPT-5.x) | Orchestrator, Standards Architect | Orchestration, synthesis, standards analysis |
-| `foundry-reasoning` | Reasoning model (e.g., o3, o4-mini) | Cost Analyst, Diagnostics Specialist, Compliance Auditor | Deep cost analysis, diagnostics, compliance |
-| `foundry-nano` | Lightweight model (e.g., GPT-4o-mini, GPT-5-nano) | Monitoring Scout | Fast scanning, alerting |
+| `foundry-gpt` | General-purpose LLM (e.g., GPT-4o, GPT-4.1, GPT-5.x) | Operations Coordinator, Resilience & Hygiene Engineer | Orchestration, synthesis, standards analysis |
+| `foundry-reasoning` | Reasoning model (e.g., o3, o4-mini) | Cost & Capacity Analyst, Incident & Change Investigator, Policy & Governance Advisor | Deep cost analysis, diagnostics, compliance |
+| `foundry-nano` | Lightweight model (e.g., GPT-4o-mini, GPT-5-nano) | Security & Monitoring Analyst | Fast scanning, alerting |
 
 **Setup steps:**
 1. Create an Azure OpenAI resource (or AI Foundry project) in your preferred region.
@@ -148,6 +148,7 @@ hood it deploys:
 | Log Analytics + Application Insights | Telemetry and app performance monitoring |
 | Web App (Linux, Python) | Hosts the Flask app, on your existing App Service Plan |
 | OpenAI RBAC (cross-RG) | Grants the Managed Identity access to your Azure OpenAI account(s) |
+| Azure AI Foundry (optional, `foundryMode`) | `existing`: Foundry User RBAC on your Foundry account; `new`: AIServices account + project + model deployments + RBAC |
 
 Key `main.bicep` parameters (all documented with `@description` in the file
 and in `infra/main.bicepparam.example`):
@@ -161,6 +162,8 @@ and in `infra/main.bicepparam.example`):
 | `publicNetworkAccess` | Whether the web app is reachable directly over the public internet | `Disabled` |
 | `openaiApiVersion` | Default Azure OpenAI API version | `2025-01-01-preview` |
 | `otelServiceName` | OpenTelemetry `service.name` reported to Application Insights — see [docs/TELEMETRY.md](docs/TELEMETRY.md) | `""` (derives `ops-council-<appProfile>`) |
+| `agentBackend` | `direct` (Azure OpenAI) or `foundry` (runtime squad as Azure AI Foundry agents) | `direct` |
+| `foundryMode` / `foundryAccountName` / `foundryResourceGroup` / `foundryProjectEndpoint` / `foundrySettings` | Reuse (`existing`) or create (`new`) a Foundry project — see [docs/FOUNDRY_ARCHITECTURE.md](docs/FOUNDRY_ARCHITECTURE.md). Terraform equivalent: `infra/terraform/foundry/` | `none` |
 
 > **`publicNetworkAccess`**: the default (`Disabled`) requires the VNet/private
 > networking this template provisions — you'll need a VPN, private endpoint, or
@@ -228,7 +231,7 @@ IDs, or other secrets:
   "status": "ok",
   "version": "1.3.0",
   "profile": "power",
-  "agents": { "orchestrator": { "name": "Grid Coordinator", "deployment": "gpt-5.6-sol", "endpoint_configured": true, "supports_temperature": false, "max_completion_tokens": 1400, "max_context_chars": 30000, "response_instruction_configured": true, "pricing_configured": true }, "...": "..." },
+  "agents": { "orchestrator": { "name": "Operations Coordinator", "deployment": "gpt-5.6-sol", "endpoint_configured": true, "supports_temperature": false, "max_completion_tokens": 1400, "max_context_chars": 30000, "response_instruction_configured": true, "pricing_configured": true }, "...": "..." },
   "config": { "openai_primary_endpoint_configured": true, "subscription_configured": true, "telemetry_enabled": false, "...": "..." }
 }
 ```
@@ -285,6 +288,10 @@ documents every variable inline.
 | `LOG_ANALYTICS_WORKSPACE_ID` | Yes | Log Analytics workspace customer ID |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | No | Enables Azure Monitor OpenTelemetry when set (see [docs/TELEMETRY.md](docs/TELEMETRY.md)) — a secret; already wired automatically by `infra/main.bicep` |
 | `OTEL_SERVICE_NAME` | No | OpenTelemetry `service.name` override (default: `ops-council-<APP_PROFILE>`) |
+| `AGENT_BACKEND` | No (default `direct`) | `foundry` runs specialists as Azure AI Foundry agents |
+| `FOUNDRY_PROJECT_ENDPOINT` | If `AGENT_BACKEND=foundry` | `https://<account>.services.ai.azure.com/api/projects/<project>` |
+| `FOUNDRY_AGENT_PREFIX` / `FOUNDRY_MODEL_DEPLOYMENT` / `FOUNDRY_ENABLE_TOOLS` / `FOUNDRY_MAX_TOOL_ROUNDS` / `FOUNDRY_MAX_TOOL_OUTPUT_CHARS` | No | Foundry agent naming, model override and tool-loop bounds — see [docs/FOUNDRY_ARCHITECTURE.md](docs/FOUNDRY_ARCHITECTURE.md) |
+| `ANALYSIS_MAX_PARALLEL_SPECIALISTS` | No (default `4`) | Specialist fan-out width; `1` = sequential |
 | `ADO_ORG_URL` / `ADO_PROJECT` / `ADO_REPO` / `ADO_PAT` | Optional | Azure DevOps integration (Phase 2 proposals). `ADO_PAT` is a secret — never commit it |
 
 ## Model Selection Guide

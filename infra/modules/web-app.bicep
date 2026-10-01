@@ -30,9 +30,15 @@ param otelServiceName string = ''
 @description('A version fingerprint for the loaded profile\'s agent definitions (see docs/AGENT_INTELLIGENCE.md). Empty (default) derives one automatically at app startup.')
 param agentDefinitionVersion string = ''
 
-@description('Which model backend app/agents/analysis.py uses. "direct" (default) calls Azure OpenAI directly; "foundry" is NOT implemented (see docs/FOUNDRY_ARCHITECTURE.md) and fails loudly at call time rather than silently using "direct".')
+@description('Which model backend app/agents/analysis.py uses. "direct" (default) calls Azure OpenAI directly; "foundry" runs specialists as Azure AI Foundry agents (see docs/FOUNDRY_ARCHITECTURE.md) and fails loudly if FOUNDRY_PROJECT_ENDPOINT is empty.')
 @allowed(['direct', 'foundry'])
 param agentBackend string = 'direct'
+
+@description('Azure AI Foundry project endpoint (FOUNDRY_PROJECT_ENDPOINT). Empty omits the setting.')
+param foundryProjectEndpoint string = ''
+
+@description('Foundry runtime settings (see main.bicep): agentPrefix, modelDeployment, enableTools, maxToolRounds, maxToolOutputChars, maxParallelSpecialists.')
+param foundrySettings object = {}
 
 @description('Additional Azure OpenAI accounts for per-agent endpoint routing (see main.bicep). Only .endpoint is used here, surfaced as AZURE_OPENAI_ENDPOINT_<NAME>.')
 param additionalOpenAiAccounts object = {}
@@ -164,7 +170,25 @@ var operationsSettingsRaw = [for item in items(operationsSettingFieldNames): {
 // defaults in app/operations/config.py instead of an empty override.
 var operationsAppSettings = filter(operationsSettingsRaw, setting => !empty(setting.value))
 
-var appSettings = concat(baseAppSettings, namedEndpointSettings, agentOverrideSettings, operationsAppSettings)
+// Foundry runtime settings -> env var names (see app/agents/backend.py
+// FoundryConfig.from_env and app/agents/analysis.py). Unset keys are
+// skipped so the app's defaults apply.
+var foundrySettingFieldNames = {
+  agentPrefix: 'FOUNDRY_AGENT_PREFIX'
+  modelDeployment: 'FOUNDRY_MODEL_DEPLOYMENT'
+  enableTools: 'FOUNDRY_ENABLE_TOOLS'
+  maxToolRounds: 'FOUNDRY_MAX_TOOL_ROUNDS'
+  maxToolOutputChars: 'FOUNDRY_MAX_TOOL_OUTPUT_CHARS'
+  maxParallelSpecialists: 'ANALYSIS_MAX_PARALLEL_SPECIALISTS'
+}
+var foundryTuningSettings = [for item in items(foundrySettingFieldNames): {
+  name: item.value
+  value: contains(foundrySettings, item.key) ? string(foundrySettings[item.key]) : ''
+}]
+var foundrySettingsRaw = concat([{ name: 'FOUNDRY_PROJECT_ENDPOINT', value: foundryProjectEndpoint }], foundryTuningSettings)
+var foundryAppSettings = filter(foundrySettingsRaw, setting => !empty(setting.value))
+
+var appSettings = concat(baseAppSettings, namedEndpointSettings, agentOverrideSettings, operationsAppSettings, foundryAppSettings)
 
 resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   name: webAppName
