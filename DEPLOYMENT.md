@@ -293,6 +293,9 @@ documents every variable inline.
 | `FOUNDRY_AGENT_PREFIX` / `FOUNDRY_MODEL_DEPLOYMENT` / `FOUNDRY_ENABLE_TOOLS` / `FOUNDRY_MAX_TOOL_ROUNDS` / `FOUNDRY_MAX_TOOL_OUTPUT_CHARS` | No | Foundry agent naming, model override and tool-loop bounds — see [docs/FOUNDRY_ARCHITECTURE.md](docs/FOUNDRY_ARCHITECTURE.md) |
 | `ANALYSIS_MAX_PARALLEL_SPECIALISTS` | No (default `4`) | Specialist fan-out width; `1` = sequential |
 | `ADO_ORG_URL` / `ADO_PROJECT` / `ADO_REPO` / `ADO_PAT` | Optional | Azure DevOps integration (Phase 2 proposals). `ADO_PAT` is a secret — never commit it |
+| `MCP_API_KEY` | For ZeroOps | Protects `POST /mcp`, the Azure SRE Agent escalation endpoint (returns 503 while unset). A secret — use `zeroopsSettings.mcpApiKeySecretName` (Key Vault reference). See [docs/ZEROOPS_SRE_AGENT.md](docs/ZEROOPS_SRE_AGENT.md) |
+| `SRE_AGENT_AAU_PRICE_USD` / `SRE_AGENT_MODEL` | No (`0.10` / `gpt-5.2`) | SRE Agent cost model inputs (AAU price for your region; SRE Agent model) |
+| `ZEROOPS_CHAOS_ENABLED` / `ZEROOPS_SUBSCRIPTION_ID` / `ZEROOPS_DEMO_*` | Demo only | Enables ZeroOps scenario inject/cleanup against the `infra/zeroops-demo/` resource group. Keep `ZEROOPS_CHAOS_ENABLED=false` outside demo environments |
 
 ## Model Selection Guide
 

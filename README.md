@@ -52,6 +52,17 @@ Every name, role, model deployment, endpoint, and system prompt above is defined
 for why agents map to the Sol/Terra/Luna tiers the way they do. The original OGE
 branding/personas remain available: set `APP_PROFILE=oge`.
 
+## ZeroOps with the Azure SRE Agent
+
+The **Azure SRE Agent** is tier 1: it watches logs and monitoring, triages with skills, and fixes
+simple issues on its own. When it can't, for example when the issue is cross-domain, has unclear business impact or
+has no safe runbook, it calls **`ogeops_escalate`** on this app's MCP endpoint (`/mcp`). The squad reasons
+about impact on Azure AI Foundry and returns a remediation script and proposal. **A human approves.**
+The **More → ZeroOps** view shows the flow, five live demo scenarios (2 SRE-solo, 3 escalated), the
+escalation timeline with approve/reject, and per-incident cost (SRE Agent AAU + measured squad tokens).
+Setup, MCP contract, cost model and demo script: [docs/ZEROOPS_SRE_AGENT.md](docs/ZEROOPS_SRE_AGENT.md).
+SRE Agent assets: [`sre-agent/`](sre-agent/).
+
 ## How It Works
 
 ```
@@ -182,6 +193,10 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for the full step-by-step guide, and
 | `/api/operations/demo` | GET | Centralized Demo-mode fixture — same brief/queue/handoff schema |
 | `/api/operations/analyze` | GET/POST | Evidence-grounded agent analysis ("AI Analyze") |
 | `/api/operations/briefing` | GET/POST | One synthesized coordinator-voice executive briefing |
+| `/mcp` | POST | MCP server (Streamable HTTP, `X-API-Key`) used by the Azure SRE Agent — `escalate`, `get_escalation`, `propose_fix`, … |
+| `/api/zeroops/overview` | GET | ZeroOps status, escalation summary and cost baseline |
+| `/api/zeroops/scenarios/<id>/<inject\|cleanup\|escalate>` | POST | Run a ZeroOps demo scenario action |
+| `/api/zeroops/escalations[/<id>[/propose\|/decision]]` | GET/POST | Escalation ledger, proposals and approve/reject/resolve |
 
 ## Configuration & Customization
 
@@ -210,6 +225,7 @@ guide. Quick reference:
 │   │   ├── analysis.py       # Evidence-grounded agent analysis/briefing (AI Analyze)
 │   │   ├── routing.py        # Deterministic specialist routing + debate policy
 │   │   └── evidence.py       # Bounded, redacted evidence bundles for agent analysis
+│   ├── zeroops/              # ZeroOps: MCP server (/mcp), escalation ledger, scenarios, cost model
 │   ├── azure_data.py         # Resource Graph, Health APIs, Advisor, deep analysis
 │   ├── operations/            # Product-facing operations API -- see docs/OPERATIONS_API.md
 │   │   ├── snapshot.py        # get_snapshot() -- the one bounded/cached/prioritized entry point
@@ -229,8 +245,10 @@ guide. Quick reference:
 │   └── oge/                    # Legacy/example profile — this app's original branding/agents
 ├── scripts/configure.py      # Setup wizard — generates .env + infra/main.bicepparam
 ├── infra/                    # Bicep IaC (VNet, KV, identity, web app)
+│   ├── zeroops-demo/          # Breakable demo resources + 'ZeroOps <scenario>' alerts
 │   ├── main.bicepparam.example  # Checked-in template (copy or use the wizard)
 │   └── main.bicepparam       # Your local deployment values (git-ignored)
+├── sre-agent/                # Azure SRE Agent custom agent, skills, response plan, setup script
 ├── templates/index.html      # Executive Brief + Operations Center (primary) + Ops Council/Crew (secondary)
 ├── docs/                     # RBAC guide, demo script, architecture, decisions,
 │                             # MODEL_CONFIGURATION.md, TELEMETRY.md, OPERATIONS_API.md, UI_WORKFLOW.md

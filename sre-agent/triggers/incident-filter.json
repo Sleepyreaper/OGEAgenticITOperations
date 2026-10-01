@@ -1,0 +1,27 @@
+{
+  "_comment": "Response plan (incident filter). Routes every Azure Monitor alert whose title contains 'ZeroOps' to the zeroops-triage agent. Applied by scripts/configure-sre-agent.sh. Change titleContains / priorities for production workloads.",
+  "name": "zeroops-response",
+  "properties": {
+    "incidentPlatform": "AzMonitor",
+    "impactedService": "",
+    "priorities": ["Sev0", "Sev1", "Sev2", "Sev3", "Sev4"],
+    "incidentType": "",
+    "alertId": "",
+    "titleContains": "ZeroOps",
+    "titleContainsAll": [],
+    "titleContainsAny": [],
+    "titleNotContains": [],
+    "agentMode": "Review",
+    "handlingAgent": "zeroops-triage",
+    "handlingAgents": null,
+    "owningTeamId": "",
+    "owningTeamIds": [],
+    "maxAutomatedInvestigationAttempts": 2,
+    "deepInvestigationEnabled": false,
+    "mergeEnabled": true,
+    "mergeWindowHours": 1,
+    "isEnabled": true,
+    "icmFilterSettings": null,
+    "azMonitorFilterSettings": {"targetResourceType": "", "targetResource": ""}
+  }
+}
