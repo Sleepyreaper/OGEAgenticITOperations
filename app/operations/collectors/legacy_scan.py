@@ -417,10 +417,14 @@ def security_drift_findings(rows: list, *, now: Optional[datetime] = None) -> li
 
 # ─── Insecure storage (public blob access) ──────────────────────────────
 
+_WEAK_TLS_VERSIONS = ("TLS1_0", "TLS1_1")
+
+
 def insecure_storage_findings(rows: list, *, now: Optional[datetime] = None) -> list:
-    """Public-blob-access storage accounts from
-    app.azure_data.detect_insecure_storage's (already multi-subscription)
-    shape: {name, resourceGroup, location, publicAccess, subscriptionId}."""
+    """Storage security gaps from app.azure_data.detect_storage_security_gaps
+    (or the older detect_insecure_storage) shape: {name, resourceGroup,
+    location, publicAccess, minimumTlsVersion?, subscriptionId}. One Finding
+    per gap: public blob access (HIGH) and/or minimum TLS below 1.2 (MEDIUM)."""
     now = now or datetime.now(timezone.utc)
     evaluated_at = format_utc_iso(now)
     findings = []
@@ -431,34 +435,67 @@ def insecure_storage_findings(rows: list, *, now: Optional[datetime] = None) -> 
         rg = row.get("resourceGroup") or ""
         sub = row.get("subscriptionId") or ""
         resource_id = _build_resource_id(sub, rg, "Microsoft.Storage/storageAccounts", name)
-        title = f"Storage account '{name}' allows public blob access"
+        metadata = {"resource_group": rg, "location": row.get("location", ""), "subscription_id": sub}
+        tls = str(row.get("minimumTlsVersion") or "").upper()
+        public = row.get("publicAccess") is True or ("minimumTlsVersion" not in row and row.get("publicAccess") is not False)
 
-        findings.append(Finding(
-            category=FindingCategory.SECURITY.value,
-            severity=Severity.HIGH.value,
-            status=FindingStatus.OPEN.value,
-            title=title,
-            summary=f"'{name}' has allowBlobPublicAccess enabled.",
-            business_impact="Publicly readable/writable blob data is a common data-exposure vector.",
-            first_seen=evaluated_at,
-            last_seen=evaluated_at,
-            source=RESOURCE_GRAPH_SOURCE,
-            resource_id=resource_id,
-            affected_resource_count=1,
-            confidence=ConfidenceLevel.CONFIRMED.value,
-            evidence=[EvidenceReference(
-                source=RESOURCE_GRAPH_SOURCE,
+        if public:
+            title = f"Storage account '{name}' allows public blob access"
+            findings.append(Finding(
+                category=FindingCategory.SECURITY.value,
+                severity=Severity.HIGH.value,
+                status=FindingStatus.OPEN.value,
                 title=title,
-                observed_at=evaluated_at,
+                summary=f"'{name}' has allowBlobPublicAccess enabled.",
+                business_impact="Publicly readable/writable blob data is a common data-exposure vector.",
+                first_seen=evaluated_at,
+                last_seen=evaluated_at,
+                source=RESOURCE_GRAPH_SOURCE,
                 resource_id=resource_id,
-                raw_excerpt=f"location={row.get('location', '')}",
-            )],
-            recommended_action="Disable allowBlobPublicAccess unless an explicit, reviewed business need requires it.",
-            approval_required=True,
-            executive_attention=True,
-            metadata={"resource_group": rg, "location": row.get("location", ""), "subscription_id": sub},
-            discriminator=f"{sub}|{rg}|{name}",
-        ))
+                affected_resource_count=1,
+                confidence=ConfidenceLevel.CONFIRMED.value,
+                evidence=[EvidenceReference(
+                    source=RESOURCE_GRAPH_SOURCE,
+                    title=title,
+                    observed_at=evaluated_at,
+                    resource_id=resource_id,
+                    raw_excerpt=f"location={row.get('location', '')}",
+                )],
+                recommended_action="Disable allowBlobPublicAccess unless an explicit, reviewed business need requires it.",
+                approval_required=True,
+                executive_attention=True,
+                metadata=metadata,
+                discriminator=f"{sub}|{rg}|{name}",
+            ))
+
+        if tls in _WEAK_TLS_VERSIONS:
+            title = f"Storage account '{name}' accepts TLS 1.{tls[-1]}"
+            findings.append(Finding(
+                category=FindingCategory.SECURITY.value,
+                severity=Severity.MEDIUM.value,
+                status=FindingStatus.OPEN.value,
+                title=title,
+                summary=f"'{name}' has minimumTlsVersion={tls}; TLS 1.2 is the supported baseline.",
+                business_impact="Clients can negotiate deprecated TLS versions with known weaknesses; this fails most security baselines.",
+                first_seen=evaluated_at,
+                last_seen=evaluated_at,
+                source=RESOURCE_GRAPH_SOURCE,
+                resource_id=resource_id,
+                affected_resource_count=1,
+                confidence=ConfidenceLevel.CONFIRMED.value,
+                evidence=[EvidenceReference(
+                    source=RESOURCE_GRAPH_SOURCE,
+                    title=title,
+                    observed_at=evaluated_at,
+                    resource_id=resource_id,
+                    raw_excerpt=f"minimumTlsVersion={tls}; location={row.get('location', '')}",
+                )],
+                recommended_action="Set minimumTlsVersion to TLS1_2 after confirming no client still requires an older protocol.",
+                approval_required=True,
+                executive_attention=False,
+                metadata={**metadata, "minimum_tls_version": tls},
+                discriminator=f"{sub}|{rg}|{name}|tls",
+            ))
     return findings
 
 
@@ -818,7 +855,7 @@ def collect_legacy_envelopes(
     resource_health_fn: ResourceHealthFn = azure_data.get_resource_health_statuses,
     service_health_fn: ServiceHealthFn = azure_data.get_service_health_events,
     security_drift_fn: SecurityDriftFn = azure_data.detect_security_drift,
-    insecure_storage_fn: InsecureStorageFn = azure_data.detect_insecure_storage,
+    insecure_storage_fn: InsecureStorageFn = azure_data.detect_storage_security_gaps,
     advisor_fn: AdvisorFn = azure_data.get_advisor_recommendations,
     policy_summary_fn: PolicySummaryFn = azure_data.get_policy_compliance_summary,
     non_compliant_fn: NonCompliantFn = azure_data.get_non_compliant_resources,

@@ -157,6 +157,16 @@ test("1 finding produced", len(findings) == 1)
 test("severity is HIGH", findings[0].severity == Severity.HIGH.value)
 test("executive_attention is True", findings[0].executive_attention is True)
 test("approval_required is True", findings[0].approval_required is True)
+rows = [
+    {"name": "sa2", "resourceGroup": "rg1", "location": "eastus", "publicAccess": False, "minimumTlsVersion": "TLS1_0", "subscriptionId": "sub1"},
+    {"name": "sa3", "resourceGroup": "rg1", "location": "eastus", "publicAccess": True, "minimumTlsVersion": "TLS1_1", "subscriptionId": "sub1"},
+    {"name": "sa4", "resourceGroup": "rg1", "location": "eastus", "publicAccess": False, "minimumTlsVersion": "TLS1_2", "subscriptionId": "sub1"},
+]
+findings = legacy_scan.insecure_storage_findings(rows, now=NOW)
+test("weak TLS only -> 1 MEDIUM TLS finding", [f.severity for f in findings if "sa2" in f.title] == [Severity.MEDIUM.value])
+test("public + weak TLS -> 2 findings with distinct ids", len([f for f in findings if "sa3" in f.title]) == 2 and len({f.id for f in findings}) == len(findings))
+test("TLS 1.2 + private -> no finding", not [f for f in findings if "sa4" in f.title])
+test("TLS finding title is readable", any("TLS 1.0" in f.title for f in findings))
 
 
 # ─── advisor_findings -- high-impact only ────────────────────────────────

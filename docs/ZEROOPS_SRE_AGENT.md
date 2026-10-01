@@ -116,6 +116,12 @@ state. Alert rule names start with `ZeroOps <scenario-id>`, so the SRE response 
 | 🩹 | `rogue-hotfix` | Escalated | Hotfix enabled public blob access and TLS 1.0 | Squad weighs security vs. breaking the hotfix | Security & Monitoring, Policy & Governance, Resilience & Hygiene |
 | ⏰ | `2am-cert` | Escalated | TLS secret expires in 48h **and** the renewal runbook failed | Squad builds the renewal plan and script before the deadline | Incident & Change, Resilience & Hygiene, Policy & Governance |
 
+> **Azure Policy may already help.** Many tenants assign a *modify* policy that forces
+> `allowBlobPublicAccess=false`. In that case `rogue-hotfix` lands only half-way: public access is
+> reverted by policy in the same request, while TLS 1.0 sticks. The SRE Agent will find the
+> `policies/modify/action` entry in the Activity Log and escalate only the TLS question. This is a
+> good talking point: policy, SRE Agent and squad each cover a different layer.
+
 ### Suggested 15-minute demo script
 1. **Design (2 min).** Open **More → ZeroOps** and walk through the flow banner, the tier split and the
    cost panel (always-on baseline vs. per-incident).
