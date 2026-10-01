@@ -54,7 +54,7 @@ Every call to `client.chat.completions.create(...)` in
 | `gen_ai.usage.output_tokens` | Completion tokens (from `usage.completion_tokens`) |
 | `gen_ai.response.finish_reasons` | e.g. `["stop"]`, `["length"]` |
 | `ops.agent.key` | The stable agent key (`orchestrator`, `cost_sentinel`, ...) |
-| `ops.agent.name` | The profile's display name for that agent (e.g. "Grid Coordinator") |
+| `ops.agent.name` | The profile's display name for that agent (e.g. "Operations Coordinator") |
 | `ops.profile` | The loaded `APP_PROFILE` id |
 | `ops.estimated_cost_usd` | See [MODEL_CONFIGURATION.md](MODEL_CONFIGURATION.md) — a caller-maintained pricing estimate, not billing truth |
 

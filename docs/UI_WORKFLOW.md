@@ -16,7 +16,7 @@ The top nav exposes exactly two **primary** tabs:
    `GET /api/operations/evidence/<id>`, `PATCH /api/operations/findings/<id>`,
    and `POST /api/operations/analyze`.
 
-**Ops Council** (multi-agent chat/debate) and **The Crew** (agent bios) are
+**Ops Council** (multi-agent chat/debate) and **Agent Squad** (what each agent does and how, from `/api/agents`) are
 still fully functional but are reached as **secondary** views via the "More"
 menu in the top nav — they never compete with the two primary views. This
 preserves every existing chat/debate/demo-scenario/remediation/chaos/ADO
@@ -38,7 +38,7 @@ finding detail drawer (`goToFindingInOps(id)`).
 
 **One "Generate Executive Briefing / Explain" button** calls
 `POST /api/operations/briefing` and renders a single synthesized coordinator
-voice (the profile's `orchestrator` persona — e.g. "Grid Coordinator" in the
+voice (the profile's `orchestrator` persona — e.g. "Operations Coordinator" in the
 default `power` profile) in a modal. Specialist detail is collapsed behind a
 `<details>` disclosure ("Supporting specialist analysis") — agents/personas
 are otherwise entirely hidden on the executive surface, per the product

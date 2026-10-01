@@ -114,7 +114,7 @@ class RaisingBackend:
     name = "raising"
 
     def complete(self, agent_config, messages, *, json_schema=None, schema_name=""):
-        raise NotImplementedError("Foundry Agent Service backend is not implemented in this runtime")
+        raise NotImplementedError("backend not implemented in this runtime")
 
 
 analysis_mod.get_snapshot = lambda subs, config=None, force_refresh=False: CANNED_SNAPSHOT
@@ -155,7 +155,7 @@ resp = client.post("/api/operations/analyze", json={"question": "q", "agents": [
 test("unknown requested agent -> 400", resp.status_code == 400)
 
 
-print("\n\U0001f9ea Test 6: a NotImplementedError backend (e.g. AGENT_BACKEND=foundry) -> 501, never silently falls back")
+print("\n\U0001f9ea Test 6: a NotImplementedError backend -> 501, never silently falls back")
 backend_mod.get_backend = lambda name="": RaisingBackend()
 resp = client.post("/api/operations/analyze", json={"question": "q"})
 test("NotImplementedError backend -> 501", resp.status_code == 501)

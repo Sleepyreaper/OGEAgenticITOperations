@@ -27,18 +27,24 @@ Six AI specialists — each named after cloud operations concepts — debate, di
 - **Executive Brief** — one-sentence status, freshness/source coverage, Business Impact / Reliability-SLO / Capacity cards, What Changed, Decisions/Escalations, and Attention Items — every value evidence-backed via `/api/operations/brief` (never a fabricated score/formula). One "Generate Executive Briefing / Explain" button surfaces a single synthesized coordinator voice on demand; agents/personas are otherwise hidden here.
 - **Operations Center** — a unified, priority-ranked findings queue (`/api/operations/queue`) with a collapsible shift-handoff bar (`/api/operations/handoff`), a finding detail/evidence drawer with acknowledge/assign/resolve/dismiss/snooze workflow controls, and an "AI Analyze" action for grounded, evidence-cited agent analysis (`/api/operations/analyze`).
 
-Ops Council (multi-agent chat/debate) and The Crew (agent bios) remain fully available as **secondary** views, one click away via the top nav's "More" menu — they never compete with the two primary views for attention.
+Ops Council (multi-agent chat/debate) and the Agent Squad page (what each agent does and how) remain fully available as **secondary** views, one click away via the top nav's "More" menu — they never compete with the two primary views for attention.
 
-## The Crew (default "power" profile)
+## The Agent Squad (default "power" profile)
 
-| | Agent | Role | Model | What They Do |
+| | Agent | Handles (routed by code) | Model | What it does / how |
 |--|-------|------|-------|-------------|
-| ⚡ | **Grid Coordinator** | Coordinator | GPT-5.6 Sol | Routes requests, synthesizes the crew's takes, delivers exec-ready summaries |
-| 💰 | **Cost & Capacity Analyst** | Cost | GPT-5.6 Terra | Finds waste, recommends rightsizing, shows the math |
-| 🔧 | **Reliability Engineer** | Standards | GPT-5.6 Terra | Knows *why* things are built the way they are. Writes Terraform remediation. |
-| 🔄 | **Incident Investigator** | Diagnostics | GPT-5.6 Sol | Root cause analysis without users needing elevated access |
-| 🛰️ | **Operations Monitor** | Monitoring | GPT-5.6 Luna | Proactive scanning — surfaces problems before they become incidents |
-| 📋 | **Compliance Advisor** | Compliance | GPT-5.6 Terra | Classifies policy violations as definition bugs, misconfigurations, exemptions, or workaround abuse |
+| ⚡ | **Operations Coordinator** | Every multi-specialist request | GPT-5.6 Sol | Picks the specialists, runs the debate, and synthesizes one evidence-cited recommendation |
+| 💰 | **Cost & Capacity Analyst** | Cost, capacity/quota | GPT-5.6 Terra | Reads Cost Management, Advisor and quota usage; recommends rightsizing and shows the math |
+| 🔍 | **Incident & Change Investigator** | Incidents, reliability/SLOs, changes | GPT-5.6 Sol | Correlates alerts, Resource Health and SLO breaches with Activity Log changes into a root-cause timeline |
+| 🛡️ | **Security & Monitoring Analyst** | Security, telemetry coverage | GPT-5.6 Luna | Triages Defender findings and finds monitoring blind spots (missing diagnostics / heartbeats) |
+| 📋 | **Policy & Governance Advisor** | Policy compliance, ownership/tags | GPT-5.6 Terra | Classifies Azure Policy violations (bug / misconfig / exemption / workaround) and routes the fix to Azure DevOps |
+| 🔧 | **Resilience & Hygiene Engineer** | Backup, patching, certificates, automation | GPT-5.6 Terra | Keeps operational hygiene green against standards; drafts Terraform/CLI/runbook remediation for review |
+
+All agents are read-only, must cite finding IDs, and hand remediation to a human
+for approval. Full "what and how" for each agent — evidence sources, tools,
+outputs, guardrails and the Azure AI Foundry agent it runs as — is in
+[docs/AGENTS.md](docs/AGENTS.md), on the in-app **Agent Squad** page, and as
+JSON at `GET /api/agents`.
 
 Every name, role, model deployment, endpoint, and system prompt above is defined in
 `profiles/power/` and is entirely swappable via the profile system — see

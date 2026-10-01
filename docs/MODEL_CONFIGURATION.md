@@ -187,12 +187,12 @@ the six agents onto three tiers of a single model family:
 
 | Agent key | Display name | Model tier | Example deployment name | `max_completion_tokens` | `max_context_chars` |
 |---|---|---|---|--:|--:|
-| `orchestrator` | Grid Coordinator | **GPT-5.6 Sol** | `gpt-5.6-sol` | 1400 | 30000 |
-| `diagnostics_sre` | Incident Investigator | **GPT-5.6 Sol** | `gpt-5.6-sol` | 1500 | 30000 |
+| `orchestrator` | Operations Coordinator | **GPT-5.6 Sol** | `gpt-5.6-sol` | 1400 | 30000 |
+| `diagnostics_sre` | Incident & Change Investigator | **GPT-5.6 Sol** | `gpt-5.6-sol` | 1500 | 30000 |
 | `cost_sentinel` | Cost & Capacity Analyst | **GPT-5.6 Terra** | `gpt-5.6-terra` | 900 | 20000 |
-| `standards_architect` | Reliability Engineer | **GPT-5.6 Terra** | `gpt-5.6-terra` | 800 | 20000 |
-| `compliance_inspector` | Compliance Advisor | **GPT-5.6 Terra** | `gpt-5.6-terra` | 850 | 20000 |
-| `scout` | Operations Monitor | **GPT-5.6 Luna** | `gpt-5.6-luna` | 400 | 12000 |
+| `standards_architect` | Resilience & Hygiene Engineer | **GPT-5.6 Terra** | `gpt-5.6-terra` | 800 | 20000 |
+| `compliance_inspector` | Policy & Governance Advisor | **GPT-5.6 Terra** | `gpt-5.6-terra` | 850 | 20000 |
+| `scout` | Security & Monitoring Analyst | **GPT-5.6 Luna** | `gpt-5.6-luna` | 400 | 12000 |
 
 > **Naming note**: the Azure AI Foundry model catalog entry for the mid tier
 > is **"GPT-5.6 Terra"** — that is its actual model/deployment name. Some
@@ -246,7 +246,11 @@ used). `input_cost_per_million`/`output_cost_per_million` default to `0.0`
 (no cost estimate) since neither profile has a real GPT-5.6-tier pricing
 example attached — set them per your own negotiated Azure OpenAI pricing if
 you want `estimated_cost_usd` populated for `foundry-gpt`/`foundry-reasoning`/
-`foundry-nano` deployments.
+`foundry-nano` deployments. The same per-agent pricing feeds every
+analysis response's `usage_summary.estimated_cost_usd` on both the `direct`
+and `foundry` backends (see `docs/FOUNDRY_ARCHITECTURE.md`'s token KPIs) —
+e.g. `AGENT_COST_SENTINEL_INPUT_COST_PER_MILLION` /
+`AGENT_COST_SENTINEL_OUTPUT_COST_PER_MILLION`.
 
 ## Setting these fields
 

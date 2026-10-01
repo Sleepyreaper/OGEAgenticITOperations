@@ -155,6 +155,24 @@ test("rebuttals are present (2+ specialists in a debate)", result2["rebuttals"] 
 test("final synthesis came from the orchestrator", result2["final"]["agent_key"] == "orchestrator")
 
 
+print("\n\U0001f9ea Test 3b: usage_summary rolls every model call into one token ledger")
+usage2 = result2["usage_summary"]
+test("debate run counts 2 specialists + 2 rebuttals + 1 synthesis = 5 model calls", usage2["model_calls"] == 5)
+test("total_tokens sums every call (5 x 2)", usage2["total_tokens"] == 10)
+test("per-round split is specialists/rebuttals/synthesis", usage2["per_round_tokens"] == {"specialists": 4, "rebuttals": 4, "synthesis": 2})
+test("orchestrator tokens attributed to the orchestrator", usage2["per_agent_tokens"]["orchestrator"] == 2)
+test("tokens_per_cited_finding uses validated citations", usage2["cited_finding_count"] == 1 and usage2["tokens_per_cited_finding"] == 10)
+test("final payload carries the synthesis call's own usage", result2["final"]["usage"]["total_tokens"] == 2)
+usage1 = result1["usage_summary"]
+test("single-specialist run: 1 call, no synthesis round double-counted", usage1["model_calls"] == 1 and "synthesis" not in usage1["per_round_tokens"])
+
+class _ToolOutcome:
+    usage = {"total_tokens": 30, "tool_calls": 3, "tool_rounds": 2}
+tool_usage = analysis_mod._usage_summary({"specialists": {"scout": _ToolOutcome()}}, cited_finding_count=0)
+test("Foundry tool rounds count as extra model requests (1 + 2)", tool_usage["model_calls"] == 3)
+test("tool_calls summed; tokens_per_cited_finding is None with no citations", tool_usage["tool_calls"] == 3 and tool_usage["tokens_per_cited_finding"] is None)
+
+
 print("\n\U0001f9ea Test 4: unsupported citation is flagged, never silently accepted")
 backend3 = FakeBackend("this-id-does-not-exist-in-the-bundle")
 result3 = analysis_mod.analyze_operations(question="q", subscription_ids=["sub-test-1"], backend=backend3, snapshot=snapshot1)
@@ -178,6 +196,7 @@ test("no backend calls were made", backend5.calls == [])
 test("specialists dict is empty", result5["specialists"] == {})
 test("final is still schema_valid (a deterministic, not fabricated, answer)", result5["final"]["schema_valid"] is True)
 test("confidence is explicitly low", result5["final"]["confidence"] == "low")
+test("usage_summary is present and zero (no model calls)", result5["usage_summary"]["model_calls"] == 0 and result5["usage_summary"]["total_tokens"] == 0)
 
 
 print("\n\U0001f9ea Test 7: request-level validation -- blank question, no subscription, unknown/orchestrator agent")

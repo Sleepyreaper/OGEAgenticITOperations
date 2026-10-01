@@ -78,9 +78,47 @@ param otelServiceName string = ''
 @description('A version fingerprint for "this profile\'s agent definitions as currently loaded" (see docs/AGENT_INTELLIGENCE.md), surfaced on /api/health and every /api/operations/analyze|briefing response. Empty (default) derives one automatically at app startup; set this only for a human-chosen version tag.')
 param agentDefinitionVersion string = ''
 
-@description('Which model backend app/agents/analysis.py uses (see docs/FOUNDRY_ARCHITECTURE.md). "direct" (default) calls Azure OpenAI directly. "foundry" is NOT implemented and fails loudly at call time rather than silently using "direct" — do not set this until the Foundry migration described in that doc is actually implemented.')
+@description('Which model backend app/agents/analysis.py uses (see docs/FOUNDRY_ARCHITECTURE.md). "direct" (default) calls Azure OpenAI directly. "foundry" runs every specialist as a versioned Azure AI Foundry agent in the project configured by foundryMode below; it fails loudly at call time (never silently falls back to "direct") if no Foundry project endpoint is configured.')
 @allowed(['direct', 'foundry'])
 param agentBackend string = 'direct'
+
+@description('''
+Azure AI Foundry provisioning (see docs/FOUNDRY_ARCHITECTURE.md):
+  "none"     (default) — no Foundry resources or RBAC; FOUNDRY_PROJECT_ENDPOINT is still set if foundryProjectEndpoint is given.
+  "existing" — reuse an existing Foundry account/project: grants the app's managed identity Foundry User on foundryAccountName in foundryResourceGroup. Set foundryProjectEndpoint.
+  "new"      — create an AIServices account (foundryAccountName), a project (foundryProjectName) and foundryModelDeployments in this resource group, plus the RBAC.
+''')
+@allowed(['none', 'existing', 'new'])
+param foundryMode string = 'none'
+
+@description('Foundry (AIServices) account name. Required for foundryMode existing/new; for "new" it must be globally unique (used as the custom subdomain).')
+param foundryAccountName string = ''
+
+@description('Resource group of the existing Foundry account (foundryMode "existing"). Defaults to this resource group.')
+param foundryResourceGroup string = resourceGroup().name
+
+@description('Foundry project name (foundryMode "new").')
+param foundryProjectName string = 'oge-ops'
+
+@description('Region for a new Foundry account (foundryMode "new"). Pick a region with quota for the requested models.')
+param foundryLocation string = location
+
+@description('Project endpoint for foundryMode "existing"/"none", e.g. https://<account>.services.ai.azure.com/api/projects/<project>. Ignored for "new" (derived).')
+param foundryProjectEndpoint string = ''
+
+@description('Model deployments created for foundryMode "new". Each: { name, model, version, sku, capacity }. Map agents onto them with agentOverrides.<key>.deployment.')
+param foundryModelDeployments array = [
+  { name: 'gpt-5.6-sol', model: 'gpt-5.6-sol', version: '2026-07-09', sku: 'GlobalStandard', capacity: 100 }
+  { name: 'gpt-5.6-terra', model: 'gpt-5.6-terra', version: '2026-07-09', sku: 'GlobalStandard', capacity: 50 }
+  { name: 'gpt-5.6-luna', model: 'gpt-5.6-luna', version: '2026-07-09', sku: 'GlobalStandard', capacity: 50 }
+]
+
+@description('''
+Optional Foundry runtime settings (surfaced as FOUNDRY_* / ANALYSIS_* app settings; see .env.example).
+Recognized keys: agentPrefix, modelDeployment, enableTools, maxToolRounds, maxToolOutputChars, maxParallelSpecialists.
+Example: { agentPrefix: 'oge-ops', maxToolRounds: 4, maxParallelSpecialists: 4 }
+''')
+param foundrySettings object = {}
 
 @description('''
 Optional operations evidence layer settings (app/operations/, see
@@ -191,6 +229,32 @@ module additionalOpenaiRbac 'modules/openai-rbac.bicep' = [
   }
 ]
 
+// ── Azure AI Foundry (optional runtime squad backend) ──
+module foundryNew 'modules/foundry.bicep' = if (foundryMode == 'new') {
+  name: 'foundry'
+  params: {
+    location: foundryLocation
+    accountName: foundryAccountName
+    projectName: foundryProjectName
+    modelDeployments: foundryModelDeployments
+    managedIdentityPrincipalId: identity.outputs.identityPrincipalId
+    logAnalyticsWorkspaceResourceId: monitoring.outputs.logAnalyticsId
+  }
+}
+
+module foundryExistingRbac 'modules/foundry-rbac.bicep' = if (foundryMode == 'existing') {
+  name: 'foundry-rbac'
+  scope: resourceGroup(foundryResourceGroup)
+  params: {
+    foundryAccountName: foundryAccountName
+    managedIdentityPrincipalId: identity.outputs.identityPrincipalId
+  }
+}
+
+var resolvedFoundryProjectEndpoint = foundryMode == 'new'
+  ? 'https://${foundryAccountName}.services.ai.azure.com/api/projects/${foundryProjectName}'
+  : foundryProjectEndpoint
+
 // ── Web App ──
 module webApp 'modules/web-app.bicep' = {
   name: 'web-app'
@@ -216,10 +280,17 @@ module webApp 'modules/web-app.bicep' = {
     operationsSettings: operationsSettings
     agentDefinitionVersion: agentDefinitionVersion
     agentBackend: agentBackend
+    foundryProjectEndpoint: resolvedFoundryProjectEndpoint
+    foundrySettings: foundrySettings
   }
+  dependsOn: [
+    foundryNew
+    foundryExistingRbac
+  ]
 }
 
 // ── Outputs ──
+output foundryProjectEndpoint string = resolvedFoundryProjectEndpoint
 output webAppUrl string = webApp.outputs.webAppUrl
 output webAppName string = webApp.outputs.webAppName
 output keyVaultName string = keyVault.outputs.keyVaultName

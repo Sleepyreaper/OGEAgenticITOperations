@@ -1,0 +1,32 @@
+{
+  "agents": {
+    "lead": {
+      "persistent_name": "Lead",
+      "universe": "descriptive",
+      "created_at": "2026-10-01T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "evidence-engineer": {
+      "persistent_name": "Evidence Engineer",
+      "universe": "descriptive",
+      "created_at": "2026-10-01T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "foundry-engineer": {
+      "persistent_name": "Foundry Engineer",
+      "universe": "descriptive",
+      "created_at": "2026-10-01T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "tester": {
+      "persistent_name": "Tester",
+      "universe": "descriptive",
+      "created_at": "2026-10-01T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    }
+  }
+}

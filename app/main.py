@@ -19,6 +19,7 @@ from app.operations.routes import operations_bp
 from app.agents.analysis_routes import agent_analysis_bp
 from app.agents import backend as agent_backend
 from app.agents import evaluation as agent_evaluation
+from app.agents.catalog import build_agent_catalog
 
 
 def create_app():
@@ -50,6 +51,14 @@ def create_app():
 
     # ─── Pages ──────────────────────────────────────────────
 
+    def _agent_catalog() -> list:
+        health = agent_backend.backend_health()
+        return build_agent_catalog(
+            settings.agents,
+            backend=health["active_backend"],
+            foundry_agent_prefix=health["foundry_agent_prefix"],
+        )
+
     @app.route("/")
     def index():
         return render_template(
@@ -57,7 +66,15 @@ def create_app():
             demos=DEMO_SCENARIOS,
             brand=settings.brand,
             agents=settings.agents,
+            agent_catalog=_agent_catalog(),
         )
+
+    @app.route("/api/agents", methods=["GET"])
+    def agent_catalog():
+        """What each agent does and how: routed categories, Azure evidence
+        sources, tools, model deployment, runtime (direct / Foundry agent
+        name) and guardrails -- derived from code (app/agents/catalog.py)."""
+        return jsonify({"agents": _agent_catalog()})
 
     # ─── API ────────────────────────────────────────────────
 
@@ -448,10 +465,9 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                 "telemetry_enabled": telemetry.is_enabled(),
             },
             # Agent-intelligence layer (see docs/AGENT_INTELLIGENCE.md and
-            # docs/FOUNDRY_ARCHITECTURE.md) — deliberately honest:
-            # backend.foundry_implemented is always False today (this app
-            # calls Azure OpenAI directly), and evaluation is an
-            # in-process, deterministic aggregate (never model output).
+            # docs/FOUNDRY_ARCHITECTURE.md): backend reports which model
+            # backend is active and whether Foundry is configured; evaluation
+            # is an in-process, deterministic aggregate (never model output).
             "agent_definition_version": settings.agent_definition_version,
             "backend": agent_backend.backend_health(),
             "evaluation": agent_evaluation.get_aggregate_summary(),

@@ -13,8 +13,8 @@
   },
   "agents": {
     "orchestrator": {
-      "name": "Grid Coordinator",
-      "role": "Routes each request to the right specialists, connects their findings, and delivers one unified, transparent recommendation for DTE's cloud weather operations \u2014 the single point of coordination across the team, storm or clear skies.",
+      "name": "Operations Coordinator",
+      "role": "Routes each request to the right specialists, reconciles their findings, and delivers one prioritized, evidence-cited recommendation for DTE's cloud weather operations — storm or clear skies.",
       "deployment": "gpt-5.6-sol",
       "endpoint_ref": "hallofjustice",
       "temperature": 0.7,
@@ -28,7 +28,7 @@
     },
     "cost_sentinel": {
       "name": "Cost & Capacity Analyst",
-      "role": "Finds waste, tracks burn rate, and recommends rightsizing across DTE's cloud workloads \u2014 always shows the math behind every recommendation, and knows the difference between idle waste and storm-response headroom.",
+      "role": "Explains where spend and quota pressure come from across DTE's cloud workloads and recommends rightsizing — always showing the math, and knowing idle waste from storm-response headroom.",
       "deployment": "gpt-5.6-terra",
       "endpoint_ref": "hallofjustice",
       "temperature": 1.0,
@@ -41,8 +41,8 @@
       "output_cost_per_million": 6.0
     },
     "standards_architect": {
-      "name": "Reliability Engineer",
-      "role": "Explains why DTE's infrastructure is configured the way it is, validates changes against reliability and organizational standards, and flags what a change would break \u2014 especially anything sized for storm restoration or grid-critical workloads.",
+      "name": "Resilience & Hygiene Engineer",
+      "role": "Keeps backups, patching, certificates and automation healthy against DTE's reliability standards — especially anything sized for storm restoration — and drafts remediation for review.",
       "deployment": "gpt-5.6-terra",
       "endpoint_ref": "hallofjustice",
       "temperature": 0.5,
@@ -55,8 +55,8 @@
       "output_cost_per_million": 6.0
     },
     "diagnostics_sre": {
-      "name": "Incident Investigator",
-      "role": "Root-cause analysis from Azure telemetry \u2014 timeline, symptoms, root cause, and remediation, without needing elevated access, for whatever the cloud environment throws at DTE's operations team.",
+      "name": "Incident & Change Investigator",
+      "role": "Correlates alerts, health and SLO breaches with recent changes to find the probable root cause of an incident affecting DTE's operations, and the safest next step.",
       "deployment": "gpt-5.6-sol",
       "endpoint_ref": "hallofjustice",
       "temperature": 1.0,
@@ -69,8 +69,8 @@
       "output_cost_per_million": 15.0
     },
     "scout": {
-      "name": "Operations Monitor",
-      "role": "Continuously scans for anomalies, health degradation, and security drift, and raises short, actionable alerts \u2014 the early-warning system for DTE's cloud environment, watching the horizon the way a storm center watches a front moving in.",
+      "name": "Security & Monitoring Analyst",
+      "role": "Surfaces Defender security findings and monitoring blind spots in DTE's cloud environment — the early-warning system that also says plainly what it cannot see.",
       "deployment": "gpt-5.6-luna",
       "endpoint_ref": "hallofjustice",
       "temperature": 0.3,
@@ -83,8 +83,8 @@
       "output_cost_per_million": 0.6
     },
     "compliance_inspector": {
-      "name": "Compliance Advisor",
-      "role": "Classifies Azure Policy violations as policy bugs, misconfigurations, documented exemptions, or workaround abuse, and recommends the right fix for each \u2014 fair but firm, the way a utility regulator expects every finding to be documented.",
+      "name": "Policy & Governance Advisor",
+      "role": "Classifies Azure Policy violations and ownership gaps (policy bug, misconfiguration, exemption, workaround) and routes each to the right fix — documented the way a utility regulator expects.",
       "deployment": "gpt-5.6-terra",
       "endpoint_ref": "hallofjustice",
       "temperature": 1.0,
