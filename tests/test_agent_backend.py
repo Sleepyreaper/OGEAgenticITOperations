@@ -2,8 +2,8 @@
 """Test the model backend protocol (app/agents/backend.py) --
 DirectAzureOpenAIBackend's structured-output request + its explicit,
 safe fallback to a plain completion when the deployment rejects
-response_format, and that FoundryAgentServiceBackend is honestly NOT
-implemented. No real Azure/OpenAI calls: app.agents.backend._get_client
+response_format, and that FoundryAgentServiceBackend fails loudly when
+unconfigured (its full behavior is covered by tests/test_agent_foundry_backend.py). No real Azure/OpenAI calls: app.agents.backend._get_client
 is monkeypatched with a fake client (same pattern as tests/test_runner.py).
 
 Run: python3 tests/test_agent_backend.py
@@ -173,14 +173,14 @@ with patch("app.agents.backend._get_client", side_effect=lambda d, e="", v="": (
         test("a non-BadRequestError exception propagates unchanged", "network is down" in str(exc))
 
 
-print("\n\U0001f9ea Test 5: FoundryAgentServiceBackend is honestly NOT implemented")
-foundry_backend = backend_mod.FoundryAgentServiceBackend()
+print("\n\U0001f9ea Test 5: FoundryAgentServiceBackend without FOUNDRY_PROJECT_ENDPOINT fails loudly")
+foundry_backend = backend_mod.FoundryAgentServiceBackend(backend_mod.FoundryConfig())
 test("name identifies it as the Foundry backend", foundry_backend.name == "foundry_agent_service")
 try:
     foundry_backend.complete(make_agent_config(), [{"role": "user", "content": "hi"}])
-    test("calling FoundryAgentServiceBackend.complete() raises NotImplementedError", False)
-except NotImplementedError as exc:
-    test("calling FoundryAgentServiceBackend.complete() raises NotImplementedError", "not implemented" in str(exc).lower())
+    test("unconfigured FoundryAgentServiceBackend.complete() raises RuntimeError", False)
+except RuntimeError as exc:
+    test("unconfigured FoundryAgentServiceBackend.complete() raises RuntimeError", "FOUNDRY_PROJECT_ENDPOINT" in str(exc))
 
 
 print("\n\U0001f9ea Test 6: get_backend()/backend_health() are honest about what's active")
@@ -190,7 +190,8 @@ test("default backend is DirectAzureOpenAIBackend", isinstance(default_backend, 
 
 health = backend_mod.backend_health()
 test("active_backend defaults to 'direct'", health["active_backend"] == "direct")
-test("foundry_implemented is always False (never claims a fake integration)", health["foundry_implemented"] is False)
+test("foundry_implemented is True", health["foundry_implemented"] is True)
+test("foundry_configured is False without FOUNDRY_PROJECT_ENDPOINT", health["foundry_configured"] is False)
 
 os.environ["AGENT_BACKEND"] = "foundry"
 try:

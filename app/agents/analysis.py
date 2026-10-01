@@ -17,7 +17,10 @@ ZERO model calls -- there is nothing grounded to reason over, so this
 module never fabricates a confident-sounding answer in that case.
 """
 
+import concurrent.futures
+import contextvars
 import json as _json
+import os
 from typing import Optional
 
 from app import telemetry
@@ -100,12 +103,17 @@ class SpecialistOutcome:
         }
 
 
-def _call_specialist(agent_key: str, *, question: str, bundle: EvidenceBundle, backend, extra_instruction: str = "") -> SpecialistOutcome:
+def _call_specialist(
+    agent_key: str, *, question: str, bundle: EvidenceBundle, backend, extra_instruction: str = "", tool_context=None,
+) -> SpecialistOutcome:
     agent_cfg = settings.agents[agent_key]
     messages = _build_messages(agent_cfg, question=question, bundle=bundle, extra_instruction=extra_instruction)
-    completion = backend.complete(
-        agent_cfg, messages, json_schema=schema_module.AGENT_ANALYSIS_JSON_SCHEMA, schema_name="agent_analysis_result"
-    )
+    kwargs = {"json_schema": schema_module.AGENT_ANALYSIS_JSON_SCHEMA, "schema_name": "agent_analysis_result"}
+    # Only backends that opt in receive a tool scope -- keeps the
+    # ModelBackend protocol backward compatible for existing backends.
+    if tool_context is not None and getattr(backend, "supports_tool_context", False):
+        kwargs["tool_context"] = tool_context
+    completion = backend.complete(agent_cfg, messages, **kwargs)
     try:
         result = schema_module.parse_structured_response(completion.raw_text)
         schema_valid, schema_error = True, None
@@ -117,6 +125,29 @@ def _call_specialist(agent_key: str, *, question: str, bundle: EvidenceBundle, b
         structured_output_used=completion.structured_output_used, schema_valid=schema_valid, result=result,
         raw_text=completion.raw_text, usage=completion.usage, schema_error=schema_error,
     )
+
+
+def _max_parallel_specialists() -> int:
+    raw = os.environ.get("ANALYSIS_MAX_PARALLEL_SPECIALISTS", "").strip()
+    if not raw:
+        return 4
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise AnalysisError(f"ANALYSIS_MAX_PARALLEL_SPECIALISTS must be an integer, got {raw!r}") from exc
+    return max(1, value)
+
+
+def _fan_out(agent_keys: list, call) -> dict:
+    """Run independent specialist calls concurrently (bounded), returning
+    results in routing order. Each worker gets a copy of the caller's
+    context so OTEL parent spans propagate."""
+    workers = min(_max_parallel_specialists(), len(agent_keys))
+    if workers <= 1:
+        return {key: call(key) for key in agent_keys}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ops-specialist") as pool:
+        futures = {key: pool.submit(contextvars.copy_context().run, call, key) for key in agent_keys}
+        return {key: futures[key].result() for key in agent_keys}
 
 
 def _summarize_outcomes(outcomes: dict) -> str:
@@ -172,6 +203,39 @@ def _final_result_payload(outcome: SpecialistOutcome, *, valid_ids: list, unsupp
     }
 
 
+_USAGE_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens", "estimated_cost_usd", "tool_calls")
+
+
+def _usage_summary(rounds: dict, *, cited_finding_count: int) -> dict:
+    """Roll every model call in one run into a single token/cost ledger
+    (see docs/FOUNDRY_ARCHITECTURE.md's "Token usage as an ops KPI").
+    ``rounds`` maps round name -> {agent_key: SpecialistOutcome}."""
+    totals = {field: 0 for field in _USAGE_FIELDS}
+    totals["estimated_cost_usd"] = 0.0
+    per_round, per_agent, model_calls = {}, {}, 0
+    for round_name, outcomes in rounds.items():
+        round_tokens = 0
+        for agent_key, outcome in (outcomes or {}).items():
+            usage = outcome.usage or {}
+            # One request per outcome plus one follow-up per Foundry tool round.
+            model_calls += 1 + (usage.get("tool_rounds") or 0)
+            for field in _USAGE_FIELDS:
+                totals[field] += usage.get(field) or 0
+            tokens = usage.get("total_tokens") or 0
+            round_tokens += tokens
+            per_agent[agent_key] = per_agent.get(agent_key, 0) + tokens
+        per_round[round_name] = round_tokens
+    totals["estimated_cost_usd"] = round(totals["estimated_cost_usd"], 6)
+    return {
+        **totals,
+        "model_calls": model_calls,
+        "per_round_tokens": per_round,
+        "per_agent_tokens": per_agent,
+        "cited_finding_count": cited_finding_count,
+        "tokens_per_cited_finding": round(totals["total_tokens"] / cited_finding_count) if cited_finding_count else None,
+    }
+
+
 def _model_metadata(backend_obj) -> dict:
     return {
         "backend": getattr(backend_obj, "name", "unknown"),
@@ -222,6 +286,7 @@ def _insufficient_evidence_response(*, question: str, bundle: EvidenceBundle, sn
         "model_metadata": {
             "backend": "none", "agent_definition_version": settings.agent_definition_version, "prompt_versions": {},
         },
+        "usage_summary": _usage_summary({}, cited_finding_count=0),
     }
 
 
@@ -248,8 +313,8 @@ def analyze_operations(
     evaluated response. Raises AnalysisError (bad request input) or
     EvidenceBundleError (bad filter / unknown finding_id) -- both plain
     ValueError subclasses the Flask route layer maps to 400/404 -- or
-    lets a backend's own exception (e.g. NotImplementedError from the
-    Foundry stub) propagate unchanged."""
+    lets a backend's own exception (e.g. RuntimeError from an
+    unconfigured Foundry backend) propagate unchanged."""
     if not question or not question.strip():
         raise AnalysisError("question is required")
     if not subscription_ids or not any(subscription_ids):
@@ -281,28 +346,31 @@ def analyze_operations(
     )
 
     backend_obj = backend or backend_module.get_backend()
+    tool_context = backend_module.ToolContext(subscription_ids=tuple(snapshot.subscription_ids), config=config)
 
-    specialist_outcomes = {
-        agent_key: _call_specialist(agent_key, question=question, bundle=bundle, backend=backend_obj)
-        for agent_key in routing_decision.specialist_agents
-    }
+    specialist_outcomes = _fan_out(
+        routing_decision.specialist_agents,
+        lambda agent_key: _call_specialist(
+            agent_key, question=question, bundle=bundle, backend=backend_obj, tool_context=tool_context,
+        ),
+    )
 
     rebuttal_outcomes = None
     if routing_decision.debate and len(specialist_outcomes) >= 2:
         round1_summary = _summarize_outcomes(specialist_outcomes)
-        rebuttal_outcomes = {
-            agent_key: _call_specialist(
+        rebuttal_outcomes = _fan_out(
+            routing_decision.specialist_agents,
+            lambda agent_key: _call_specialist(
                 agent_key, question=question, bundle=bundle, backend=backend_obj,
-                extra_instruction=_rebuttal_instruction(round1_summary),
-            )
-            for agent_key in routing_decision.specialist_agents
-        }
+                extra_instruction=_rebuttal_instruction(round1_summary), tool_context=tool_context,
+            ),
+        )
 
     if routing_decision.coordinator_included:
         synthesis_extra = _synthesis_instruction(specialist_outcomes, rebuttal_outcomes)
         final_outcome = _call_specialist(
             routing_module.COORDINATOR_KEY, question=question, bundle=bundle, backend=backend_obj,
-            extra_instruction=synthesis_extra,
+            extra_instruction=synthesis_extra, tool_context=tool_context,
         )
     else:
         final_outcome = specialist_outcomes[routing_decision.specialist_agents[0]]
@@ -320,6 +388,14 @@ def analyze_operations(
     )
     evaluation_module.record_evaluation(evaluation_result)
 
+    usage_rounds = {"specialists": specialist_outcomes}
+    if rebuttal_outcomes:
+        usage_rounds["rebuttals"] = rebuttal_outcomes
+    if routing_decision.coordinator_included:
+        usage_rounds["synthesis"] = {routing_module.COORDINATOR_KEY: final_outcome}
+    final_payload = _final_result_payload(final_outcome, valid_ids=valid_ids, unsupported_ids=unsupported_ids, action_metadata=action_metadata)
+    final_payload["usage"] = final_outcome.usage
+
     return {
         "question": question,
         "generated_at": format_utc_iso(now),
@@ -328,9 +404,10 @@ def analyze_operations(
         "evidence_bundle": bundle.to_dict(),
         "specialists": {key: outcome.to_dict() for key, outcome in specialist_outcomes.items()},
         "rebuttals": {key: outcome.to_dict() for key, outcome in rebuttal_outcomes.items()} if rebuttal_outcomes else None,
-        "final": _final_result_payload(final_outcome, valid_ids=valid_ids, unsupported_ids=unsupported_ids, action_metadata=action_metadata),
+        "final": final_payload,
         "evaluation": evaluation_result.to_dict(),
         "model_metadata": _model_metadata(backend_obj),
+        "usage_summary": _usage_summary(usage_rounds, cited_finding_count=len(valid_ids)),
     }
 
 
@@ -382,4 +459,5 @@ def build_briefing(
         "supporting_analysis": supporting_analysis,
         "evaluation": full["evaluation"],
         "model_metadata": full["model_metadata"],
+        "usage_summary": full.get("usage_summary"),
     }
