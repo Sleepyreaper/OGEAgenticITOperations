@@ -155,6 +155,7 @@ def _escalation_view(record: dict) -> dict:
         "confidence": result.get("confidence"), "recommended_actions": result.get("recommended_actions"),
         "remediation_script": result.get("remediation_script"), "evidence_ids": result.get("valid_evidence_ids"),
         "specialists": result.get("specialists"), "debate_used": result.get("debate_used"),
+        "answered_by": result.get("agent"), "synthesis_fallback": bool(result.get("fallback_from")),
         "cost": record.get("cost"), "proposal_id": record.get("proposal_id") or None, "error": record.get("error") or None,
     }
     if record["status"] in ("received", "analyzing"):

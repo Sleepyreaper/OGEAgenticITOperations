@@ -211,6 +211,23 @@ for bad in ({"category": "change-management"}, {"severity": "urgent"}):
         test(f"escalate rejects invalid {list(bad)[0]} synchronously", False)
     except ValueError as exc:
         test(f"escalate rejects invalid {list(bad)[0]} synchronously", "must be one of" in str(exc))
+def _outcome(key, conf, ids, valid=True):
+    return {"agent_key": key, "agent": key.title(), "schema_valid": valid,
+            "result": {"conclusion": f"{key} says {conf}", "business_impact": "x", "confidence": conf,
+                       "evidence_ids": ids, "missing_evidence": [], "recommended_actions": [], "narrative": ""} if valid else None}
+
+
+broken = {"final": {"agent_key": "orchestrator", "schema_valid": False, "schema_error": "confidence 'certain' invalid"},
+          "evidence_bundle": {"items": [{"id": "f-1"}]},
+          "specialists": {"scout": _outcome("scout", "high", ["f-1"]), "standards_architect": _outcome("standards_architect", "low", [])},
+          "rebuttals": {"scout": _outcome("scout", "high", ["f-1", "f-bogus"]), "standards_architect": _outcome("standards_architect", "medium", [], valid=False)}}
+compact = service_mod._compact_result(broken)
+test("invalid synthesis falls back to best valid specialist", compact["conclusion"] == "scout says high" and compact["fallback_from"] == "orchestrator")
+test("fallback re-validates citations against bundle", compact["valid_evidence_ids"] == ["f-1"])
+test("synthesis error surfaced", "certain" in (compact["synthesis_error"] or ""))
+nothing = service_mod._compact_result({"final": {"agent_key": "orchestrator", "schema_valid": False}, "specialists": {"scout": _outcome("scout", "low", [], valid=False)}})
+test("no valid specialist keeps null conclusion + error", nothing["conclusion"] is None and nothing["synthesis_error"])
+test("valid synthesis has no fallback", service_mod._compact_result({"final": {"schema_valid": True, "conclusion": "ok"}})["fallback_from"] is None)
 out = service_mod.propose_fix(rec["id"])
 test("propose_fix creates pending proposal", out["proposal"]["status"] == "pending" and out["escalation"]["proposal_id"] == out["proposal"]["id"])
 test("proposal description includes script", "az storage account update" in out["proposal"]["description"])

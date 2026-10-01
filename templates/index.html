@@ -822,6 +822,7 @@
             <span class="text-xs text-brand-gray-400 ml-auto">${escapeHtml(e.created_at)} &middot; <code>${escapeHtml(e.id)}</code></span>
           </div>
           <div class="mt-1 font-medium">${escapeHtml(r.conclusion || e.question.split('\n')[0])}</div>
+          ${r.fallback_from ? `<div class="text-xs text-amber-700 mt-1">Answer from ${escapeHtml(r.agent || r.agent_key)} — coordinator synthesis was invalid (${escapeHtml(r.synthesis_error || '')})</div>` : ''}
           ${r.business_impact ? `<div class="text-xs text-brand-gray-500 mt-1"><strong>Impact:</strong> ${escapeHtml(r.business_impact)}</div>` : ''}
           ${actions ? `<ul class="text-xs mt-1 ml-4 list-disc space-y-0.5">${actions}</ul>` : ''}
           ${r.remediation_script ? `<details class="text-xs mt-1"><summary class="cursor-pointer">Remediation script</summary><pre class="bg-brand-gray-50 rounded p-2 whitespace-pre-wrap">${escapeHtml(r.remediation_script)}</pre></details>` : ''}
