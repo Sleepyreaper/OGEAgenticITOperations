@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 
 STATUSES = ("received", "analyzing", "proposed", "approved", "rejected", "resolved", "failed")
-SOURCES = ("sre-agent", "simulated", "api")
+SOURCES = ("sre-agent", "detector", "simulated", "api")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS zeroops_escalations (

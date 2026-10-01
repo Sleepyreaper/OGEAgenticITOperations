@@ -20,7 +20,7 @@ A multi-agent AI operations platform running on Azure, purpose-built for Cloud O
 │  │  Reliability     │    │  Ops Center                      ││
 │  │  (Executive)     │    │  (Engineering)                   ││
 │  │  - Score 0-100   │    │  - Findings & drift              ││
-│  │  - 4 pillars     │    │  - Chaos demo                    ││
+│  │  - 4 pillars     │    │  - ZeroOps live demos            ││
 │  │  - Service Health│    │  - Remediation (Terraform/CLI)   ││
 │  │  - Top Actions   │    │  - Morning Briefing              ││
 │  └────────┬─────────┘    └──────────┬───────────────────────┘│
@@ -29,7 +29,7 @@ A multi-agent AI operations platform running on Azure, purpose-built for Cloud O
 │  ┌────────────────────────────────────────────────────────┐  │
 │  │  Flask Backend (Python 3.13 / Gunicorn)                │  │
 │  │  - SSE streaming debate system                         │  │
-│  │  - Scan / Chaos / Digest / Remediate APIs              │  │
+│  │  - Scan / ZeroOps / Digest / Remediate APIs            │  │
 │  │  - Auto-refresh every 60s (free Resource Graph)        │  │
 │  └──────┬──────────┬──────────┬──────────┬────────────────┘  │
 │         │          │          │          │                    │
@@ -75,7 +75,7 @@ routes. `sre-agent/` holds the SRE Agent custom agent, skills, response plan and
 | {prefix}-vnet | Virtual Network | Network isolation |
 | {prefix}-log | Log Analytics | Telemetry collection |
 | {prefix}-appi | Application Insights | App monitoring |
-| {prefix}-nsg-* | NSGs | Network security + chaos demo target |
+| {prefix}-nsg-* | NSGs | Network security |
 
 ## Agent Architecture
 

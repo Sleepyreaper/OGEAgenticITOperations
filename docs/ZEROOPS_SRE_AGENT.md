@@ -122,16 +122,45 @@ state. Alert rule names start with `ZeroOps <scenario-id>`, so the SRE response 
 > `policies/modify/action` entry in the Activity Log and escalate only the TLS question. This is a
 > good talking point: policy, SRE Agent and squad each cover a different layer.
 
+### Fast detection: seconds, not minutes
+Activity Log alerts take about 5 minutes to reach the SRE Agent, which is too slow for a live demo.
+After **Inject**, the console starts a timer and polls a read-only **probe**
+(`GET /api/zeroops/scenarios/<id>/probe`) every 2 seconds. Each probe looks for the *symptom* with an
+independent signal; it does not read back what inject wrote.
+
+| Scenario | Probe | Typical time |
+|---|---|---|
+| `open-door` | Azure Resource Graph: inbound allow on 22/3389/* from `*`/Internet in the demo NSG | 5–20 s |
+| `bad-deploy` | HTTP synthetic probe of the web app (5xx or timeout) | 30–90 s (restart) |
+| `storm-surge` | Azure Resource Graph: plan SKU ≠ B1 or capacity > 1 | 5–20 s |
+| `rogue-hotfix` | Azure Resource Graph: anonymous blob access or min TLS 1.0/1.1 | 5–20 s |
+| `2am-cert` | Key Vault secret expiry ≤ 7 days + Automation renewal job `Failed` | 10–60 s |
+
+On a hit, the card shows **⚡ Detected in N s via &lt;source&gt;** and hands off by tier
+(`POST /api/zeroops/scenarios/<id>/handoff`):
+- **SRE solo**: opens an Azure SRE Agent thread (`POST {agentEndpoint}/api/v1/threads`) addressed to
+  `zeroops-triage`, carrying the detection. Requires `SRE_AGENT_ENDPOINT` and the
+  **SRE Agent Standard User** role for the app identity on the agent. Without them the hand-off
+  reports `not_configured`, and the Activity Log alert remains the path.
+- **Escalated**: escalates straight to the squad (`source=detector`), with the detection time and signal
+  in the summary.
+
+The Activity Log alert still fires about 5 minutes later. It is the production backstop, and in the
+demo it shows the SRE Agent's own detection path. **⚡ Detect now** runs a single probe without injecting
+or handing off, which is useful after changes made in the portal or CLI.
+
 ### Suggested 15-minute demo script
 1. **Design (2 min).** Open **More → ZeroOps** and walk through the flow banner, the tier split and the
    cost panel (always-on baseline vs. per-incident).
-2. **SRE solo (4 min).** Inject 🚪 `open-door`. The Activity Log alert fires, and the SRE Agent's
-   `zeroops-triage` agent loads `nsg-open-port-triage`, names who opened port 22, and proposes the
-   delete. Approve it in the SRE Agent. Point out that no squad tokens were spent.
-3. **Escalation (6 min).** Inject 🩹 `rogue-hotfix`. The SRE Agent triages, the escalation policy says
-   "security vs. availability trade-off", and it calls `ogeops_escalate` with `debate=true`. The
-   escalation appears in the ZeroOps timeline (analyzing → proposed) with the squad's conclusion,
-   business impact, remediation script and **measured token cost**. Approve it in the ZeroOps view.
+2. **SRE solo (4 min).** Inject 🚪 `open-door`. Within seconds the card shows **⚡ Detected in N s**
+   and opens an SRE Agent thread. In the SRE Agent portal, `zeroops-triage` loads
+   `nsg-open-port-triage`, names who opened port 22, and proposes the delete. Approve it in the SRE
+   Agent. Point out that no squad tokens were spent.
+3. **Escalation (6 min).** Inject 🩹 `rogue-hotfix`. The probe flags TLS 1.0 within seconds and escalates
+   to the squad (`⚡ Fast detector` in the timeline: analyzing → proposed) with the conclusion, business
+   impact, remediation script and **measured token cost**. Approve it in the ZeroOps view. About
+   5 minutes later the Activity Log alert reaches the SRE Agent, which can escalate the same issue
+   itself over MCP (`ogeops_escalate`).
 4. **No SRE Agent handy?** Use **Simulate escalation** on any squad scenario. It runs the same squad
    path with `source=simulated`.
 5. **Clean up (1 min).** Run **Clean up** on each injected scenario.
@@ -154,7 +183,14 @@ az group create -n <demo-rg> -l <location>
 az deployment group create -g <demo-rg> -f infra/zeroops-demo/main.bicep \
   -p opsAppPrincipalId=<app identity principalId> sreAgentPrincipalIds='["<sre agent principalId>"]'
 ```
-Copy the `appSettings` output to the app's settings (or to `zeroopsSettings`), and set
+Copy the `appSettings` output to the app's settings (or to `zeroopsSettings`). For the fast-detection
+hand-off, also set `SRE_AGENT_ENDPOINT` (the agent's `properties.agentEndpoint`) and grant the app
+identity **SRE Agent Standard User** on the agent:
+```bash
+az role assignment create --assignee-object-id <app identity principalId> --assignee-principal-type ServicePrincipal \
+  --role "SRE Agent Standard User" --scope <sre agent resource id>
+```
+Then set
 `ZEROOPS_CHAOS_ENABLED=true` **only** in demo environments. Add the demo resource group to the
 SRE Agent's managed resources. Remove everything with `az group delete -n <demo-rg>`.
 
@@ -180,5 +216,7 @@ All calls are idempotent.
 - The squad is read-only and returns proposals. The SRE Agent never runs squad scripts.
 - Scenario inject/cleanup only touches resources named in `ZEROOPS_DEMO_*` settings and refuses
   (409) when chaos is disabled or a resource isn't configured.
+- Probes are read-only and work with chaos disabled. A probe failure is returned as an error, never as
+  "not detected".
 - No secrets in escalations: the evidence layer redacts, and SRE skills forbid pasting secrets.
 - Every decision (approve/reject/resolve) is recorded with actor, time and reason in the ledger.

@@ -413,47 +413,6 @@ def get_service_health_events(subscription_id: str = None, days: int = 30) -> li
     return events
 
 
-# ─── Chaos / Demo Functions ─────────────────────────────────────
-
-def create_chaos_nsg_rule(resource_group: str = "{PREFIX}_RG",
-                          nsg_name: str = "{prefix}-nsg-pe") -> dict:
-    """Create a deliberately bad NSG rule — SSH open to the world."""
-    from azure.mgmt.network import NetworkManagementClient
-    cred = _credential()
-    sub = _subscription_id()
-    client = NetworkManagementClient(cred, sub)
-    rule = client.security_rules.begin_create_or_update(
-        resource_group, nsg_name, "chaos-allow-ssh-from-anywhere",
-        {
-            "protocol": "Tcp",
-            "source_address_prefix": "*",
-            "source_port_range": "*",
-            "destination_address_prefix": "*",
-            "destination_port_range": "22",
-            "access": "Allow",
-            "direction": "Inbound",
-            "priority": 100,
-        }
-    ).result()
-    return {"rule_name": rule.name, "status": "created", "port": "22", "source": "*"}
-
-
-def cleanup_chaos_nsg_rule(resource_group: str = "{PREFIX}_RG",
-                            nsg_name: str = "{prefix}-nsg-pe") -> dict:
-    """Remove the chaos NSG rule."""
-    from azure.mgmt.network import NetworkManagementClient
-    cred = _credential()
-    sub = _subscription_id()
-    client = NetworkManagementClient(cred, sub)
-    try:
-        client.security_rules.begin_delete(
-            resource_group, nsg_name, "chaos-allow-ssh-from-anywhere"
-        ).result()
-        return {"status": "cleaned_up"}
-    except Exception:
-        return {"status": "already_clean"}
-
-
 # ─── Log Analytics ───────────────────────────────────────────────
 
 def query_logs(query: str, workspace_id: str = None, timespan: timedelta = None) -> list[dict]:

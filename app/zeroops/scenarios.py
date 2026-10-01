@@ -399,3 +399,126 @@ def run(scenario_id: str, action: str, config: DemoConfig = None) -> dict:
         "scenario_id": scenario.id, "action": action, "status": "ok" if ok else "partial" if any(s["status"] == "ok" for s in steps) else "error",
         "steps": steps, "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
+
+
+# ─── Fast detection probes (read-only) ──────────────────────────
+# Each probe looks for the *symptom* with an independent signal (Resource
+# Graph fleet scan, HTTP health check, Key Vault / Automation state) rather
+# than reading back what inject wrote. They run in seconds, which is what the
+# console times; the Activity Log alert to the SRE Agent is the ~5 min backstop.
+
+def _rg_rows(config: DemoConfig, query: str) -> list:
+    from app.azure_data import query_resource_graph
+    return query_resource_graph(query, config.subscription_id)
+
+
+def _kql(value: str) -> str:
+    return value.replace("'", "")
+
+
+def _probe_open_door(config: DemoConfig) -> dict:
+    rows = _rg_rows(config, (
+        "Resources | where type =~ 'Microsoft.Network/networkSecurityGroups' "
+        f"| where resourceGroup =~ '{_kql(config.resource_group)}' and name =~ '{_kql(config.nsg)}' "
+        "| mvexpand rule=properties.securityRules "
+        "| where rule.properties.access =~ 'Allow' and rule.properties.direction =~ 'Inbound' "
+        "and tostring(rule.properties.sourceAddressPrefix) in ('*', 'Internet', '0.0.0.0/0') "
+        "and tostring(rule.properties.destinationPortRange) in ('22', '3389', '*') "
+        "| project nsg=name, rule=tostring(rule.name), port=tostring(rule.properties.destinationPortRange), "
+        "priority=toint(rule.properties.priority)"))
+    return {"detected": bool(rows), "source": "Azure Resource Graph (NSG drift scan)",
+            "signal": (f"{len(rows)} inbound rule(s) open to the internet: "
+                       + ", ".join(f"{r['rule']} port {r['port']}" for r in rows)) if rows else "no internet-exposed management ports",
+            "evidence": rows[:5]}
+
+
+def _probe_bad_deploy(config: DemoConfig) -> dict:
+    url = f"https://{config.webapp}.azurewebsites.net/"
+    try:
+        resp = requests.get(url, timeout=8, allow_redirects=True)
+        code, err = resp.status_code, ""
+    except requests.RequestException as exc:
+        code, err = None, type(exc).__name__
+    detected = code is None or code >= 500
+    signal = f"HTTP {code}" if code is not None else f"no response ({err})"
+    return {"detected": detected, "source": "HTTP synthetic probe",
+            "signal": f"{url} -> {signal}", "evidence": [{"url": url, "status": code, "error": err}]}
+
+
+def _probe_storm_surge(config: DemoConfig) -> dict:
+    rows = _rg_rows(config, (
+        "Resources | where type =~ 'Microsoft.Web/serverfarms' "
+        f"| where resourceGroup =~ '{_kql(config.resource_group)}' and name =~ '{_kql(config.plan)}' "
+        "| project plan=name, sku=tostring(sku.name), tier=tostring(sku.tier), capacity=toint(sku.capacity), "
+        "change=tostring(tags.change)"))
+    hot = [r for r in rows if (r.get("sku") or "").upper() != "B1" or int(r.get("capacity") or 1) > 1]
+    signal = (f"plan {hot[0]['plan']} is {hot[0]['sku']} x{hot[0]['capacity']} (baseline B1 x1)" if hot
+              else "plan at baseline B1 x1")
+    return {"detected": bool(hot), "source": "Azure Resource Graph (cost drift scan)", "signal": signal, "evidence": rows[:5]}
+
+
+def _probe_rogue_hotfix(config: DemoConfig) -> dict:
+    rows = _rg_rows(config, (
+        "Resources | where type =~ 'Microsoft.Storage/storageAccounts' "
+        f"| where resourceGroup =~ '{_kql(config.resource_group)}' and name =~ '{_kql(config.storage)}' "
+        "| project account=name, publicBlob=tobool(properties.allowBlobPublicAccess), "
+        "minTls=tostring(properties.minimumTlsVersion), hotfix=tostring(tags.hotfix)"))
+    hot = [r for r in rows if r.get("publicBlob") or (r.get("minTls") or "TLS1_2") in ("TLS1_0", "TLS1_1")]
+    if hot:
+        r = hot[0]
+        gaps = [g for g, on in (("anonymous blob access", r.get("publicBlob")),
+                                (f"min TLS {r.get('minTls')}", r.get("minTls") in ("TLS1_0", "TLS1_1"))) if on]
+        signal = f"storage {r['account']}: " + " + ".join(gaps)
+    else:
+        signal = "storage hardened (TLS 1.2, no anonymous access)"
+    return {"detected": bool(hot), "source": "Azure Resource Graph (storage posture scan)", "signal": signal, "evidence": rows[:5]}
+
+
+def _probe_two_am_cert(config: DemoConfig) -> dict:
+    evidence, found = [], []
+    try:
+        secret = _call("GET", f"https://{config.keyvault}.vault.azure.net/secrets/{CERT_SECRET_NAME}",
+                       scope=KV_SCOPE, params={"api-version": "7.4"})
+        exp = (secret.get("attributes") or {}).get("exp")
+        if exp:
+            hours = (datetime.fromtimestamp(exp, timezone.utc) - datetime.now(timezone.utc)).total_seconds() / 3600
+            evidence.append({"secret": CERT_SECRET_NAME, "expires_in_hours": round(hours, 1)})
+            if hours <= 7 * 24:
+                found.append(f"TLS bundle expires in {hours:.0f}h")
+    except ScenarioError as exc:
+        if "-> 404" not in str(exc):
+            raise
+    jobs = _call("GET", f"{ARM}{config.rg_path()}/providers/Microsoft.Automation/automationAccounts/{config.automation}/jobs",
+                 params={"api-version": "2023-11-01", "$filter": f"properties/runbook/name eq '{CERT_RUNBOOK_NAME}'"})
+    failed = [j for j in jobs.get("value", []) if (j.get("properties") or {}).get("status") == "Failed"]
+    if failed:
+        found.append(f"renewal runbook {CERT_RUNBOOK_NAME} Failed ({len(failed)} job(s))")
+        evidence.append({"runbook": CERT_RUNBOOK_NAME, "failed_jobs": len(failed)})
+    return {"detected": bool(found), "source": "Key Vault expiry + Automation job state",
+            "signal": "; ".join(found) or "no expiring bundle or failed renewal", "evidence": evidence}
+
+
+_PROBES = {
+    "open-door": _probe_open_door, "bad-deploy": _probe_bad_deploy, "storm-surge": _probe_storm_surge,
+    "rogue-hotfix": _probe_rogue_hotfix, "2am-cert": _probe_two_am_cert,
+}
+
+
+def probe(scenario_id: str, config: DemoConfig = None) -> dict:
+    """Read-only symptom check; does not require ZEROOPS_CHAOS_ENABLED."""
+    import time
+    scenario = get_scenario(scenario_id)
+    config = config or DemoConfig.from_env()
+    if not config.subscription_id:
+        raise ScenarioError("no subscription configured (ZEROOPS_SUBSCRIPTION_ID or AZURE_SUBSCRIPTION_ID)")
+    missing = [f"ZEROOPS_DEMO_{k.upper()}" for k in scenario.required_settings if not config.get(k)]
+    if missing:
+        raise ScenarioError(f"scenario {scenario.id!r} is not configured; missing {missing}")
+    started = time.monotonic()
+    try:
+        result = _PROBES[scenario.id](config)
+    except Exception as exc:  # noqa: BLE001 -- probe failure is an explicit status, not a silent "not detected"
+        raise ScenarioError(f"probe failed: {str(exc)[:300]}") from exc
+    return {"scenario_id": scenario.id, "tier": scenario.tier, **result,
+            "probe_ms": int((time.monotonic() - started) * 1000),
+            "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}

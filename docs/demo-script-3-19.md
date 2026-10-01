@@ -99,17 +99,17 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 
 ---
 
-## Act 6: Chaos Demo (2 minutes) — THE SHOWSTOPPER
+## Act 6: Live Break/Fix (2 minutes) — THE SHOWSTOPPER
 
-**Do**: Go back to **Ops Center**. Click **"💥 Do Something Stupid"**.
+**Do**: Open **More → ZeroOps**. On 🚪 **The Open Door**, click **"💣 Inject"**.
 
-**Say**: "I'm about to open SSH to the entire internet on a real NSG. This is the kind of mistake that happens with a fat-fingered Terraform apply or a compromised service principal. Watch how fast the Cloud Weather Ops catches it."
+**Say**: "I'm about to open SSH to the entire internet on a real NSG. This is the kind of mistake that happens with a fat-fingered Terraform apply or a compromised service principal. Watch how fast it gets caught."
 
-**Wait 10 seconds.** Badge flashes "⚡ CHANGE DETECTED". Crew auto-dispatches with security analysis.
+**Wait ~10 seconds.** The card shows "⚡ Detected in N s via Azure Resource Graph" and opens an Azure SRE Agent thread, which triages and proposes the fix for approval.
 
-**Do**: Click **"🧹 Clean Up"** to restore.
+**Do**: Click **"🧹 Clean up"** to restore.
 
-**Say**: "10 seconds. That's how fast this detects a security breach. Resource Graph is free. The AI analysis cost 3 cents. Try doing that with ServiceNow."
+**Say**: "Seconds, not minutes. Resource Graph is free. The SRE Agent handled this alone, so no squad tokens were spent. Ambiguous problems go to the squad; see docs/ZEROOPS_SRE_AGENT.md."
 
 ---
 
@@ -152,5 +152,5 @@ The reliability score animates. Four pillars populate: Security, Governance, Res
 | "Can it handle custom policies, not just built-in?" | Yes. The Policy & Governance Advisor reads whatever Azure Policy is assigned — built-in, custom, or initiative. If you have custom policy definitions in a repo, we can ground it with your policy-as-code patterns. |
 | "What happens when an exemption expires?" | the Policy & Governance Advisor checks exemption status as part of every scan. Expired exemptions are flagged as workaround abuse with a recommendation to either renew with justification or remediate the underlying issue. |
 | "What about the RBAC role classification Christopher mentioned?" | Great Phase 2 candidate. The architecture supports it — add a new crew member that specializes in RBAC analysis. |
-| "How fast does it detect changes?" | Resource Graph: 5-15 seconds. Activity Log: 1-2 minutes. Advisor: ~24 hours. Our chaos demo proves the speed live. |
+| "How fast does it detect changes?" | Resource Graph: 5-15 seconds. Activity Log: 1-2 minutes. Advisor: ~24 hours. The ZeroOps live demo proves the speed live. |
 | "Is the executive score real?" | Yes — calculated from Resource Health, Service Health, security drift, tagging compliance, architecture analysis. All sourced from Azure APIs, not AI opinions. |

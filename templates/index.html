@@ -268,11 +268,11 @@
         </div>
       </div>
 
-      <!-- Tools & Guided Demo (secondary, collapsible -- chaos/scenarios/remediation/ADO/crew status live here so the queue stays the primary surface) -->
+      <!-- Tools & Guided Demo (secondary, collapsible -- ZeroOps link/scenarios/remediation/ADO/crew status live here so the queue stays the primary surface) -->
       <div class="bg-white rounded-xl border border-brand-gray-100">
         <button onclick="toggleToolsPanel()" id="tools-toggle" class="w-full flex items-center justify-between px-4 py-3 text-left" aria-expanded="false" aria-controls="tools-body">
           <h2 class="text-sm font-bold text-brand-gray-500 uppercase tracking-wider">Tools &amp; Guided Demo</h2>
-          <span class="text-xs text-brand-gray-400">Chaos demo · scenarios · remediation · compliance/ADO · crew status</span>
+          <span class="text-xs text-brand-gray-400">ZeroOps live demos · scenarios · remediation · compliance/ADO · crew status</span>
         </button>
         <div id="tools-body" class="hidden px-4 pb-4 space-y-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -291,12 +291,8 @@
               </button>
 
               <div class="bg-brand-black rounded-xl p-4 text-white">
-                <p class="text-xs text-brand-gray-300 mb-3">Create a real security problem in Azure (Live mode only) and watch {{ agents.scout.name }} detect it in seconds via the priority queue.</p>
-                <div class="flex gap-2">
-                  <button onclick="runChaos()" id="chaos-btn" class="flex-1 px-3 py-2 bg-brand-red text-white rounded-lg text-xs font-bold hover:bg-red-700">💥 Do Something Stupid</button>
-                  <button onclick="cleanupChaos()" id="cleanup-btn" class="px-3 py-2 bg-brand-gray-700 text-brand-gray-300 rounded-lg text-xs hover:bg-brand-gray-600">🧹 Clean Up</button>
-                </div>
-                <div id="chaos-status" class="text-xs text-brand-gray-400 mt-2 hidden"></div>
+                <p class="text-xs text-brand-gray-300 mb-3">Live break/fix demos (detected in seconds, triaged by the Azure SRE Agent, escalated to the squad when needed) live in ZeroOps.</p>
+                <button onclick="showView('zeroops')" class="w-full px-3 py-2 bg-brand-red text-white rounded-lg text-xs font-bold hover:bg-red-700">⚡ Open ZeroOps live demos</button>
               </div>
 
               <h3 class="text-xs font-bold text-brand-gray-500 uppercase tracking-wider pt-1">Demo Scenarios (Ops Council chat &amp; debate)</h3>
@@ -745,11 +741,14 @@
       document.getElementById('zeroops-status').innerHTML =
         pill(ov.mcp.enabled, `MCP endpoint ${ov.mcp.endpoint} ${ov.mcp.enabled ? 'enabled' : 'disabled (set MCP_API_KEY)'}`) +
         pill(ov.demo.chaos_enabled, `Chaos ${ov.demo.chaos_enabled ? 'enabled' : 'disabled'}`) +
+        pill(ov.sre_agent && ov.sre_agent.configured, `SRE Agent hand-off ${ov.sre_agent && ov.sre_agent.configured ? 'connected' : 'not set (SRE_AGENT_ENDPOINT)'}`) +
         pill(ov.ledger.count > 0, `${ov.ledger.count} escalation(s), ${usd(ov.ledger.total_estimated_usd)} total`);
     }
 
     function renderZeroOpsScenarios(ov) {
       const chaos = ov.demo.chaos_enabled;
+      const keep = {};
+      document.querySelectorAll('[id^="zeroops-result-"]').forEach(el => { keep[el.id] = el.innerHTML; });
       document.getElementById('zeroops-scenarios').innerHTML = ov.scenarios.map(s => {
         const tier = s.tier === 'sre'
           ? '<span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">🛟 SRE Agent solo</span>'
@@ -774,9 +773,10 @@
           <div class="mt-auto pt-3 flex flex-wrap gap-2">
             ${btn('bg-brand-red text-white hover:opacity-90', '💣 Inject', `zeroopsScenario('${s.id}','inject')`, canChaos)}
             ${btn('border border-brand-gray-200 hover:bg-brand-gray-50', '🧹 Clean up', `zeroopsScenario('${s.id}','cleanup')`, canChaos)}
+            ${btn('border border-amber-300 text-amber-800 hover:bg-amber-50', '⚡ Detect now', `zeroopsDetect('${s.id}', Date.now(), false)`, s.configured)}
             ${s.tier === 'squad' ? btn('bg-purple-600 text-white hover:opacity-90', '🧠 Simulate escalation', `zeroopsScenario('${s.id}','escalate')`) : ''}
           </div>
-          <div id="zeroops-result-${s.id}" class="text-xs mt-2"></div>
+          <div id="zeroops-result-${s.id}" class="text-xs mt-2">${keep['zeroops-result-' + s.id] || ''}</div>
         </div>`;
       }).join('');
     }
@@ -784,6 +784,7 @@
     async function zeroopsScenario(id, action) {
       const out = document.getElementById('zeroops-result-' + id);
       out.innerHTML = `<span class="text-brand-gray-400">${action}&hellip;</span>`;
+      const injectedAt = Date.now();
       try {
         const resp = await fetch(`/api/zeroops/scenarios/${id}/${action}`, {
           method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({debate: true}),
@@ -793,12 +794,65 @@
         if (action === 'escalate') {
           out.innerHTML = `<span class="text-purple-700">Escalated as <code>${escapeHtml(data.id)}</code>; the squad is reasoning (watch the timeline).</span>`;
         } else {
-          out.innerHTML = data.steps.map(st => `<div class="${st.status === 'ok' ? 'text-green-700' : 'text-red-600'}">${st.status === 'ok' ? '✔' : '✖'} ${escapeHtml(st.step)}${st.error ? ': ' + escapeHtml(st.error) : ''}</div>`).join('');
+          out.innerHTML = data.steps.map(st => `<div class="${st.status === 'ok' ? 'text-green-700' : 'text-red-600'}">${st.status === 'ok' ? '✔' : '✖'} ${escapeHtml(st.step)}${st.error ? ': ' + escapeHtml(st.error) : ''}</div>`).join('')
+            + `<div id="zeroops-detect-${id}" class="mt-1"></div>`;
+          if (action === 'inject' && data.status !== 'error') { zeroopsDetect(id, injectedAt, true); return; }
         }
         loadZeroOps();
       } catch (e) {
         out.innerHTML = `<span class="text-red-600">${escapeHtml(e.message)}</span>`;
       }
+    }
+
+    // Fast detection: poll the read-only probe (Resource Graph / HTTP / Key Vault) until the symptom shows,
+    // then hand off by tier. The Activity Log alert to the SRE Agent remains the ~5 min backstop.
+    const ZEROOPS_DETECT_TIMEOUT_MS = 120000;
+    async function zeroopsDetect(id, startedAt, handoff) {
+      if (!document.getElementById('zeroops-detect-' + id)) {
+        document.getElementById('zeroops-result-' + id).innerHTML = `<div id="zeroops-detect-${id}" class="mt-1"></div>`;
+      }
+      const show = html => { const n = document.getElementById('zeroops-detect-' + id); if (n) n.innerHTML = html; };
+      const secs = () => ((Date.now() - startedAt) / 1000).toFixed(1);
+      while (Date.now() - startedAt < ZEROOPS_DETECT_TIMEOUT_MS) {
+        show(`<span class="text-amber-700 animate-pulse">🔎 Scanning&hellip; ${secs()}s</span>`);
+        let p;
+        try {
+          const resp = await fetch(`/api/zeroops/scenarios/${id}/probe`);
+          p = await resp.json();
+          if (!resp.ok) throw new Error(p.error || resp.statusText);
+        } catch (e) { show(`<span class="text-red-600">✖ probe: ${escapeHtml(e.message)}</span>`); return; }
+        if (p.detected) {
+          const t = secs();
+          show(`<div class="inline-block bg-amber-100 text-amber-900 font-semibold px-2 py-1 rounded">⚡ Detected in ${t}s via ${escapeHtml(p.source)}</div>
+            <div class="text-brand-gray-700 mt-1">${escapeHtml(p.signal)}</div><div id="zeroops-handoff-${id}" class="mt-1"></div>`);
+          if (handoff) zeroopsHandoff(id, Number(t), p);
+          return;
+        }
+        if (!handoff) { show(`<span class="text-green-700">✔ Clean: ${escapeHtml(p.signal)}</span>`); return; }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      show(`<span class="text-amber-700">Not seen by the fast probe within ${ZEROOPS_DETECT_TIMEOUT_MS / 1000}s; the Activity Log alert backstop reaches the SRE Agent in ~5 min.</span>`);
+    }
+
+    async function zeroopsHandoff(id, seconds, p) {
+      const show = html => { const n = document.getElementById('zeroops-handoff-' + id); if (n) n.innerHTML = html; };
+      show('<span class="text-brand-gray-400">Handing off&hellip;</span>');
+      try {
+        const resp = await fetch(`/api/zeroops/scenarios/${id}/handoff`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({detected_in_seconds: seconds, source: p.source, signal: p.signal, debate: true}),
+        });
+        const d = await resp.json();
+        if (!resp.ok) throw new Error(d.error || resp.statusText);
+        if (d.route === 'squad') {
+          show(`<span class="text-purple-700">🧠 Escalated to the squad as <code>${escapeHtml(d.escalation_id)}</code> (watch the timeline).</span>`);
+        } else if (d.status === 'ok') {
+          show(`<span class="text-blue-700">🛟 SRE Agent thread <code>${escapeHtml(d.thread_id)}</code> opened${d.subagent ? ' for ' + escapeHtml(d.subagent) : ''}: triaging in Review mode (open it in the SRE Agent portal).</span>`);
+        } else {
+          show(`<span class="text-amber-700">🛟 SRE Agent not connected: ${escapeHtml(d.hint || '')}</span>`);
+        }
+      } catch (e) { show(`<span class="text-red-600">✖ hand-off: ${escapeHtml(e.message)}</span>`); }
+      loadZeroOps();
     }
 
     function renderZeroOpsTimeline(items) {
@@ -807,7 +861,7 @@
       el.innerHTML = items.map(e => {
         const r = e.result || {}, c = e.cost || {};
         const actions = (r.recommended_actions || []).map(a => `<li><span class="font-semibold">[${escapeHtml(a.urgency || '')}]</span> ${escapeHtml(a.description || '')}</li>`).join('');
-        const sourceIcon = e.source === 'sre-agent' ? '🛟 SRE Agent' : e.source === 'simulated' ? '🎬 Simulated' : '🔌 API';
+        const sourceIcon = e.source === 'sre-agent' ? '🛟 SRE Agent' : e.source === 'detector' ? '⚡ Fast detector' : e.source === 'simulated' ? '🎬 Simulated' : '🔌 API';
         const gate = e.status === 'proposed'
           ? `<div class="flex gap-2 mt-2">
                ${e.proposal_id ? '' : `<button onclick="zeroopsAct('${e.id}','propose')" class="text-xs px-2 py-1 rounded border border-brand-gray-200 hover:bg-brand-gray-50">Raise proposal</button>`}
@@ -1935,56 +1989,6 @@
         addMessage('assistant', ORCHESTRATOR_NAME, '⚠️ Error: ' + e.message);
       } finally {
         document.getElementById('send-btn').disabled = false;
-      }
-    }
-
-    // ─── Chaos Demo (Live only -- clearly labeled; reachable from Ops Center's Tools panel) ──
-    async function runChaos() {
-      const btn = document.getElementById('chaos-btn');
-      const status = document.getElementById('chaos-status');
-      btn.disabled = true;
-      btn.textContent = '💥 Creating problem...';
-      status.classList.remove('hidden');
-      status.textContent = '⏳ Opening SSH (port 22) to the entire internet on {prefix}-nsg-pe...';
-
-      try {
-        const resp = await fetch('/api/chaos/create', { method: 'POST' });
-        const data = await resp.json();
-        if (data.error) { status.textContent = '❌ ' + data.error; return; }
-
-        status.textContent = '✅ Bad NSG rule created. Waiting 10 seconds for Resource Graph...';
-        btn.textContent = '💥 Problem Created';
-
-        await new Promise(r => setTimeout(r, 10000));
-        status.textContent = '🔍 Scanning for security drift...';
-
-        const scanResp = await fetch('/api/scan/security');
-        const scanData = await scanResp.json();
-
-        if (scanData.count > 0) {
-          status.innerHTML = '🔴 <strong>DETECTED in ~10 seconds!</strong> Found ' + scanData.count + ' dangerous NSG rule(s). Click below to have ' + SCOUT_NAME + ' analyze it.';
-          askCouncil('URGENT: ' + SCOUT_NAME + ' detected a security drift — an NSG rule was just created that opens SSH (port 22) to the entire internet (source: *) on ' + scanData.drift_findings[0].nsgName + ' in ' + scanData.drift_findings[0].resourceGroup + '. This was detected within 10 seconds of creation. Analyze the risk and recommend immediate remediation.');
-        } else {
-          status.textContent = '⏳ Not detected yet — try scanning again in a few seconds, or refresh the Operations Center queue.';
-        }
-      } catch (e) {
-        status.textContent = '❌ Error: ' + e.message;
-      } finally {
-        btn.disabled = false;
-        btn.textContent = '💥 Do Something Stupid';
-      }
-    }
-
-    async function cleanupChaos() {
-      const status = document.getElementById('chaos-status');
-      status.classList.remove('hidden');
-      status.textContent = '🧹 Cleaning up bad NSG rule...';
-      try {
-        await fetch('/api/chaos/cleanup', { method: 'POST' });
-        status.textContent = '✅ Chaos rule removed. Environment is clean.';
-        setTimeout(() => { status.classList.add('hidden'); }, 3000);
-      } catch (e) {
-        status.textContent = '❌ ' + e.message;
       }
     }
 

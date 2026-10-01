@@ -19,8 +19,8 @@ The top nav exposes exactly two **primary** tabs:
 **Ops Council** (multi-agent chat/debate) and **Agent Squad** (what each agent does and how, from `/api/agents`) are
 still fully functional but are reached as **secondary** views via the "More"
 menu in the top nav — they never compete with the two primary views. This
-preserves every existing chat/debate/demo-scenario/remediation/chaos/ADO
-capability; none of it was removed, only re-organized so the executive/ops
+preserves every existing chat/debate/demo-scenario/remediation/ADO
+capability; none of it was removed (the old chaos button was later replaced by ZeroOps), only re-organized so the executive/ops
 surfaces aren't cluttered with agent-persona theater.
 
 ## Executive Brief
@@ -63,7 +63,7 @@ centralized fixture (`GET /api/operations/demo`, `app/operations/demo_fixture.py
 | Recent changes (24h) | `handoff.recent_changes` |
 | Deep Intelligence (findings-by-category chips) | `snapshot.summary.by_category` — clicking a chip filters the queue by that category |
 | Unified priority queue (primary content) | `GET /api/operations/queue` — priority band + factors (`rank_reason`), severity/category, title/business impact, age, owner/status, evidence count, recommended action, approval flag; filterable by status/category/severity/owner with Load-more pagination |
-| Tools & Guided Demo (secondary, collapsible) | Morning Briefing / chaos demo / demo scenarios / Compliance → ADO proposals / crew status |
+| Tools & Guided Demo (secondary, collapsible) | Morning Briefing / ZeroOps live-demo link / demo scenarios / Compliance → ADO proposals / crew status |
 
 ### Finding detail / evidence drawer
 
@@ -121,7 +121,8 @@ The intended walkthrough (Demo mode, no Azure required):
 5. **Human approval** — use the drawer's Acknowledge/Assign/Resolve controls
    (simulated in Demo mode, real via PATCH in Live mode) to close the loop.
 
-Chaos testing (💥 "Do Something Stupid"), the six pre-built Ops Council demo
+Live break/fix demos moved to **ZeroOps** (inject → ⚡ detected in seconds →
+SRE Agent or squad hand-off; see [ZEROOPS_SRE_AGENT.md](ZEROOPS_SRE_AGENT.md)). The six pre-built Ops Council demo
 scenarios, the Morning Briefing digest, Terraform/CLI remediation generation,
 and the Compliance → ADO proposal scan/approve/reject flow are all reachable
 from the Operations Center's "Tools & Guided Demo" panel and route into the
