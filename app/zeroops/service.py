@@ -40,14 +40,49 @@ def _compose_question(question: str, sre_summary: str, incident_ref: str) -> str
     return "\n".join(parts)
 
 
+_CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
+
+
+def _fallback_final(analysis: dict) -> dict:
+    """When the coordinator's synthesis fails schema validation, fall back to the most confident
+    schema-valid specialist answer (post-debate rebuttals preferred) so the SRE Agent still gets a
+    grounded conclusion. Citations are re-checked against the evidence bundle."""
+    known = {item.get("id") for item in ((analysis.get("evidence_bundle") or {}).get("items") or [])}
+    candidates = []
+    for round_rank, round_name in ((2, "rebuttals"), (1, "specialists")):
+        for outcome in (analysis.get(round_name) or {}).values():
+            if outcome and outcome.get("schema_valid") and outcome.get("result"):
+                rank = _CONFIDENCE_RANK.get(outcome["result"].get("confidence"), 0)
+                candidates.append((rank, round_rank, outcome))
+    if not candidates:
+        return {}
+    _, _, best = max(candidates, key=lambda c: (c[0], c[1]))
+    result = best["result"]
+    return {
+        "agent": best.get("agent"), "agent_key": best.get("agent_key"), "schema_valid": True,
+        "conclusion": result.get("conclusion"), "business_impact": result.get("business_impact"),
+        "confidence": result.get("confidence"), "narrative": result.get("narrative"),
+        "recommended_actions": result.get("recommended_actions") or [],
+        "valid_evidence_ids": [i for i in result.get("evidence_ids") or [] if i in known],
+        "missing_evidence": result.get("missing_evidence") or [],
+    }
+
+
 def _compact_result(analysis: dict) -> dict:
     final = analysis.get("final") or {}
+    synthesis_error = None
+    if final and final.get("schema_valid") is False:
+        synthesis_error = final.get("schema_error") or "coordinator synthesis failed schema validation"
+        fallback = _fallback_final(analysis)
+        if fallback:
+            final = {**fallback, "fallback_from": final.get("agent_key")}
     return {
         "agent": final.get("agent"), "agent_key": final.get("agent_key"),
         "schema_valid": final.get("schema_valid"), "conclusion": final.get("conclusion"),
         "business_impact": final.get("business_impact"), "confidence": final.get("confidence"),
         "narrative": final.get("narrative"), "recommended_actions": final.get("recommended_actions") or [],
         "valid_evidence_ids": final.get("valid_evidence_ids") or [], "missing_evidence": final.get("missing_evidence") or [],
+        "fallback_from": final.get("fallback_from"), "synthesis_error": synthesis_error,
         "specialists": sorted((analysis.get("specialists") or {}).keys()),
         "debate_used": bool(analysis.get("rebuttals")),
         "evaluation": analysis.get("evaluation"),
