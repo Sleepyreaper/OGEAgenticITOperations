@@ -20,7 +20,7 @@ import requests
 
 ARM = "https://management.azure.com"
 ARM_SCOPE = "https://management.azure.com/.default"
-KV_SCOPE = "https://vault.azure.net/.default"
+KV_ARM_API = "2023-07-01"
 
 # Tags the demo template applies; cleanup restores exactly these.
 BASE_TAGS = {"zeroops-demo": "true"}
@@ -346,17 +346,20 @@ def _rogue_hotfix(config: DemoConfig, inject: bool) -> list:
 
 
 def _two_am_cert(config: DemoConfig, inject: bool) -> list:
-    vault = f"https://{config.keyvault}.vault.azure.net"
+    # ARM control-plane secret ops: work even when Azure Policy disables the vault's public network access.
+    secret_url = f"{ARM}{config.rg_path()}/providers/Microsoft.KeyVault/vaults/{config.keyvault}/secrets/{CERT_SECRET_NAME}"
+    kv_params = {"api-version": KV_ARM_API}
     aa = f"{ARM}{config.rg_path()}/providers/Microsoft.Automation/automationAccounts/{config.automation}"
     aa_params = {"api-version": "2023-11-01"}
     steps = []
     if inject:
         expires = int((datetime.now(timezone.utc) + timedelta(hours=48)).timestamp())
         steps.append(_step("store TLS bundle expiring in 48h", lambda: _call(
-            "PUT", f"{vault}/secrets/{CERT_SECRET_NAME}", scope=KV_SCOPE, params={"api-version": "7.4"},
-            body={"value": "zeroops-demo-placeholder", "contentType": "application/x-pkcs12",
-                  "attributes": {"exp": expires}, "tags": {"zeroops-scenario": "2am-cert"}},
-        ).get("id", "").split("/")[-1]))
+            "PUT", secret_url, params=kv_params,
+            body={"tags": {**BASE_TAGS, "zeroops-scenario": "2am-cert"},
+                  "properties": {"value": "zeroops-demo-placeholder", "contentType": "application/x-pkcs12",
+                                 "attributes": {"enabled": True, "exp": expires}}},
+        ).get("name", CERT_SECRET_NAME)))
         location = lambda: _call("GET", aa, params=aa_params)["location"]  # noqa: E731
 
         def publish_runbook():
@@ -374,10 +377,14 @@ def _two_am_cert(config: DemoConfig, inject: bool) -> list:
             body={"properties": {"runbook": {"name": CERT_RUNBOOK_NAME}}},
         ).get("properties", {}).get("status", "queued")))
     else:
-        steps.append(_step("delete expiring TLS bundle", lambda: _call(
-            "DELETE", f"{vault}/secrets/{CERT_SECRET_NAME}", scope=KV_SCOPE, params={"api-version": "7.4"}) and "deleted"))
-        steps.append(_step("purge deleted bundle", lambda: _call(
-            "DELETE", f"{vault}/deletedsecrets/{CERT_SECRET_NAME}", scope=KV_SCOPE, params={"api-version": "7.4"}) or "purged"))
+        # ARM cannot delete secrets; cleanup "renews" the bundle (new version, expiry +1 year).
+        renewed = int((datetime.now(timezone.utc) + timedelta(days=365)).timestamp())
+        steps.append(_step("renew TLS bundle (expiry +1 year)", lambda: _call(
+            "PUT", secret_url, params=kv_params,
+            body={"tags": dict(BASE_TAGS),
+                  "properties": {"value": "zeroops-demo-placeholder", "contentType": "application/x-pkcs12",
+                                 "attributes": {"enabled": True, "exp": renewed}}},
+        ) and "renewed"))
     return steps
 
 
@@ -475,27 +482,33 @@ def _probe_rogue_hotfix(config: DemoConfig) -> dict:
 
 
 def _probe_two_am_cert(config: DemoConfig) -> dict:
-    evidence, found = [], []
+    """Detected = the TLS bundle expires within 7 days. Recent failed renewal jobs add context only
+    (job history outlives cleanup, so it can't be the trigger)."""
+    evidence, expiring = [], ""
     try:
-        secret = _call("GET", f"https://{config.keyvault}.vault.azure.net/secrets/{CERT_SECRET_NAME}",
-                       scope=KV_SCOPE, params={"api-version": "7.4"})
-        exp = (secret.get("attributes") or {}).get("exp")
+        secret = _call("GET", f"{ARM}{config.rg_path()}/providers/Microsoft.KeyVault/vaults/{config.keyvault}"
+                       f"/secrets/{CERT_SECRET_NAME}", params={"api-version": KV_ARM_API})
+        exp = ((secret.get("properties") or {}).get("attributes") or {}).get("exp")
         if exp:
             hours = (datetime.fromtimestamp(exp, timezone.utc) - datetime.now(timezone.utc)).total_seconds() / 3600
             evidence.append({"secret": CERT_SECRET_NAME, "expires_in_hours": round(hours, 1)})
             if hours <= 7 * 24:
-                found.append(f"TLS bundle expires in {hours:.0f}h")
+                expiring = f"TLS bundle {CERT_SECRET_NAME} expires in {hours:.0f}h"
     except ScenarioError as exc:
         if "-> 404" not in str(exc):
             raise
-    jobs = _call("GET", f"{ARM}{config.rg_path()}/providers/Microsoft.Automation/automationAccounts/{config.automation}/jobs",
-                 params={"api-version": "2023-11-01", "$filter": f"properties/runbook/name eq '{CERT_RUNBOOK_NAME}'"})
-    failed = [j for j in jobs.get("value", []) if (j.get("properties") or {}).get("status") == "Failed"]
-    if failed:
-        found.append(f"renewal runbook {CERT_RUNBOOK_NAME} Failed ({len(failed)} job(s))")
-        evidence.append({"runbook": CERT_RUNBOOK_NAME, "failed_jobs": len(failed)})
-    return {"detected": bool(found), "source": "Key Vault expiry + Automation job state",
-            "signal": "; ".join(found) or "no expiring bundle or failed renewal", "evidence": evidence}
+    signal = expiring or "no TLS bundle expiring within 7 days"
+    if expiring:
+        since = (datetime.now(timezone.utc) - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        jobs = _call("GET", f"{ARM}{config.rg_path()}/providers/Microsoft.Automation/automationAccounts/{config.automation}/jobs",
+                     params={"api-version": "2023-11-01",
+                             "$filter": f"properties/runbook/name eq '{CERT_RUNBOOK_NAME}' and properties/startTime ge {since}"})
+        failed = [j for j in jobs.get("value", []) if (j.get("properties") or {}).get("status") == "Failed"]
+        if failed:
+            signal += f"; renewal runbook {CERT_RUNBOOK_NAME} Failed ({len(failed)} recent job(s))"
+            evidence.append({"runbook": CERT_RUNBOOK_NAME, "recent_failed_jobs": len(failed)})
+    return {"detected": bool(expiring), "source": "Key Vault (ARM) expiry + Automation job state",
+            "signal": signal, "evidence": evidence}
 
 
 _PROBES = {

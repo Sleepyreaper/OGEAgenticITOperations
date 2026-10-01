@@ -175,11 +175,14 @@ test("rogue-hotfix cleanup reverts", CALLS[-1][2]["properties"]["allowBlobPublic
 CALLS.clear()
 out = scen_mod.run("2am-cert", "inject")
 test("2am-cert inject has 3 ok steps", out["status"] == "ok" and len(out["steps"]) == 3)
-test("2am-cert stores expiring secret", CALLS[0][0] == "PUT" and scen_mod.CERT_SECRET_NAME in CALLS[0][1] and CALLS[0][2]["attributes"]["exp"] > time.time())
+test("2am-cert stores expiring secret via ARM", CALLS[0][0] == "PUT" and CALLS[0][1].startswith(scen_mod.ARM) and "Microsoft.KeyVault/vaults/kv-demo/secrets/" + scen_mod.CERT_SECRET_NAME in CALLS[0][1]
+     and time.time() < CALLS[0][2]["properties"]["attributes"]["exp"] < time.time() + 3 * 86400)
 test("2am-cert uploads failing runbook script", any(c[3] == scen_mod.CERT_RUNBOOK_SCRIPT for c in CALLS))
 test("2am-cert starts a job", "/jobs/" in CALLS[-1][1])
+CALLS.clear()
 out = scen_mod.run("2am-cert", "cleanup")
-test("2am-cert cleanup deletes and purges", out["status"] == "ok" and len(out["steps"]) == 2)
+test("2am-cert cleanup renews the bundle via ARM (+1y)", out["status"] == "ok" and len(out["steps"]) == 1 and CALLS[-1][0] == "PUT"
+     and CALLS[-1][2]["properties"]["attributes"]["exp"] > time.time() + 300 * 86400 and CALLS[-1][2]["tags"] == scen_mod.BASE_TAGS)
 
 
 def failing_call(*a, **k):
@@ -247,15 +250,21 @@ test("bad-deploy probe treats timeout as down", p["detected"] and "Timeout" in p
 scen_mod.requests.get = real_get
 
 
+CERT_EXP = [int(time.time()) + 48 * 3600]
+
+
 def cert_call(method, url, *, scope=scen_mod.ARM_SCOPE, body=None, params=None, text=None):
     if "/secrets/" in url:
-        return {"attributes": {"exp": int(time.time()) + 48 * 3600}}
+        return {"properties": {"attributes": {"exp": CERT_EXP[0]}}}
     return {"value": [{"properties": {"status": "Failed"}}]}
 
 
 scen_mod._call = cert_call
 p = scen_mod.probe("2am-cert")
 test("2am-cert probe detects expiring bundle + failed renewal", p["detected"] and "expires in" in p["signal"] and "Failed" in p["signal"])
+CERT_EXP[0] = int(time.time()) + 365 * 86400
+p = scen_mod.probe("2am-cert")
+test("2am-cert probe clean after renewal even with old failed jobs", p["detected"] is False and "Failed" not in p["signal"])
 
 
 def cert_clean(method, url, *, scope=scen_mod.ARM_SCOPE, body=None, params=None, text=None):
