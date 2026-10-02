@@ -309,6 +309,29 @@ for bad in ({"category": "change-management"}, {"severity": "urgent"}):
         test(f"escalate rejects invalid {list(bad)[0]} synchronously", False)
     except ValueError as exc:
         test(f"escalate rejects invalid {list(bad)[0]} synchronously", "must be one of" in str(exc))
+
+RELAX_CALLS = []
+
+
+def strict_analyze(**kwargs):
+    RELAX_CALLS.append(kwargs)
+    if kwargs.get("severity") or kwargs.get("category"):
+        return {"routing": {"specialist_agents": [], "factors": {"reason": "no evidence matched the requested filters"}},
+                "final": {"agent_key": "none", "schema_valid": True, "conclusion": "No matching evidence found for this request."},
+                "usage_summary": {"total_tokens": 0, "model_calls": 0}}
+    return fake_analyze(**kwargs)
+
+
+analysis_mod.analyze_operations = strict_analyze
+relaxed = service_mod.escalate(question="Renew the TLS bundle safely", source="sre-agent", severity="high",
+                               category="certificate", wait_seconds=10)
+test("over-filtered SRE escalation relaxes filters and reaches the squad",
+     relaxed["status"] == "proposed" and relaxed["result"]["agent_key"] == "compliance_inspector")
+test("filter relaxation ladder: exact -> drop severity -> unfiltered",
+     [(c.get("severity"), c.get("category")) for c in RELAX_CALLS] == [("high", "certificate"), (None, "certificate"), (None, None)])
+test("only the first attempt forces a snapshot refresh", [c["force_refresh"] for c in RELAX_CALLS] == [True, False, False])
+test("relaxed filters are recorded on the result", len(relaxed["result"]["relaxed_filters"]) == 2)
+analysis_mod.analyze_operations = fake_analyze
 def _outcome(key, conf, ids, valid=True):
     return {"agent_key": key, "agent": key.title(), "schema_valid": valid,
             "result": {"conclusion": f"{key} says {conf}", "business_impact": "x", "confidence": conf,
