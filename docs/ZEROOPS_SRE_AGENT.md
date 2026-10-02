@@ -50,7 +50,7 @@ The app exposes a stateless **Streamable HTTP** MCP server (JSON-RPC 2.0; protoc
 
 | Tool | Writes? | Purpose |
 |---|---|---|
-| `escalate` | ledger only | Hands an incident to the squad: `question`, `sre_summary`, `incident_ref`, `severity`, `scenario_id`, `category`, `debate`, `wait_seconds` (≤55). Returns `escalation_id` and status |
+| `escalate` | ledger only | Hands an incident to the squad: `question`, `sre_summary`, `incident_ref`, `severity`, `scenario_id`, `category`, `debate`, `wait_seconds` (≤55). Returns `escalation_id` and status. `severity`/`category` are hints: if they match no evidence, the squad relaxes them (drop severity, then category) and records `result.relaxed_filters` |
 | `get_escalation` | – | Status plus result: conclusion, business impact, actions, remediation script, cost |
 | `propose_fix` | proposal | Turns a finished escalation into a human-approval proposal (an ADO work item when configured) |
 | `list_findings` | – | Priority-ordered findings from the deterministic evidence layer |

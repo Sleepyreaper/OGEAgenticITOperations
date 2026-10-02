@@ -91,17 +91,47 @@ def _compact_result(analysis: dict) -> dict:
     }
 
 
+_NO_EVIDENCE_REASON = "no evidence matched the requested filters"
+
+
+def _filter_ladder(severity, category) -> list:
+    """Callers (notably the Azure SRE Agent) often attach their own severity/category guess, which
+    can be stricter than what the snapshot holds. Try the exact filters first, then progressively
+    relax them so an escalation reaches the squad instead of dying on "no matching evidence"."""
+    ladder = [(severity, category), (None, category), (None, None)]
+    seen, out = set(), []
+    for step in ladder:
+        if step not in seen:
+            seen.add(step)
+            out.append(step)
+    return out
+
+
+def _analyze(*, question: str, scenario, severity, category, debate: bool):
+    requested = list(scenario.expected_agents) if scenario and scenario.expected_agents else None
+    analysis, relaxed = None, []
+    for index, (sev, cat) in enumerate(_filter_ladder(severity or None, category or None)):
+        analysis = analysis_service.analyze_operations(
+            question=question, subscription_ids=_subscription_ids(), severity=sev, category=cat,
+            requested_agents=requested, force_debate=debate, force_refresh=index == 0,
+        )
+        if ((analysis.get("routing") or {}).get("factors") or {}).get("reason") != _NO_EVIDENCE_REASON:
+            break
+        relaxed.append({"severity": sev, "category": cat})
+    return analysis, relaxed
+
+
 def _run(esc_id: str, *, question: str, scenario, severity, category, debate: bool) -> None:
     ledger = get_ledger()
     try:
         ledger.update(esc_id, status="analyzing")
-        analysis = analysis_service.analyze_operations(
-            question=question, subscription_ids=_subscription_ids(), severity=severity or None,
-            category=category or (scenario.category if scenario else None) or None,
-            requested_agents=list(scenario.expected_agents) if scenario and scenario.expected_agents else None,
-            force_debate=debate, force_refresh=True,
+        analysis, relaxed = _analyze(
+            question=question, scenario=scenario, severity=severity,
+            category=category or (scenario.category if scenario else None), debate=debate,
         )
         result = _compact_result(analysis)
+        if relaxed:
+            result["relaxed_filters"] = relaxed
         if scenario:
             result["remediation_script"] = scenario.to_dict()["remediation_script"]
         cost = cost_model.incident_cost(
