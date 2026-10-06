@@ -30,6 +30,8 @@ trigger:
       - requirements.txt
       - startup.sh
       - wsgi.py
+      - .squad/**
+      - tests/test_squad_roster.py
 
 pr:
   branches:
@@ -38,6 +40,8 @@ pr:
   paths:
     include:
       - app/**
+      - .squad/**
+      - tests/test_squad_roster.py
 
 # ─── Variables ──────────────────────────────────────────────
 variables:
@@ -89,6 +93,10 @@ stages:
           - script: |
               python tests/test_ado_integration.py
             displayName: 'Run ADO integration tests'
+
+          - script: |
+              python tests/test_squad_roster.py
+            displayName: 'Validate Build Squad roster and routing'
 
           # Package for deployment — exclude dev/docs/infra files
           - script: |

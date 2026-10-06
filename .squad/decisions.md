@@ -32,6 +32,9 @@ Display names describe the job (Operations Coordinator, Cost & Capacity Analyst,
 ### D10 — ZeroOps: Azure SRE Agent is tier 1, the squad is tier 2 (Lead)
 The Azure SRE Agent triages and fixes runbook-shaped incidents; it escalates ambiguous, cross-domain or business-impacting ones over MCP (`/mcp`, connector `ogeops`, API-key auth, 503 when unset). The squad never changes Azure: it returns analysis, a script and a proposal that a human approves. The escalation ledger (SQLite) is the source of truth because ADO proposals are per-worker in memory. Cost = SRE AAU estimate (published token profiles × `SRE_AGENT_AAU_PRICE_USD`) + measured Foundry tokens. Demo chaos only runs when `ZEROOPS_CHAOS_ENABLED=true` against `ZEROOPS_DEMO_*` resources. `tests/test_zeroops.py` keeps `sre-agent/` in sync with the MCP tool list.
 
+### D11 — Repo-local production specialists and independent model review (Lead)
+OGE's Build Squad includes dedicated owners for ZeroOps/SRE automation, security/identity, durable state/workflow, platform release/IaC and operations UX. These roles load only in this repository and do not expand the user's general business squad. The coordinator selects models per task; implementation and evaluation/review use different model families when available. Same-family exceptions are recorded and require deterministic validation before acceptance.
+
 ## Governance
 
 - All meaningful changes require team consensus
