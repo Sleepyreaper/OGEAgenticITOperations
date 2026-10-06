@@ -80,6 +80,9 @@ for key, name in EXPECTED_NEW_AGENTS.items():
 
 print("\n🧪 Test 3: independent evaluation policy is wired")
 tester = (SQUAD_ROOT / "agents" / "tester" / "charter.md").read_text()
+coordinator = (
+    REPO_ROOT / ".github" / "agents" / "squad.agent.md"
+).read_text()
 test(
     "Tester owns adversarial evaluation",
     "Agent Evaluation & Adversarial QA Engineer" in tester,
@@ -96,6 +99,11 @@ test(
     "repo-local loading boundary is documented",
     "loads it only when started from OGEAgenticITOperations"
     in (SQUAD_ROOT / "team.md").read_text(),
+)
+test(
+    "coordinator advertises the active roster",
+    "specialists=13 taskTypes=11 hints=11" in coordinator
+    and "_None — this squad has not been cast yet._" not in coordinator,
 )
 
 print(f"\n{'✅' if FAIL == 0 else '❌'} {PASS} passed, {FAIL} failed")
