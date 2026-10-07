@@ -10,6 +10,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -581,6 +582,226 @@ test("demo infra outputs every ZEROOPS_DEMO_* setting",
      all(f"ZEROOPS_DEMO_{k}" in demo_bicep for k in ("RESOURCE_GROUP", "NSG", "WEBAPP", "PLAN", "STORAGE", "KEYVAULT", "AUTOMATION")))
 connector = (SRE_DIR / "connectors" / "ogeops-mcp.json").read_text()
 test("connector example holds no real key", "@@MCP_API_KEY@@" in connector)
+
+
+print("\n\u2500\u2500 Activity proof: reported vs observed vs simulated, approval is not execution \u2500\u2500")
+try:
+    from app.activity.store import get_activity_store
+except ModuleNotFoundError:
+    get_activity_store = None
+
+
+class _InlineThread:
+    def __init__(self, target=None, kwargs=None, **_ignored):
+        self._target = target
+        self._kwargs = kwargs or {}
+
+    def start(self):
+        if self._target:
+            self._target(**self._kwargs)
+
+    def join(self, timeout=None):
+        return None
+
+
+def _activity_for(record):
+    if not get_activity_store or not record or not record.get("investigation_id"):
+        return None
+    return get_activity_store().get_public_investigation(record["investigation_id"])
+
+
+def _provenances(detail):
+    return {event.get("provenance") for event in (detail or {}).get("events") or []}
+
+
+def _kinds(detail):
+    return {event.get("kind") for event in (detail or {}).get("events") or []}
+
+
+sre_doc = (REPO_ROOT / "docs" / "ZEROOPS_SRE_AGENT.md").read_text()
+test("SRE doc does not claim every escalation is Foundry traffic", "every escalation is real Foundry" not in sre_doc)
+test("SRE doc does not say a human approval executes the change", "only then does anything change" not in sre_doc)
+test("SRE doc does not name an unobserved oge_ops_escalation agent", "oge_ops_escalation" not in sre_doc)
+test("SRE doc does not say SRE Agent verified", "SRE Agent verified" not in sre_doc)
+
+with patch.object(service_mod.threading, "Thread", _InlineThread):
+    mcp_record = service_mod.escalate(
+        question="MCP reported a cert incident", source="sre-agent",
+        incident_ref="https://portal.example/incident/1", sre_summary="Bearer eyJhbGciOi reported triage",
+        wait_seconds=0,
+    )
+test("MCP escalate adds investigation_id", bool(mcp_record.get("investigation_id")))
+mcp_detail = _activity_for(mcp_record)
+test("MCP investigation origin is mcp", bool(mcp_detail) and mcp_detail["investigation"]["origin"] == "mcp")
+test("MCP summary is reported, not observed SRE work", "reported" in _provenances(mcp_detail) and "verified" not in _provenances(mcp_detail))
+test("MCP public activity does not echo the incident URL or bearer token", "portal.example" not in _json.dumps(mcp_detail) and "eyJhbGciOi" not in _json.dumps(mcp_detail))
+test("MCP escalate does not imply an SRE thread", "sre_thread_result" not in _kinds(mcp_detail))
+
+with patch.object(service_mod.threading, "Thread", _InlineThread):
+    detector_record = service_mod.escalate(
+        question="detector saw storage TLS", source="detector", scenario_id="2am-cert", wait_seconds=0,
+    )
+detector_detail = _activity_for(detector_record)
+test("detector handoff origin is detector", bool(detector_detail) and detector_detail["investigation"]["origin"] == "detector")
+test("detector handoff does not acquire an SRE step", bool(detector_detail) and "sre_thread_result" not in _kinds(detector_detail) and detector_detail["investigation"]["origin"] != "sre_handoff")
+
+with patch.object(service_mod.threading, "Thread", _InlineThread):
+    simulated = service_mod.escalate(
+        question="simulated only", source="simulated", scenario_id="rogue-hotfix", wait_seconds=0,
+    )
+simulated_detail = _activity_for(simulated)
+test("simulated origin is simulated", bool(simulated_detail) and simulated_detail["investigation"]["origin"] == "simulated")
+test("simulated escalation is not incurred SRE activity", "executed" not in _provenances(simulated_detail) and "verified" not in _provenances(simulated_detail))
+sim_blob = _json.dumps(simulated_detail)
+test("simulated cost is not labeled as incurred SRE AAU", "incurred" not in sim_blob.lower() or "hypothetical" in sim_blob.lower())
+
+os.environ["SRE_AGENT_ENDPOINT"] = "https://agent.example/"
+sre_mod._token = lambda: "tok"
+sre_mod.requests.post = fake_post
+thread_resp = client.post("/api/zeroops/scenarios/open-door/handoff", json={"signal": "port 22", "source": "browser"})
+thread_body = thread_resp.get_json()
+test("SRE thread response remains the request result", thread_resp.status_code == 200 and thread_body.get("thread_id") == "thread-123")
+thread_inv = thread_body.get("investigation_id")
+thread_detail = get_activity_store().get_public_investigation(thread_inv) if get_activity_store and thread_inv else None
+test("SRE thread creation records an investigation", thread_detail is not None)
+test("SRE thread origin is sre_handoff", bool(thread_detail) and thread_detail["investigation"]["origin"] == "sre_handoff")
+test("SRE thread event is only the request result", "sre_thread_result" in _kinds(thread_detail))
+test("SRE thread provenance is reported or observed, never verified", _provenances(thread_detail) <= {"reported", "observed", "configured"} and "verified" not in _provenances(thread_detail))
+test("created thread is not a verified repair", bool(thread_detail) and "verified" not in _json.dumps(thread_detail) and thread_detail["investigation"]["phase"] != "verified")
+test("public SRE proof does not echo the agent endpoint", bool(thread_detail) and "agent.example" not in _json.dumps(thread_detail))
+
+ledger_row = get_ledger().create(source="api", question="invalid synthesis", investigation_id=None)
+ledger_row = get_ledger().update(ledger_row["id"], status="proposed", result={
+    "schema_valid": False, "schema_error": "coordinator synthesis failed",
+    "conclusion": "should not be trusted",
+})
+promoted = service_mod._compact_result({
+    "final": {"schema_valid": False, "schema_error": "bad", "agent_key": "orchestrator"},
+    "specialists": {"scout": {
+        "schema_valid": True, "agent": "Scout", "agent_key": "scout",
+        "result": {"conclusion": "specialist guess", "confidence": "high", "evidence_ids": ["f-1"], "business_impact": "x", "narrative": "n", "recommended_actions": [], "missing_evidence": []},
+    }},
+    "evidence_bundle": {"items": [{"id": "f-1"}]},
+})
+test("invalid synthesis is not promoted to a successful coordinator answer", promoted.get("schema_valid") is not True)
+try:
+    service_mod.propose_fix(ledger_row["id"])
+    test("propose_fix is refused for an invalid result", False)
+except ValueError:
+    test("propose_fix is refused for an invalid result", True)
+
+approved = get_ledger().create(source="api", question="approve me")
+approved = get_ledger().update(approved["id"], status="proposed", result={"schema_valid": True, "conclusion": "review"})
+decision = service_mod.decide(approved["id"], decision="approve", by="alice")
+test("approve still records ledger status approved", decision["escalation"]["status"] == "approved")
+approve_detail = _activity_for(decision["escalation"])
+test("approve records activity without becoming executed", bool(approve_detail) and approve_detail["investigation"]["phase"] == "approved")
+test("approve provenance is approved, not executed or verified", "executed" not in _provenances(approve_detail) and "verified" not in _provenances(approve_detail))
+closed = service_mod.decide(approved["id"], decision="resolve", by="alice")
+test("legacy resolve remains a ledger status", closed["escalation"]["status"] == "resolved")
+closed_detail = _activity_for(closed["escalation"])
+test("resolve maps to closed_unverified in activity", bool(closed_detail) and closed_detail["investigation"]["phase"] == "closed_unverified")
+test("closure is not verified", bool(closed_detail) and closed_detail["investigation"]["phase"] != "verified" and "verified" not in _provenances(closed_detail))
+
+print("\n\u2500\u2500 Activity write retries \u2500\u2500")
+if get_activity_store:
+    activity_store = get_activity_store()
+    original_append_event = activity_store.append_event
+
+    class FakeProposal:
+        def __init__(self, proposal_id: str, status: str = "pending"):
+            self.id = proposal_id
+            self.status = status
+
+        def to_dict(self):
+            return {"id": self.id, "status": self.status, "title": "fake proposal"}
+
+    fake_proposal = FakeProposal("pr-retry-1")
+    proposal_calls = []
+
+    def fake_create_proposal(**kwargs):
+        proposal_calls.append(kwargs)
+        return fake_proposal
+
+    def fake_get_proposal(proposal_id):
+        return fake_proposal if proposal_id == fake_proposal.id else None
+
+    def fail_once_on(kind_name):
+        state = {"failed": False}
+
+        def wrapper(*args, **kwargs):
+            if not state["failed"] and kwargs.get("kind") == kind_name:
+                state["failed"] = True
+                raise RuntimeError("simulated activity write failure")
+            return original_append_event(*args, **kwargs)
+
+        return wrapper
+
+    proposal_row = get_ledger().get(rec["id"])
+    with patch.object(service_mod.ado_integration, "create_proposal", side_effect=fake_create_proposal), \
+            patch.object(service_mod.ado_integration, "get_proposal", side_effect=fake_get_proposal), \
+            patch.object(activity_store, "append_event", new=fail_once_on("proposal_created")):
+        try:
+            service_mod.propose_fix(proposal_row["id"])
+            test("proposal write failure surfaces explicitly", False)
+        except RuntimeError as exc:
+            test("proposal write failure surfaces explicitly", "simulated activity write failure" in str(exc))
+        try:
+            retry_proposal = service_mod.propose_fix(proposal_row["id"])
+        except Exception as exc:  # noqa: BLE001 -- retry must succeed; any exception is a regression signal
+            test("proposal retry repairs exactly one missing proposal_created event", False)
+            test("proposal retry does not create a duplicate external proposal", False)
+            test("proposal retry succeeds after activity-write failure", False)
+        else:
+            retry_proposal_detail = _activity_for(retry_proposal["escalation"])
+            proposal_events = [event for event in (retry_proposal_detail or {}).get("events") or [] if event.get("kind") == "proposal_created"]
+            test("proposal retry repairs exactly one missing proposal_created event", len(proposal_events) == 1)
+            test("proposal retry does not create a duplicate external proposal", len(proposal_calls) == 1)
+
+    def exercise_decision_retry(decision, expected_status):
+        decision_row = get_ledger().create(source="api", question=f"{decision} retry")
+        decision_row = get_ledger().update(
+            decision_row["id"], status="proposed", proposal_id=fake_proposal.id,
+            result={"schema_valid": True, "conclusion": "review"},
+        )
+        handler_name = f"{decision}_proposal"
+        handler = lambda proposal_id, **kwargs: {"id": proposal_id, "status": expected_status, **kwargs}
+        with patch.object(service_mod.ado_integration, "get_proposal", side_effect=fake_get_proposal), \
+                patch.object(service_mod.ado_integration, handler_name, side_effect=handler), \
+                patch.object(activity_store, "append_event", new=fail_once_on("decision_recorded")):
+            try:
+                service_mod.decide(decision_row["id"], decision=decision, by="alice")
+                test(f"{decision} write failure surfaces explicitly", False)
+            except RuntimeError as exc:
+                test(f"{decision} write failure surfaces explicitly", "simulated activity write failure" in str(exc))
+            try:
+                retry_decision = service_mod.decide(decision_row["id"], decision=decision, by="alice")
+            except Exception as exc:  # noqa: BLE001 -- retry must succeed; any exception is a regression signal
+                test(f"{decision} retry repairs exactly one missing decision_recorded event", False)
+                test(f"{decision} retry does not duplicate the decision audit entry", False)
+                test(f"{decision} retry preserves final ledger status", False)
+                test(f"{decision} retry succeeds after activity-write failure ({type(exc).__name__})", False)
+                return
+        retry_detail = _activity_for(retry_decision["escalation"])
+        decision_events = [event for event in (retry_detail or {}).get("events") or [] if event.get("kind") == "decision_recorded"]
+        test(f"{decision} retry repairs exactly one missing decision_recorded event", len(decision_events) == 1)
+        test(f"{decision} retry does not duplicate the decision audit entry", len((retry_decision["escalation"].get("result") or {}).get("decisions") or []) == 1)
+        test(f"{decision} retry preserves final ledger status", retry_decision["escalation"]["status"] == expected_status)
+
+    exercise_decision_retry("approve", "approved")
+    exercise_decision_retry("reject", "rejected")
+else:
+    test("proposal write failure surfaces explicitly", False)
+    test("proposal retry repairs exactly one missing proposal_created event", False)
+    test("proposal retry does not create a duplicate external proposal", False)
+    test("approve write failure surfaces explicitly", False)
+    test("approve retry repairs exactly one missing decision_recorded event", False)
+    test("approve retry does not duplicate the decision audit entry", False)
+    test("approve retry preserves final ledger status", False)
+    test("reject write failure surfaces explicitly", False)
+    test("reject retry repairs exactly one missing decision_recorded event", False)
+    test("reject retry does not duplicate the decision audit entry", False)
+    test("reject retry preserves final ledger status", False)
 
 _cleanup_db()
 print(f"\n{'=' * 50}\n  Results: {PASS} passed, {FAIL} failed\n{'=' * 50}")

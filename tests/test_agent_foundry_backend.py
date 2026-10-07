@@ -322,6 +322,96 @@ with patch.dict(os.environ, {"ANALYSIS_MAX_PARALLEL_SPECIALISTS": "1"}):
 test("ANALYSIS_MAX_PARALLEL_SPECIALISTS=1 runs sequentially", active["max"] == 1)
 
 
+def _receipts(completion):
+    return getattr(completion, "tool_receipts", None)
+
+
+def _assert_receipt(label, receipt):
+    test(f"{label} has agent/round/tool/status/duration/count", isinstance(receipt, dict) and {
+        "agent_key", "round", "tool_name", "status", "duration_ms", "result_count",
+    } <= set(receipt))
+    blob = json.dumps(receipt)
+    test(f"{label} has no arguments, scope, or output", "arguments" not in receipt and "subscription_ids" not in blob and "output" not in receipt)
+
+
+print("\n\U0001f9ea Test 12: Foundry proof fields and tool receipts")
+project = FakeProject([response("r0", [], text='{"conclusion":"none"}', status="completed")])
+zero = make_backend(project).complete(make_agent_config(), [{"role": "user", "content": "quiet"}], tool_context=SCOPE)
+test("zero-tool completion identifies foundry_agent_service", getattr(zero, "backend_name", None) == "foundry_agent_service")
+test("zero-tool completion has empty tool receipts", _receipts(zero) == [])
+test("zero-tool completion records provider response ids", isinstance(getattr(zero, "provider_response_ids", None), (list, tuple)))
+test("zero-tool limit is not recorded as a tool call", getattr(zero, "tool_round_limited", False) is False)
+
+project = FakeProject([
+    response("r1", [fn_call("get_capacity_watch", {"subscription_ids": ["evil"]})]),
+    response("r2", [], text='{"conclusion":"done"}'),
+])
+with patch.object(tools_mod, "execute_tool", return_value=tools_mod.ToolResult(
+    tool_name="get_capacity_watch", status="ok", data={"rows": [1]}, result_count=1, duration_ms=4,
+)):
+    ok = make_backend(project).complete(make_agent_config(), [{"role": "user", "content": "why?"}], tool_context=SCOPE)
+ok_receipts = _receipts(ok)
+test("successful tool records one receipt", isinstance(ok_receipts, list) and len(ok_receipts) == 1)
+if isinstance(ok_receipts, list) and ok_receipts:
+    _assert_receipt("successful tool", ok_receipts[0])
+    test("successful tool names the registry tool", ok_receipts[0].get("tool_name") == "get_capacity_watch")
+    test("successful tool status is ok", ok_receipts[0].get("status") == "ok")
+
+project = FakeProject([
+    response("r1", [fn_call("get_capacity_watch", {})]),
+    response("r2", [], text="{}"),
+])
+with patch.object(tools_mod, "execute_tool", return_value=tools_mod.ToolResult(
+    tool_name="get_capacity_watch", status="error", data={"error": "boom"}, result_count=0, duration_ms=2,
+)):
+    failed = make_backend(project).complete(make_agent_config(), [{"role": "user", "content": "x"}], tool_context=SCOPE)
+failed_receipts = _receipts(failed)
+test("tool failure still records a receipt", isinstance(failed_receipts, list) and len(failed_receipts) == 1 and failed_receipts[0].get("status") == "error")
+if isinstance(failed_receipts, list) and failed_receipts:
+    test("tool failure receipt does not include the error body", "boom" not in json.dumps(failed_receipts[0]))
+
+project = FakeProject([response("rN", [fn_call("get_capacity_watch", {})])])
+with patch.object(tools_mod, "execute_tool", return_value=tools_mod.ToolResult(
+    tool_name="get_capacity_watch", status="ok", data={}, result_count=0, duration_ms=1,
+)):
+    limited = make_backend(project, max_tool_rounds=1).complete(
+        make_agent_config(), [{"role": "user", "content": "loop"}], tool_context=SCOPE,
+    )
+limited_receipts = _receipts(limited) or []
+test("round limit is separate from executed receipts", getattr(limited, "tool_round_limited", None) is True or getattr(limited, "finish_reason", None) == "tool_round_limit")
+test("unexecuted round-limit call is not a tool receipt", isinstance(_receipts(limited), list) and len(limited_receipts) == 1)
+test("round-limit receipt is the executed call only", not any(item.get("status") == "tool_round_limit" for item in limited_receipts if isinstance(item, dict)))
+
+
+print("\n🧪 Test 13: oversized Foundry tool output is truncated in both the receipt and the payload")
+project = FakeProject([
+    response("r1", [fn_call("get_capacity_watch", {"subscription_ids": ["evil-sub"]})]),
+    response("r2", [], text='{"conclusion":"done"}', input_tokens=70, output_tokens=15),
+])
+big_tool_result = tools_mod.ToolResult(
+    tool_name="get_capacity_watch",
+    status="ok",
+    data={"rows": [{"value": "x" * 4000}]},
+    result_count=1,
+    duration_ms=9,
+)
+with patch.object(tools_mod, "execute_tool", return_value=big_tool_result):
+    truncated = make_backend(project, max_tool_output_chars=120).complete(
+        make_agent_config(), [{"role": "user", "content": "overflow"}], tool_context=SCOPE,
+    )
+truncated_receipts = _receipts(truncated) or []
+test("oversized tool output still records one receipt", len(truncated_receipts) == 1)
+if truncated_receipts:
+    test("oversized tool output receipt is marked truncated", truncated_receipts[0].get("status") == "truncated")
+    payload = json.loads(project.responses.calls[1]["input"][0]["output"])
+    test("oversized tool output is sent back as a truncated payload", payload["status"] == "truncated" and payload["tool_name"] == "get_capacity_watch")
+    test("truncated payload carries the partial output marker", "partial" in payload and payload["partial"])
+else:
+    test("oversized tool output receipt is marked truncated", False)
+    test("oversized tool output is sent back as a truncated payload", False)
+    test("truncated payload carries the partial output marker", False)
+
+
 # ─── Summary ────────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
 print(f"  Results: {PASS} passed, {FAIL} failed")

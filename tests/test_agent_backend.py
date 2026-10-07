@@ -8,6 +8,7 @@ is monkeypatched with a fake client (same pattern as tests/test_runner.py).
 
 Run: python3 tests/test_agent_backend.py
 """
+import json
 import os
 import sys
 from pathlib import Path
@@ -205,6 +206,33 @@ try:
     test("an unrecognized backend name raises ValueError", False)
 except ValueError:
     test("an unrecognized backend name raises ValueError", True)
+
+
+print("\n\U0001f9ea Test 6: BackendCompletion stays backward compatible and carries proof fields")
+try:
+    legacy = backend_mod.BackendCompletion(
+        agent="a", role="r", model="m", raw_text="{}", structured_output_used=False, usage={"prompt_tokens": 1},
+    )
+    test("legacy BackendCompletion construction still works", legacy.raw_text == "{}" and legacy.usage["prompt_tokens"] == 1)
+except TypeError as exc:
+    legacy = None
+    test(f"legacy BackendCompletion construction still works ({exc})", False)
+test(
+    "new proof fields are optional defaults, not required arguments",
+    legacy is not None and hasattr(legacy, "backend_name") and hasattr(legacy, "provider_response_ids") and hasattr(legacy, "tool_receipts"),
+)
+test(
+    "direct completion identifies direct_azure_openai and has no tool receipts",
+    getattr(completion, "backend_name", None) == "direct_azure_openai" and getattr(completion, "tool_receipts", None) in ([], ()),
+)
+test(
+    "direct completion does not invent provider response ids",
+    getattr(completion, "provider_response_ids", None) in (None, [], ()),
+)
+test(
+    "direct proof fields do not include raw arguments or scope",
+    "subscription_ids" not in json.dumps(getattr(completion, "tool_receipts", []) or []),
+)
 
 
 # ─── Summary ────────────────────────────────────────────────────────────

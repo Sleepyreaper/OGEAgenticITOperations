@@ -13,6 +13,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -129,10 +130,11 @@ print("\n\U0001f9ea Test 1: GET /api/operations/analyze -- happy path")
 resp = client.get("/api/operations/analyze?question=what+is+happening")
 test("200 OK", resp.status_code == 200)
 data = resp.get_json()
-test("response has routing/evidence_bundle/final/evaluation/model_metadata", {"routing", "evidence_bundle", "final", "evaluation", "model_metadata"}.issubset(data.keys()))
-test("final is grounded and schema_valid", data["final"]["schema_valid"] is True)
-test("final cites a real finding id", data["final"]["evidence_ids"] == [FINDING_A.id])
-test("model_metadata reports the direct backend", "backend" in data["model_metadata"])
+test("response has routing/evidence_bundle/final/evaluation/model_metadata", isinstance(data, dict) and {"routing", "evidence_bundle", "final", "evaluation", "model_metadata"}.issubset(data))
+final = data.get("final") if isinstance(data, dict) else None
+test("final is grounded and schema_valid", isinstance(final, dict) and final.get("schema_valid") is True)
+test("final cites a real finding id", isinstance(final, dict) and final.get("evidence_ids") == [FINDING_A.id])
+test("model_metadata reports the direct backend", isinstance(data, dict) and "backend" in (data.get("model_metadata") or {}))
 
 
 print("\n\U0001f9ea Test 2: POST /api/operations/analyze -- missing question -> 400")
@@ -208,6 +210,30 @@ test("/api/health now also reports agent_definition_version/backend/evaluation",
 
 resp = client.get("/api/demos")
 test("/api/demos still returns 200", resp.status_code == 200)
+
+
+print("\n\U0001f9ea Test 11: analyze/briefing gain activity ids and do not return unrecorded proof")
+resp = client.get("/api/operations/analyze?question=what+is+happening")
+data = resp.get_json()
+activity = data.get("activity") if isinstance(data, dict) else None
+test("analyze stays 200 with the prior shape", resp.status_code == 200 and {"routing", "final", "evaluation", "usage_summary"} <= set(data))
+test("analyze activity has investigation_id and run_id", isinstance(activity, dict) and bool(activity.get("investigation_id")) and bool(activity.get("run_id")))
+brief = client.get("/api/operations/briefing").get_json()
+test("briefing activity has investigation_id and run_id", isinstance(brief.get("activity"), dict) and bool(brief["activity"].get("investigation_id")) and bool(brief["activity"].get("run_id")))
+
+
+def _store_down():
+    raise RuntimeError("activity db down: SECRETPATH")
+
+
+with patch("app.activity.store.get_activity_store", _store_down):
+    failed = client.get("/api/operations/analyze?question=record+or+fail")
+failed_body = failed.get_json(silent=True) or {}
+unrecorded = failed.status_code == 200 and not (
+    isinstance(failed_body.get("activity"), dict) and failed_body["activity"].get("investigation_id")
+)
+test("analyze does not return success-shaped unrecorded proof", not unrecorded)
+test("recording failure does not echo the store exception", "SECRETPATH" not in failed.get_data(as_text=True))
 
 
 _cleanup_db()

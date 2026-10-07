@@ -3,8 +3,8 @@
 Foundry Agent Service integration is a second implementation of this
 same protocol, not a rewrite of the orchestration logic above it.
 
-``DirectAzureOpenAIBackend`` is what this app actually runs today: it
-calls Azure OpenAI's chat.completions API directly (the same
+``DirectAzureOpenAIBackend`` is the operator-selected direct alternative:
+it calls Azure OpenAI's chat.completions API directly (the same
 ``AzureOpenAI`` client construction as app/agents/runner.py::call_agent,
 reused here -- see the import below), attempting structured output
 (``response_format={"type": "json_schema", ...}``) when the agent's
@@ -24,7 +24,7 @@ import json
 import os
 import re
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Protocol
 
 import openai
@@ -56,6 +56,10 @@ class BackendCompletion:
     structured_output_used: bool
     usage: dict
     finish_reason: Optional[str] = None
+    backend_name: str = ""
+    provider_response_ids: list = field(default_factory=list)
+    tool_receipts: list = field(default_factory=list)
+    round_limit_reached: bool = False
 
 
 class ModelBackend(Protocol):
@@ -72,8 +76,8 @@ class ModelBackend(Protocol):
 
 
 class DirectAzureOpenAIBackend:
-    """Calls Azure OpenAI directly -- the only backend this app actually
-    runs today."""
+    """Calls Azure OpenAI directly when the operator selects the direct
+    backend."""
 
     name = "direct_azure_openai"
 
@@ -129,6 +133,7 @@ class DirectAzureOpenAIBackend:
                 "total_tokens": total_tokens, "estimated_cost_usd": cost_usd,
             },
             finish_reason=finish_reason,
+            backend_name=self.name,
         )
 
     @staticmethod
@@ -402,11 +407,19 @@ class FoundryAgentServiceBackend:
         previous_id = None
         rounds = 0
         finish_reason = None
+        actual_model = model
+        provider_response_ids = []
+        tool_receipts = []
+        round_limit_reached = False
         while True:
             kwargs = dict(base_kwargs, input=request_input)
             if previous_id:
                 kwargs["previous_response_id"] = previous_id
             response = self._call(client, agent_config, model, kwargs)
+            response_id = getattr(response, "id", None)
+            if response_id:
+                provider_response_ids.append(str(response_id))
+            actual_model = getattr(response, "model", None) or actual_model
             usage = getattr(response, "usage", None)
             prompt_tokens += int(getattr(usage, "input_tokens", 0) or 0)
             completion_tokens += int(getattr(usage, "output_tokens", 0) or 0)
@@ -416,19 +429,27 @@ class FoundryAgentServiceBackend:
                 break
             if rounds >= self.config.max_tool_rounds:
                 finish_reason = "tool_round_limit"
+                round_limit_reached = True
                 break
             rounds += 1
             tool_calls += len(calls)
-            request_input = [self._run_tool(call, tool_context) for call in calls]
+            request_input = []
+            for call in calls:
+                tool_output, receipt = self._run_tool(
+                    call, tool_context, agent_key=agent_config.key, round_number=rounds,
+                )
+                request_input.append(tool_output)
+                if receipt is not None:
+                    tool_receipts.append(receipt)
             previous_id = response.id
 
         cost_usd = estimate_cost_usd(agent_config, prompt_tokens, completion_tokens)
         telemetry.record_usage(
-            agent_key=agent_config.key, model=model,
+            agent_key=agent_config.key, model=actual_model,
             prompt_tokens=prompt_tokens, completion_tokens=completion_tokens, cost_usd=cost_usd,
         )
         return BackendCompletion(
-            agent=agent_config.name, role=agent_config.role, model=model,
+            agent=agent_config.name, role=agent_config.role, model=actual_model,
             raw_text=getattr(response, "output_text", "") or "",
             structured_output_used=structured,
             usage={
@@ -437,11 +458,23 @@ class FoundryAgentServiceBackend:
                 "tool_calls": tool_calls, "tool_rounds": rounds, "foundry_agent": agent_name,
             },
             finish_reason=finish_reason,
+            backend_name=self.name,
+            provider_response_ids=provider_response_ids,
+            tool_receipts=tool_receipts,
+            round_limit_reached=round_limit_reached,
         )
 
-    def _run_tool(self, call, tool_context: Optional[ToolContext]) -> dict:
+    def _run_tool(
+        self,
+        call,
+        tool_context: Optional[ToolContext],
+        *,
+        agent_key: str,
+        round_number: int,
+    ) -> tuple:
         from app.agents import tools as tools_module
 
+        receipt = None
         if tool_context is None or not tool_context.subscription_ids:
             payload = {"status": "error", "error": "tool calls are unavailable: no server-bound subscription scope"}
         else:
@@ -459,13 +492,23 @@ class FoundryAgentServiceBackend:
                     call.name, arguments, caller_roles=set(tool_context.caller_roles), config=tool_context.config,
                 )
                 payload = result.to_dict()
+                receipt = {
+                    "agent_key": agent_key,
+                    "round": round_number,
+                    "tool_name": call.name,
+                    "status": result.status,
+                    "duration_ms": round(float(result.duration_ms or 0.0), 3),
+                    "result_count": int(result.result_count or 0),
+                }
         output = json.dumps(payload, default=str)
         if len(output) > self.config.max_tool_output_chars:
+            if receipt is not None:
+                receipt["status"] = "truncated"
             output = json.dumps({
                 "status": "truncated", "tool_name": call.name,
                 "partial": output[: self.config.max_tool_output_chars],
             })
-        return {"type": "function_call_output", "call_id": call.call_id, "output": output}
+        return {"type": "function_call_output", "call_id": call.call_id, "output": output}, receipt
 
     @staticmethod
     def _call(client, agent_config: AgentConfig, model: str, kwargs: dict):

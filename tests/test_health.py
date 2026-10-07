@@ -86,6 +86,23 @@ test(
 )
 
 
+print("\n\U0001f9ea Test 2: PUBLIC_DEMO_MODE does not leak secrets and defaults off")
+os.environ.pop("PUBLIC_DEMO_MODE", None)
+open_resp = client.post("/api/ask", json={})
+test("trusted mode does not 403 a live route", open_resp.status_code != 403)
+os.environ["PUBLIC_DEMO_MODE"] = "true"
+try:
+    health_resp = client.get("/api/health")
+    health_text = health_resp.get_data(as_text=True)
+    test("public mode still serves health", health_resp.status_code == 200)
+    test("public health has no connection string", "InstrumentationKey=" not in health_text and "APPLICATIONINSIGHTS_CONNECTION_STRING" not in health_text)
+    test("public health has no subscription id", "sub-ui" not in health_text and os.environ.get("AZURE_SUBSCRIPTION_ID", "missing-sub") not in health_text)
+    denied = client.get("/api/subscriptions")
+    test("public mode 403s raw subscription API", denied.status_code == 403 and denied.is_json)
+finally:
+    os.environ.pop("PUBLIC_DEMO_MODE", None)
+
+
 # ─── Summary ────────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
 print(f"  Results: {PASS} passed, {FAIL} failed")

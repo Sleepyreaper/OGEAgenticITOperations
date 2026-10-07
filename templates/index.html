@@ -94,7 +94,7 @@
         <!-- Demo/Live toggle -->
         <div class="flex items-center bg-brand-gray-800 rounded-lg p-0.5">
           <button onclick="setMode('demo')" id="mode-demo" class="mode-btn px-3 py-1 rounded-md text-xs font-medium bg-brand-gray-600 text-white">Demo Data</button>
-          <button onclick="setMode('live')" id="mode-live" class="mode-btn px-3 py-1 rounded-md text-xs font-medium text-brand-gray-400 hover:text-white">Live Azure</button>
+          <button onclick="setMode('live')" id="mode-live" data-live-control class="mode-btn px-3 py-1 rounded-md text-xs font-medium text-brand-gray-400 hover:text-white">Live Azure</button>
         </div>
         <!-- Subscription scope selector (visible in Live mode) -->
         <div id="sub-selector" class="hidden flex items-center gap-2">
@@ -113,15 +113,18 @@
           <span id="sub-count-badge" class="text-xs text-brand-gray-400 bg-brand-gray-800 px-2 py-0.5 rounded hidden">1 sub</span>
         </div>
         <div class="h-4 w-px bg-brand-gray-700"></div>
-        <div class="flex items-center gap-2 text-xs text-brand-gray-300">
-          <span class="pulse-dot w-2 h-2 bg-green-400 rounded-full inline-block"></span>
-          All crew online
+        <div class="flex flex-col text-xs text-brand-gray-300 leading-tight" id="nav-status" aria-label="Agent configuration and last observed activity">
+          <span><span class="w-2 h-2 bg-brand-gray-400 rounded-full inline-block mr-1" aria-hidden="true"></span><span id="nav-config-status">Agent configuration: not read yet</span></span>
+          <span class="text-brand-gray-400">Last observed activity: <span id="nav-last-observed">not loaded</span></span>
         </div>
       </div>
     </div>
   </nav>
 
   <div id="a11y-announcer" class="sr-only" aria-live="polite"></div>
+
+  <!-- Shown only when /api/health reports public_demo_mode (or when the mode could not be read, which fails closed). -->
+  <div id="access-banner" class="hidden bg-amber-50 border-b border-amber-200 text-amber-900 text-sm px-4 sm:px-6 py-2" role="note"></div>
 
   <!-- ═══ EXECUTIVE BRIEF VIEW ═══ -->
   <div id="view-executive" class="view-content" role="tabpanel" aria-labelledby="nav-executive">
@@ -268,36 +271,97 @@
         </div>
       </div>
 
+      <!-- Agent Activity: recorded application observations only (GET /api/activity, GET /api/activity/<id>) -->
+      <section id="activity-panel" class="bg-white rounded-xl border border-brand-gray-100" aria-labelledby="activity-heading">
+        <div class="p-4 border-b border-brand-gray-100">
+          <div class="flex items-start justify-between flex-wrap gap-2">
+            <div>
+              <h2 id="activity-heading" tabindex="-1" class="text-sm focus:outline-none font-bold text-brand-gray-500 uppercase tracking-wider">Agent Activity</h2>
+              <p class="text-xs text-brand-gray-500 mt-1 max-w-3xl">Proof of what this application recorded, with no portal needed. Only recorded events and artifacts are shown. Nothing is inferred, no reasoning or dialogue is available here, and configured settings, approvals and operator closures are never shown as execution or verification. This panel reads recorded activity regardless of the Demo/Live toggle.</p>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap text-xs">
+              <span class="text-brand-gray-400">Last checked: <time id="activity-last-checked" datetime="">not yet</time></span>
+              <span id="activity-poll-state" class="text-brand-gray-400"></span>
+              <button type="button" id="activity-poll-toggle" onclick="toggleActivityAutoRefresh()" aria-pressed="true" class="border border-brand-gray-200 rounded px-2 py-1 text-brand-gray-500 hover:text-brand-red">Auto-refresh: on</button>
+              <button type="button" id="activity-refresh-btn" onclick="refreshActivity(true)" class="border border-brand-gray-200 rounded px-2 py-1 text-brand-gray-500 hover:text-brand-red">Refresh</button>
+            </div>
+          </div>
+          <details class="mt-3 text-xs text-brand-gray-500" data-key="activity-legend">
+            <summary class="cursor-pointer font-semibold text-brand-gray-700" data-focus-key="activity-legend">How to read these labels</summary>
+            <dl class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+              <div><dt class="inline font-semibold">Observed:</dt> <dd class="inline">recorded by this application.</dd></div>
+              <div><dt class="inline font-semibold">Reported:</dt> <dd class="inline">stated by another system; this application did not verify it.</dd></div>
+              <div><dt class="inline font-semibold">Configured:</dt> <dd class="inline">a setting only; not proof that anything ran.</dd></div>
+              <div><dt class="inline font-semibold">Simulated:</dt> <dd class="inline">fixture or demo data, not a live event.</dd></div>
+              <div><dt class="inline font-semibold">Approved:</dt> <dd class="inline">a human approval was recorded. It does not execute a fix.</dd></div>
+              <div><dt class="inline font-semibold">Executed / Verified:</dt> <dd class="inline">shown only when a receipt with that provenance is returned.</dd></div>
+            </dl>
+          </details>
+        </div>
+        <div id="activity-status" class="hidden mx-4 mt-3 text-xs rounded border p-2"></div>
+        <div id="activity-layout" class="p-4 grid grid-cols-1 gap-4">
+          <div id="activity-list-wrap" class="min-w-0">
+            <div id="activity-list-empty" class="text-sm text-brand-gray-500 italic border border-dashed border-brand-gray-200 rounded-lg p-6 text-center">Loading recorded activity…</div>
+            <ul id="activity-list" class="space-y-3" aria-label="Investigations, newest first"></ul>
+            <div class="pt-3 text-center">
+              <button type="button" id="activity-load-more" onclick="loadMoreActivity()" class="hidden text-xs bg-brand-gray-100 hover:bg-brand-gray-200 text-brand-gray-600 rounded-lg px-4 py-2">Load older investigations</button>
+            </div>
+          </div>
+          <section id="activity-detail" class="hidden min-w-0 border border-brand-gray-200 rounded-lg p-4" aria-labelledby="activity-detail-heading">
+            <div class="flex items-start justify-between gap-2 flex-wrap">
+              <h3 id="activity-detail-heading" tabindex="-1" class="font-bold text-sm focus:outline-none">Investigation timeline</h3>
+              <div class="flex gap-2 text-xs">
+                <button type="button" onclick="refreshActivityDetail(true)" class="border border-brand-gray-200 rounded px-2 py-1 text-brand-gray-500 hover:text-brand-red">Refresh timeline</button>
+                <button type="button" onclick="closeActivityDetail()" class="border border-brand-gray-200 rounded px-2 py-1 text-brand-gray-500 hover:text-brand-red">Close timeline</button>
+              </div>
+            </div>
+            <div id="activity-detail-status" class="hidden mt-2 text-xs rounded border p-2"></div>
+            <div id="activity-detail-summary" class="mt-3"></div>
+            <div id="activity-detail-runs" class="mt-4"></div>
+            <div id="activity-detail-gaps" class="mt-4"></div>
+            <div class="mt-4">
+              <h4 class="text-xs font-bold text-brand-gray-400 uppercase tracking-wider mb-2">Timeline (recorded events, oldest first)</h4>
+              <p id="activity-detail-no-events" class="hidden text-sm text-brand-gray-500 italic">No events recorded for this investigation.</p>
+              <ol id="activity-timeline" class="space-y-3 border-l-2 border-brand-gray-200 pl-4" aria-label="Recorded events, oldest first"></ol>
+              <div class="pt-3"><button type="button" id="activity-events-more" onclick="loadMoreActivityEvents()" class="hidden text-xs bg-brand-gray-100 hover:bg-brand-gray-200 text-brand-gray-600 rounded-lg px-4 py-2">Load more events</button></div>
+            </div>
+            <div id="activity-detail-artifacts" class="mt-4"></div>
+            <p class="mt-4 text-xs text-brand-gray-400">Bounded, sanitized summaries only. Prompts, raw model output, scripts and reasoning are not exposed by the activity API and are not shown here.</p>
+          </section>
+        </div>
+      </section>
+
       <!-- Tools & Guided Demo (secondary, collapsible -- ZeroOps link/scenarios/remediation/ADO/crew status live here so the queue stays the primary surface) -->
       <div class="bg-white rounded-xl border border-brand-gray-100">
         <button onclick="toggleToolsPanel()" id="tools-toggle" class="w-full flex items-center justify-between px-4 py-3 text-left" aria-expanded="false" aria-controls="tools-body">
           <h2 class="text-sm font-bold text-brand-gray-500 uppercase tracking-wider">Tools &amp; Guided Demo</h2>
-          <span class="text-xs text-brand-gray-400">ZeroOps live demos · scenarios · remediation · compliance/ADO · crew status</span>
+          <span class="text-xs text-brand-gray-400">ZeroOps live demos · scenarios · remediation · compliance/ADO · configured crew</span>
         </button>
         <div id="tools-body" class="hidden px-4 pb-4 space-y-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="space-y-3">
               <h3 class="text-xs font-bold text-brand-red uppercase tracking-wider">⚡ Guided Demo Flow</h3>
-              <p class="text-xs text-brand-gray-400">Evidence arrives → queue prioritizes → grounded agent analysis cites evidence → recommendation → human approval. Clearly labeled Simulation everywhere it applies.</p>
+              <p class="text-xs text-brand-gray-400">Evidence arrives → queue prioritizes → grounded agent analysis cites evidence → recommendation → human approval (a record only; this app does not execute fixes). Clearly labeled Simulation everywhere it applies.</p>
+              <p id="tools-public-note" class="hidden text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">Public demo: these tools call live Azure, model backends or ZeroOps, so they are disabled on this deployment. Demo Data and recorded Agent Activity remain available.</p>
 
-              <button onclick="runMorningBriefing()" id="briefing-btn" class="w-full bg-gradient-to-r from-brand-black to-brand-gray-700 rounded-xl p-4 text-left hover:from-brand-gray-700 hover:to-brand-gray-600 group">
+              <button onclick="runMorningBriefing()" id="briefing-btn" data-live-control class="w-full bg-gradient-to-r from-brand-black to-brand-gray-700 rounded-xl p-4 text-left hover:from-brand-gray-700 hover:to-brand-gray-600 group">
                 <div class="flex items-center gap-3">
                   <span class="text-2xl group-hover:animate-bounce">☀️</span>
                   <div>
                     <div class="text-white font-bold text-sm">Morning Briefing (Ops Council chat)</div>
-                    <div class="text-brand-gray-400 text-xs">What the crew found overnight — streamed multi-agent debate</div>
+                    <div class="text-brand-gray-400 text-xs">Direct-model digest of recent signals — streamed multi-agent debate</div>
                   </div>
                 </div>
               </button>
 
               <div class="bg-brand-black rounded-xl p-4 text-white">
-                <p class="text-xs text-brand-gray-300 mb-3">Live break/fix demos (detected in seconds, triaged by the Azure SRE Agent, escalated to the squad when needed) live in ZeroOps.</p>
-                <button onclick="showView('zeroops')" class="w-full px-3 py-2 bg-brand-red text-white rounded-lg text-xs font-bold hover:bg-red-700">⚡ Open ZeroOps live demos</button>
+                <p class="text-xs text-brand-gray-300 mb-3">Live break/fix demos (detected in seconds, handed to the Azure SRE Agent, escalated to the squad when needed) live in ZeroOps.</p>
+                <button onclick="showView('zeroops')" id="tools-zeroops-btn" class="w-full px-3 py-2 bg-brand-red text-white rounded-lg text-xs font-bold hover:bg-red-700">⚡ Open ZeroOps live demos</button>
               </div>
 
               <h3 class="text-xs font-bold text-brand-gray-500 uppercase tracking-wider pt-1">Demo Scenarios (Ops Council chat &amp; debate)</h3>
               {% for id, demo in demos.items() %}
-              <button onclick="runDemo('{{ id }}')" class="scenario-btn w-full text-left bg-white rounded-xl border border-brand-gray-100 p-3 hover:border-brand-red group">
+              <button onclick="runDemo('{{ id }}')" data-live-control class="scenario-btn w-full text-left bg-white rounded-xl border border-brand-gray-100 p-3 hover:border-brand-red group">
                 <div class="flex items-start gap-3">
                   <div class="w-8 h-8 rounded-lg bg-brand-gray-50 flex items-center justify-center text-brand-gray-400 group-hover:bg-brand-red group-hover:text-white flex-shrink-0">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -322,16 +386,16 @@
               <h3 class="text-xs font-bold text-brand-gray-500 uppercase tracking-wider">Compliance → ADO Proposals</h3>
               <div class="bg-brand-gray-50 rounded-lg p-3">
                 <p class="text-xs text-brand-gray-500 mb-2">Scans Azure Policy compliance, classifies each violation (policy bug / misconfiguration / exemption / workaround abuse), and drafts an ADO PR or work item for human approval.</p>
-                <button onclick="runAdoInspection()" id="ado-scan-btn" class="text-xs bg-brand-black text-white rounded px-3 py-1.5 hover:bg-brand-gray-700">Scan &amp; propose fixes</button>
+                <button onclick="runAdoInspection()" id="ado-scan-btn" data-live-control class="text-xs bg-brand-black text-white rounded px-3 py-1.5 hover:bg-brand-gray-700">Scan &amp; propose fixes</button>
                 <div id="ado-proposals-list" class="mt-2 space-y-2"></div>
               </div>
 
-              <h3 class="text-xs font-bold text-brand-gray-500 uppercase tracking-wider pt-1">Agent Squad</h3>
+              <h3 class="text-xs font-bold text-brand-gray-500 uppercase tracking-wider pt-1">Configured agents <span class="font-normal normal-case">(availability not checked)</span></h3>
               <div class="bg-white rounded-xl border border-brand-gray-100 p-4 space-y-3">
                 {% for key, icon in [('cost_sentinel', '💰'), ('diagnostics_sre', '🔍'), ('scout', '🛡️'), ('compliance_inspector', '📋'), ('standards_architect', '🔧')] %}
                 <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2"><span class="w-2 h-2 bg-green-400 rounded-full"></span><span class="text-sm">{{ icon }} <strong>{{ agents[key].name }}</strong></span></div>
-                  <span class="text-xs text-brand-gray-400">{{ agents[key].deployment }}</span>
+                  <div class="flex items-center gap-2"><span class="w-2 h-2 border border-brand-gray-400 rounded-full" aria-hidden="true"></span><span class="text-sm">{{ icon }} <strong>{{ agents[key].name }}</strong></span></div>
+                  <span class="text-xs text-brand-gray-400">configured deployment: {{ agents[key].deployment }}</span>
                 </div>
                 {% endfor %}
               </div>
@@ -351,7 +415,8 @@
         <div class="px-6 py-3 border-b border-brand-gray-100 flex items-center justify-between">
           <div>
             <h2 class="font-bold text-brand-black">Ops Council Chat</h2>
-            <p class="text-xs text-brand-gray-400">Ask anything about your Azure environment. Agents will debate and synthesize.</p>
+            <p class="text-xs text-brand-gray-400">Ask about your Azure environment. This legacy view runs direct Azure OpenAI model analysis, not necessarily Foundry; only Agent Activity shows a recorded run's actual backend.</p>
+            <p id="council-public-note" class="hidden text-xs text-amber-800 mt-1">Public demo: the Council calls live model backends and is disabled on this deployment.</p>
           </div>
           <button onclick="clearChat()" class="text-xs text-brand-gray-400 hover:text-brand-red">Clear</button>
         </div>
@@ -365,16 +430,16 @@
             </div>
             <div class="bg-brand-gray-50 rounded-xl rounded-tl-none px-4 py-3 max-w-2xl">
               <div class="text-xs font-bold text-brand-red mb-1">{{ agents.orchestrator.name }}</div>
-              <p class="text-sm text-brand-gray-600">Welcome to the {{ brand.app_name }}. I'm <strong>{{ agents.orchestrator.name }}</strong> — I route your questions through the crew and deliver a unified take. The crew's on shift and ready:</p>
+              <p class="text-sm text-brand-gray-600">Welcome to the {{ brand.app_name }}. I'm <strong>{{ agents.orchestrator.name }}</strong> — I route your questions through the crew and deliver a unified take. The configured crew (availability is not checked here):</p>
               <p class="text-sm text-brand-gray-500 mt-2">{% for key, icon in [('cost_sentinel', '💰'), ('diagnostics_sre', '🔍'), ('scout', '🛡️'), ('compliance_inspector', '📋'), ('standards_architect', '🔧')] %}{{ icon }} <strong>{{ agents[key].name }}</strong>{{ ' · ' if not loop.last else '' }}{% endfor %}</p>
               <p class="text-sm text-brand-gray-600 mt-2">Try asking:</p>
               <div id="suggested-questions">
                 <ul class="text-sm text-brand-gray-500 mt-1 space-y-1">
-                  <li class="cursor-pointer hover:text-brand-red" onclick="askCouncil('Why is demo-sap-batch-vm01 running on a D16s_v5? Can we save money?')">• "Why is this VM so big? Can we save money?"</li>
-                  <li class="cursor-pointer hover:text-brand-red" onclick="askCouncil('Our Terraform deployment to WebApp-Test-RG failed. What happened?')">• "Our Terraform deployment failed. What happened?"</li>
-                  <li class="cursor-pointer hover:text-brand-red" onclick="askCouncil('Where are we wasting money in our Azure subscription?')">• "Where are we wasting money?"</li>
-                  <li class="cursor-pointer hover:text-brand-red" onclick="askCouncil('Run a proactive environment scan.')">• "🔥 Ask {{ agents.scout.name }} to run a proactive scan."</li>
-                  <li class="cursor-pointer hover:text-brand-red" onclick="askCouncil('Run a compliance scan. What policies are being violated and are any exemptions expired?')">• "📋 Compliance inspection — policy bugs or workaround abuse?"</li>
+                  <li class="cursor-pointer hover:text-brand-red" data-live-control onclick="askCouncil('Why is demo-sap-batch-vm01 running on a D16s_v5? Can we save money?')">• "Why is this VM so big? Can we save money?"</li>
+                  <li class="cursor-pointer hover:text-brand-red" data-live-control onclick="askCouncil('Our Terraform deployment to WebApp-Test-RG failed. What happened?')">• "Our Terraform deployment failed. What happened?"</li>
+                  <li class="cursor-pointer hover:text-brand-red" data-live-control onclick="askCouncil('Where are we wasting money in our Azure subscription?')">• "Where are we wasting money?"</li>
+                  <li class="cursor-pointer hover:text-brand-red" data-live-control onclick="askCouncil('Run a proactive environment scan.')">• "🔥 Ask {{ agents.scout.name }} to run a proactive scan."</li>
+                  <li class="cursor-pointer hover:text-brand-red" data-live-control onclick="askCouncil('Run a compliance scan. What policies are being violated and are any exemptions expired?')">• "📋 Compliance inspection — policy bugs or workaround abuse?"</li>
                 </ul>
               </div>
             </div>
@@ -385,10 +450,10 @@
         <div class="px-6 py-4 border-t border-brand-gray-100">
           <div class="flex gap-3">
             <label for="chat-input" class="sr-only">Ask the crew</label>
-            <input id="chat-input" type="text" placeholder="Ask the crew..."
+            <input id="chat-input" data-live-control type="text" placeholder="Ask the crew..."
               class="flex-1 px-4 py-2.5 bg-brand-gray-50 border border-brand-gray-200 rounded-xl text-sm focus:outline-none focus:border-brand-red focus:ring-1 focus:ring-brand-red"
               onkeydown="if(event.key==='Enter')sendMessage()">
-            <button onclick="sendMessage()" id="send-btn"
+            <button onclick="sendMessage()" id="send-btn" data-live-control
               class="px-5 py-2.5 bg-brand-red text-white rounded-xl text-sm font-medium hover:bg-brand-red-dark disabled:opacity-50 disabled:cursor-not-allowed">
               Send
             </button>
@@ -413,7 +478,7 @@
   <div id="view-agents" class="view-content hidden" role="tabpanel" aria-labelledby="nav-agents">
     <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
       <h1 class="text-xl font-bold mb-1">The Agent Squad</h1>
-      <p class="text-sm text-brand-gray-400 mb-6">One coordinator and five specialists. Code (not the model) routes each finding to the specialist that owns it; specialists analyze live Azure evidence in parallel, challenge each other when the stakes are high, and the coordinator delivers one evidence-cited recommendation. Every agent is read-only &mdash; changes go through human approval.</p>
+      <p class="text-sm text-brand-gray-400 mb-6">One coordinator and five specialists. Code (not the model) routes each finding to the specialist that owns it; specialists analyze live Azure evidence in parallel, challenge each other when the stakes are high, and the coordinator delivers one evidence-cited recommendation. Every agent is read-only &mdash; changes go through human approval. This page describes configuration and design; what actually ran, on which backend, is shown only in Operations Center &rarr; Agent Activity.</p>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
         {% for a in agent_catalog %}
@@ -442,7 +507,7 @@
                 <p class="mt-2"><strong>Evidence:</strong> {{ a.evidence_sources | join('; ') }}</p>
                 <p class="mt-1"><strong>Tools:</strong> {{ a.tools | join(', ') }} (read-only, bounded)</p>
                 <p class="mt-1"><strong>Produces:</strong> {{ a.outputs | join('; ') }}</p>
-                <p class="mt-1"><strong>Runs on:</strong> {% if a.runtime.foundry_agent %}Azure AI Foundry agent <code>{{ a.runtime.foundry_agent }}</code>{% else %}Azure OpenAI ({{ a.runtime.backend }} backend){% endif %} &middot; model <code>{{ a.model_deployment }}</code></p>
+                <p class="mt-1"><strong>Configured runtime (catalog, not proof of a run):</strong> {% if a.runtime.foundry_agent %}Foundry agent name <code>{{ a.runtime.foundry_agent }}</code> if the Foundry backend is selected{% else %}Azure OpenAI ({{ a.runtime.backend }} backend){% endif %} &middot; configured model <code>{{ a.model_deployment }}</code></p>
               </details>
             </div>
           </div>
@@ -458,7 +523,7 @@
           <li><strong>Analyze in parallel</strong> &mdash; each selected specialist reasons over its evidence and may call read-only tools for more detail.</li>
           <li><strong>Challenge</strong> &mdash; in a debate, each specialist rebuts the others before anything is concluded.</li>
           <li><strong>Synthesize</strong> &mdash; the coordinator produces one recommendation; every claim must cite a finding ID, and citations are validated.</li>
-          <li><strong>Approve</strong> &mdash; remediation becomes a reviewable proposal (Azure DevOps work item / PR, Terraform/CLI) &mdash; never auto-executed.</li>
+          <li><strong>Approve</strong> &mdash; remediation becomes a reviewable proposal (Azure DevOps work item / PR, Terraform/CLI) &mdash; never auto-executed. An approval is a record, not an execution.</li>
         </ol>
         <p class="text-xs text-brand-gray-400 mt-3">Machine-readable catalog: <a class="underline" href="/api/agents">/api/agents</a></p>
       </div>
@@ -470,7 +535,8 @@
     <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
       <div>
         <h1 class="text-xl font-bold mb-1">ZeroOps: SRE Agent + Agent Squad</h1>
-        <p class="text-sm text-brand-gray-400">The Azure SRE Agent watches repos, logs and monitoring and fixes the runbook-shaped problems itself. When an incident is cross-domain, business-impacting or has no safe runbook, it escalates to the squad over MCP. The squad reasons about impact and returns a fix or script that a human approves. Nothing changes without approval.</p>
+        <p class="text-sm text-brand-gray-400">The Azure SRE Agent watches repos, logs and monitoring and fixes the runbook-shaped problems itself. When an incident is cross-domain, business-impacting or has no safe runbook, it escalates to the squad over MCP. The squad reasons about impact and returns a fix or script for a human to review. This app never applies a change; recorded approvals and operator closures are not execution or verification. <button type="button" class="underline text-brand-red" onclick="openActivityPanel()">Open Agent Activity</button> for recorded proof.</p>
+        <p id="zeroops-public-note" class="hidden mt-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2"></p>
       </div>
 
       <!-- Architecture flow -->
@@ -478,10 +544,10 @@
         <h2 class="font-bold mb-4">How it fits together</h2>
         <div class="grid grid-cols-1 md:grid-cols-5 gap-3 text-sm items-stretch">
           <div class="rounded-lg bg-brand-gray-50 border border-brand-gray-100 p-3"><div class="text-2xl">📡</div><div class="font-semibold">Signals</div><div class="text-xs text-brand-gray-500">Azure Monitor alerts, App Insights, Log Analytics, Activity Log, GitHub/ADO repos, schedules</div></div>
-          <div class="rounded-lg bg-blue-50 border border-blue-100 p-3"><div class="text-2xl">🛟</div><div class="font-semibold">Tier 1: Azure SRE Agent</div><div class="text-xs text-brand-gray-500">Triage skills, runbooks, log and metric queries. Known fixes are proposed in Review mode.</div></div>
-          <div class="rounded-lg bg-amber-50 border border-amber-100 p-3"><div class="text-2xl">🔀</div><div class="font-semibold">Escalate over MCP</div><div class="text-xs text-brand-gray-500">The <code>oge_ops_escalation</code> agent calls <code>ogeops_escalate</code> when the escalation policy matches</div></div>
-          <div class="rounded-lg bg-purple-50 border border-purple-100 p-3"><div class="text-2xl">🧠</div><div class="font-semibold">Tier 2: Agent Squad</div><div class="text-xs text-brand-gray-500">Foundry agents: routed specialists, debate, coordinator. Grounded, cited, and every token metered.</div></div>
-          <div class="rounded-lg bg-green-50 border border-green-100 p-3"><div class="text-2xl">✅</div><div class="font-semibold">Human approves</div><div class="text-xs text-brand-gray-500">Proposal plus script appears here or in ADO. A human approves, the change runs, the SRE Agent verifies.</div></div>
+          <div class="rounded-lg bg-blue-50 border border-blue-100 p-3"><div class="text-2xl">🛟</div><div class="font-semibold">Tier 1: Azure SRE Agent</div><div class="text-xs text-brand-gray-500">Designed to triage with skills, runbooks and queries, proposing known fixes in Review mode. This app does not observe its progress after a hand-off.</div></div>
+          <div class="rounded-lg bg-amber-50 border border-amber-100 p-3"><div class="text-2xl">🔀</div><div class="font-semibold">Escalate over MCP</div><div class="text-xs text-brand-gray-500">The SRE Agent calls the <code>ogeops_escalate</code> MCP tool when its escalation policy matches</div></div>
+          <div class="rounded-lg bg-purple-50 border border-purple-100 p-3"><div class="text-2xl">🧠</div><div class="font-semibold">Tier 2: Agent Squad</div><div class="text-xs text-brand-gray-500">Routed specialists, optional debate and a coordinator on the configured backend (Foundry or direct Azure OpenAI). The backend actually used is recorded in Agent Activity; tokens are shown only when measured.</div></div>
+          <div class="rounded-lg bg-green-50 border border-green-100 p-3"><div class="text-2xl">✅</div><div class="font-semibold">Human approves</div><div class="text-xs text-brand-gray-500">A proposal appears here or in ADO. Approval is only recorded; applying and verifying a change happen outside this app and are not shown unless a receipt exists.</div></div>
         </div>
         <div id="zeroops-status" class="mt-4 flex flex-wrap gap-2 text-xs"></div>
       </div>
@@ -667,6 +733,7 @@
 
     // ─── Mode Toggle (Demo vs Live -- always explicit, never disguised) ──
     function setMode(mode) {
+      if (mode === 'live' && !requireLiveAccess('Live Azure')) return;
       currentMode = mode;
       document.querySelectorAll('.mode-btn').forEach(el => {
         el.classList.remove('bg-brand-gray-600', 'text-white');
@@ -705,7 +772,7 @@
         tab.setAttribute('aria-selected', 'true');
       }
       if (view === 'executive') loadExecutiveBrief();
-      if (view === 'ops') loadOpsCenter();
+      if (view === 'ops') { loadOpsCenter(); refreshActivity(false); } else stopActivityPolling();
       if (view === 'zeroops') loadZeroOps();
     }
 
@@ -718,7 +785,20 @@
     };
     const usd = v => '$' + Number(v || 0).toFixed(Number(v || 0) < 1 ? 4 : 2);
 
+    function renderZeroOpsPublic() {
+      const note = document.getElementById('zeroops-public-note');
+      note.textContent = 'Public demo: ZeroOps scenario controls, the raw escalation ledger, SRE Agent hand-off, fault injection, proposals, approvals and decisions are disabled, and no ZeroOps endpoint is called. Recorded investigations remain readable in Agent Activity.';
+      note.classList.remove('hidden');
+      document.getElementById('zeroops-status').innerHTML = '<span class="px-2 py-0.5 rounded-full bg-brand-gray-100 text-brand-gray-500">○ Live ZeroOps status is not read on the public demo</span>';
+      document.getElementById('zeroops-scenarios').innerHTML = '<div class="text-sm text-brand-gray-500 md:col-span-2 lg:col-span-3">Scenario controls are unavailable on the public demo. <button type="button" class="underline text-brand-red" onclick="openActivityPanel()">Open Agent Activity</button> to read recorded investigations.</div>';
+      document.getElementById('zeroops-timeline').innerHTML = '<div class="text-brand-gray-500">The raw escalation timeline is not available on the public demo. Recorded investigations are in Agent Activity.</div>';
+      document.getElementById('zeroops-cost').innerHTML = '<p class="text-brand-gray-500">The cost model is not read on the public demo. Agent Activity shows cost only when it was measured; otherwise it reads unavailable.</p>';
+    }
+
     async function loadZeroOps() {
+      await accessModePromise;
+      if (isPublicDemo()) { renderZeroOpsPublic(); return; }
+      document.getElementById('zeroops-public-note').classList.add('hidden');
       try {
         const [ov, esc] = await Promise.all([
           fetch('/api/zeroops/overview').then(r => r.json()),
@@ -739,10 +819,10 @@
     function renderZeroOpsStatus(ov) {
       const pill = (ok, label) => `<span class="px-2 py-0.5 rounded-full ${ok ? 'bg-green-100 text-green-800' : 'bg-brand-gray-100 text-brand-gray-500'}">${ok ? '●' : '○'} ${label}</span>`;
       document.getElementById('zeroops-status').innerHTML =
-        pill(ov.mcp.enabled, `MCP endpoint ${ov.mcp.endpoint} ${ov.mcp.enabled ? 'enabled' : 'disabled (set MCP_API_KEY)'}`) +
-        pill(ov.demo.chaos_enabled, `Chaos ${ov.demo.chaos_enabled ? 'enabled' : 'disabled'}`) +
-        pill(ov.sre_agent && ov.sre_agent.configured, `SRE Agent hand-off ${ov.sre_agent && ov.sre_agent.configured ? 'connected' : 'not set (SRE_AGENT_ENDPOINT)'}`) +
-        pill(ov.ledger.count > 0, `${ov.ledger.count} escalation(s), ${usd(ov.ledger.total_estimated_usd)} total`);
+        pill(ov.mcp.enabled, `MCP endpoint ${ov.mcp.endpoint}: API key ${ov.mcp.enabled ? 'configured (connectivity not checked)' : 'not set (MCP_API_KEY)'}`) +
+        pill(ov.demo.chaos_enabled, `Fault injection ${ov.demo.chaos_enabled ? 'enabled by configuration' : 'disabled'}`) +
+        pill(ov.sre_agent && ov.sre_agent.configured, `SRE Agent endpoint ${ov.sre_agent && ov.sre_agent.configured ? 'configured (connectivity not checked)' : 'not set (SRE_AGENT_ENDPOINT)'}`) +
+        pill(ov.ledger.count > 0, `${ov.ledger.count} recorded escalation(s), ${usd(ov.ledger.total_estimated_usd)} estimated`);
     }
 
     function renderZeroOpsScenarios(ov) {
@@ -771,10 +851,10 @@
             ${s.configured ? '' : `<p class="mt-2 text-amber-700">Not configured: ${s.missing_settings.map(escapeHtml).join(', ')}</p>`}
           </details>
           <div class="mt-auto pt-3 flex flex-wrap gap-2">
-            ${btn('bg-brand-red text-white hover:opacity-90', '💣 Inject', `zeroopsScenario('${s.id}','inject')`, canChaos)}
+            ${btn('bg-brand-red text-white hover:opacity-90', '💣 Inject fault', `zeroopsScenario('${s.id}','inject')`, canChaos)}
             ${btn('border border-brand-gray-200 hover:bg-brand-gray-50', '🧹 Clean up', `zeroopsScenario('${s.id}','cleanup')`, canChaos)}
             ${btn('border border-amber-300 text-amber-800 hover:bg-amber-50', '⚡ Detect now', `zeroopsDetect('${s.id}', Date.now(), false)`, s.configured)}
-            ${s.tier === 'squad' ? btn('bg-purple-600 text-white hover:opacity-90', '🧠 Simulate escalation', `zeroopsScenario('${s.id}','escalate')`) : ''}
+            ${s.tier === 'squad' ? btn('bg-purple-600 text-white hover:opacity-90', '🧠 Simulate escalation (fixture)', `zeroopsScenario('${s.id}','escalate')`) : ''}
           </div>
           <div id="zeroops-result-${s.id}" class="text-xs mt-2">${keep['zeroops-result-' + s.id] || ''}</div>
         </div>`;
@@ -782,6 +862,7 @@
     }
 
     async function zeroopsScenario(id, action) {
+      if (!requireLiveAccess('ZeroOps scenario controls')) return;
       const out = document.getElementById('zeroops-result-' + id);
       out.innerHTML = `<span class="text-brand-gray-400">${action}&hellip;</span>`;
       const injectedAt = Date.now();
@@ -792,7 +873,7 @@
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || resp.statusText);
         if (action === 'escalate') {
-          out.innerHTML = `<span class="text-purple-700">Escalated as <code>${escapeHtml(data.id)}</code>; the squad is reasoning (watch the timeline).</span>`;
+          out.innerHTML = `<span class="text-purple-700">Simulated escalation recorded as <code>${escapeHtml(data.id)}</code>; analysis has been requested (watch the timeline).${activityLinkHtml(data.investigation_id)}</span>`;
         } else {
           out.innerHTML = data.steps.map(st => `<div class="${st.status === 'ok' ? 'text-green-700' : 'text-red-600'}">${st.status === 'ok' ? '✔' : '✖'} ${escapeHtml(st.step)}${st.error ? ': ' + escapeHtml(st.error) : ''}</div>`).join('')
             + `<div id="zeroops-detect-${id}" class="mt-1"></div>`;
@@ -808,6 +889,7 @@
     // then hand off by tier. The Activity Log alert to the SRE Agent remains the ~5 min backstop.
     const ZEROOPS_DETECT_TIMEOUT_MS = 120000;
     async function zeroopsDetect(id, startedAt, handoff) {
+      if (!requireLiveAccess('ZeroOps detection')) return;
       if (!document.getElementById('zeroops-detect-' + id)) {
         document.getElementById('zeroops-result-' + id).innerHTML = `<div id="zeroops-detect-${id}" class="mt-1"></div>`;
       }
@@ -835,6 +917,7 @@
     }
 
     async function zeroopsHandoff(id, seconds, p) {
+      if (!requireLiveAccess('ZeroOps hand-off')) return;
       const show = html => { const n = document.getElementById('zeroops-handoff-' + id); if (n) n.innerHTML = html; };
       show('<span class="text-brand-gray-400">Handing off&hellip;</span>');
       try {
@@ -845,14 +928,23 @@
         const d = await resp.json();
         if (!resp.ok) throw new Error(d.error || resp.statusText);
         if (d.route === 'squad') {
-          show(`<span class="text-purple-700">🧠 Escalated to the squad as <code>${escapeHtml(d.escalation_id)}</code> (watch the timeline).</span>`);
+          show(`<span class="text-purple-700">🧠 Escalation <code>${escapeHtml(d.escalation_id)}</code> recorded for the squad (watch the timeline).${activityLinkHtml(d.investigation_id)}</span>`);
         } else if (d.status === 'ok') {
-          show(`<span class="text-blue-700">🛟 SRE Agent thread <code>${escapeHtml(d.thread_id)}</code> opened${d.subagent ? ' for ' + escapeHtml(d.subagent) : ''}: triaging in Review mode (open it in the SRE Agent portal).</span>`);
+          show(`<span class="text-blue-700">🛟 SRE thread request accepted: thread <code>${escapeHtml(d.thread_id)}</code> was created${d.subagent ? ' for ' + escapeHtml(d.subagent) : ''}. This app does not observe the SRE Agent's triage or any fix; progress is only in the SRE Agent portal.${activityLinkHtml(d.investigation_id)}</span>`);
         } else {
-          show(`<span class="text-amber-700">🛟 SRE Agent not connected: ${escapeHtml(d.hint || '')}</span>`);
+          show(`<span class="text-amber-700">🛟 SRE Agent hand-off not configured, so no thread was requested: ${escapeHtml(d.hint || '')}</span>`);
         }
       } catch (e) { show(`<span class="text-red-600">✖ hand-off: ${escapeHtml(e.message)}</span>`); }
       loadZeroOps();
+    }
+
+    const ZEROOPS_STATUS_LABEL = {
+      received: 'received', analyzing: 'analyzing', proposed: 'proposal ready for review',
+      approved: 'approved (not executed)', rejected: 'rejected', resolved: 'closed by operator (not verified)', failed: 'failed',
+    };
+    function activityLinkHtml(investigationId) {
+      if (typeof investigationId !== 'string' || !ACTIVITY_ID_RE.test(investigationId)) return '';
+      return ` <button type="button" data-activity-open="${escapeHtml(investigationId)}" class="underline text-brand-red">View recorded investigation</button>`;
     }
 
     function renderZeroOpsTimeline(items) {
@@ -865,15 +957,15 @@
         const gate = e.status === 'proposed'
           ? `<div class="flex gap-2 mt-2">
                ${e.proposal_id ? '' : `<button onclick="zeroopsAct('${e.id}','propose')" class="text-xs px-2 py-1 rounded border border-brand-gray-200 hover:bg-brand-gray-50">Raise proposal</button>`}
-               <button onclick="zeroopsAct('${e.id}','approve')" class="text-xs px-2 py-1 rounded bg-green-600 text-white">Approve</button>
-               <button onclick="zeroopsAct('${e.id}','reject')" class="text-xs px-2 py-1 rounded bg-red-600 text-white">Reject</button></div>`
-          : e.status === 'approved' ? `<div class="mt-2"><button onclick="zeroopsAct('${e.id}','resolve')" class="text-xs px-2 py-1 rounded bg-green-700 text-white">Mark resolved (SRE Agent verified)</button></div>` : '';
+               <button onclick="zeroopsAct('${e.id}','approve')" title="Records a human approval. It does not execute a fix." class="text-xs px-2 py-1 rounded bg-green-600 text-white">Record approval (does not execute)</button>
+               <button onclick="zeroopsAct('${e.id}','reject')" title="Records a rejection." class="text-xs px-2 py-1 rounded bg-red-600 text-white">Record rejection</button></div>`
+          : e.status === 'approved' ? `<div class="mt-2"><button onclick="zeroopsAct('${e.id}','resolve')" title="Records an operator closure. It is not SRE Agent verification." class="text-xs px-2 py-1 rounded bg-green-700 text-white">Record operator closure (not verified)</button></div>` : '';
         return `<div class="border border-brand-gray-100 rounded-lg p-3">
           <div class="flex flex-wrap items-center gap-2">
-            <span class="text-xs px-2 py-0.5 rounded-full ${ZEROOPS_STATUS_STYLE[e.status] || ''}">${escapeHtml(e.status)}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full ${ZEROOPS_STATUS_STYLE[e.status] || ''}"><span class="sr-only">Status: </span>${escapeHtml(ZEROOPS_STATUS_LABEL[e.status] || e.status)}</span>
             <span class="text-xs text-brand-gray-500">${sourceIcon}</span>
             ${e.scenario_id ? `<span class="text-xs bg-brand-gray-100 px-2 py-0.5 rounded-full">${escapeHtml(e.scenario_id)}</span>` : ''}
-            <span class="text-xs text-brand-gray-400 ml-auto">${escapeHtml(e.created_at)} &middot; <code>${escapeHtml(e.id)}</code></span>
+            <span class="text-xs text-brand-gray-400 ml-auto"><time datetime="${escapeHtml(e.created_at)}">${escapeHtml(e.created_at)}</time> &middot; <code>${escapeHtml(e.id)}</code></span>
           </div>
           <div class="mt-1 font-medium">${escapeHtml(r.conclusion || e.question.split('\n')[0])}</div>
           ${r.fallback_from ? `<div class="text-xs text-amber-700 mt-1">Answer from ${escapeHtml(r.agent || r.agent_key)} — coordinator synthesis was invalid (${escapeHtml(r.synthesis_error || '')})</div>` : ''}
@@ -881,13 +973,15 @@
           ${actions ? `<ul class="text-xs mt-1 ml-4 list-disc space-y-0.5">${actions}</ul>` : ''}
           ${r.remediation_script ? `<details class="text-xs mt-1"><summary class="cursor-pointer">Remediation script</summary><pre class="bg-brand-gray-50 rounded p-2 whitespace-pre-wrap">${escapeHtml(r.remediation_script)}</pre></details>` : ''}
           ${e.error ? `<div class="text-xs text-red-600 mt-1">${escapeHtml(e.error)}</div>` : ''}
-          ${c.total_estimated_usd !== undefined ? `<div class="text-xs text-brand-gray-500 mt-1">💰 ${usd(c.total_estimated_usd)} = SRE Agent ~${c.sre_agent.active_aau} AAU (${usd(c.sre_agent.estimated_usd)}) + squad ${Number(c.squad.total_tokens).toLocaleString()} tokens / ${c.squad.model_calls} calls (${usd(c.squad.estimated_usd)})${r.specialists ? ' &middot; ' + r.specialists.length + ' specialist(s)' + (r.debate_used ? ' + debate' : '') : ''}</div>` : ''}
+          ${c.total_estimated_usd !== undefined ? `<div class="text-xs text-brand-gray-500 mt-1">💰 Estimated cost ${usd(c.total_estimated_usd)} = SRE Agent ~${c.sre_agent.active_aau} AAU estimate (${usd(c.sre_agent.estimated_usd)}) + squad ${Number(c.squad.total_tokens).toLocaleString()} tokens measured / ${c.squad.model_calls} calls (${usd(c.squad.estimated_usd)})${r.specialists ? ' &middot; ' + r.specialists.length + ' specialist(s)' + (r.debate_used ? ' + debate' : '') : ''}</div>` : ''}
+          <div class="text-xs mt-2 text-brand-gray-500">${activityLinkHtml(e.investigation_id) || 'No correlated activity investigation recorded for this escalation.'}</div>
           ${gate}
         </div>`;
       }).join('');
     }
 
     async function zeroopsAct(id, action) {
+      if (!requireLiveAccess('ZeroOps proposals and decisions')) return;
       const url = action === 'propose' ? `/api/zeroops/escalations/${id}/propose` : `/api/zeroops/escalations/${id}/decision`;
       const body = action === 'propose' ? {} : {decision: action, by: 'ops-console'};
       const resp = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
@@ -900,7 +994,7 @@
       document.getElementById('zeroops-cost').innerHTML = `
         <div><strong>SRE Agent always-on:</strong> ${cm.always_on_aau_per_hour} AAU/hr &rarr; ${cm.always_on_aau_per_month.toLocaleString()} AAU/mo &asymp; ${usd(cm.always_on_usd_per_month)}/mo at ${usd(cm.aau_price_usd)}/AAU</div>
         <div><strong>SRE Agent active flow</strong> (${escapeHtml(cm.sre_model.model)}): quick question ~${p.quick_question} AAU, investigation ~${p.incident_investigation} AAU, full remediation ~${p.full_remediation} AAU</div>
-        <div><strong>Squad (Foundry):</strong> metered per escalation from real token usage (see timeline)</div>
+        <div><strong>Squad:</strong> tokens are measured per escalation when the backend reports usage; otherwise cost is unavailable (see timeline)</div>
         <div class="border-t border-brand-gray-100 pt-2"><strong>So far:</strong> ${summary.count || 0} escalation(s), ${Number(summary.total_squad_tokens || 0).toLocaleString()} squad tokens, ${usd(summary.total_estimated_usd)} estimated</div>
         <p class="text-xs text-brand-gray-400">${escapeHtml(cm.note)}</p>`;
     }
@@ -1717,6 +1811,7 @@
     async function runAdoInspection() {
       const btn = document.getElementById('ado-scan-btn');
       const list = document.getElementById('ado-proposals-list');
+      if (!requireLiveAccess('Compliance scanning')) return;
       if (currentMode === 'demo') {
         list.innerHTML = '<p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">Demo mode: compliance scanning requires Live Azure Policy data. Switch to Live Azure to run this.</p>';
         return;
@@ -1743,26 +1838,28 @@
         <div class="font-semibold">${escapeHtml(p.title || p.id)}</div>
         <div class="text-brand-gray-400">${escapeHtml(p.violation_class || '')} · ${escapeHtml(p.proposal_type || '')}</div>
         <div class="flex gap-2 mt-1">
-          <button onclick="approveAdoProposal('${p.id}')" class="bg-green-600 text-white rounded px-2 py-1">Approve</button>
+          <button onclick="approveAdoProposal('${p.id}')" title="Records an approval of the proposal. It does not by itself apply a fix." class="bg-green-600 text-white rounded px-2 py-1">Approve proposal</button>
           <button onclick="rejectAdoProposal('${p.id}')" class="bg-brand-gray-200 text-brand-gray-700 rounded px-2 py-1">Reject</button>
         </div>
         <div id="ado-result-${p.id}" class="mt-1"></div>
       </div>`;
     }
     async function approveAdoProposal(id) {
+      if (!requireLiveAccess('Proposal approval')) return;
       try {
         const resp = await fetch(`/api/ado/proposals/${encodeURIComponent(id)}/approve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approved_by: 'ops-user' }) });
         const data = await resp.json();
-        document.getElementById(`ado-result-${id}`).innerHTML = data.error ? `<span class="text-red-600">${escapeHtml(data.error)}</span>` : '<span class="text-green-600">Approved.</span>';
+        document.getElementById(`ado-result-${id}`).innerHTML = data.error ? `<span class="text-red-600">${escapeHtml(data.error)}</span>` : '<span class="text-green-600">Approval recorded (no fix executed by this action).</span>';
       } catch (e) {
         document.getElementById(`ado-result-${id}`).innerHTML = `<span class="text-red-600">${escapeHtml(e.message)}</span>`;
       }
     }
     async function rejectAdoProposal(id) {
+      if (!requireLiveAccess('Proposal rejection')) return;
       try {
         const resp = await fetch(`/api/ado/proposals/${encodeURIComponent(id)}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'Rejected via Operations Center UI' }) });
         const data = await resp.json();
-        document.getElementById(`ado-result-${id}`).innerHTML = data.error ? `<span class="text-red-600">${escapeHtml(data.error)}</span>` : '<span class="text-brand-gray-500">Rejected.</span>';
+        document.getElementById(`ado-result-${id}`).innerHTML = data.error ? `<span class="text-red-600">${escapeHtml(data.error)}</span>` : '<span class="text-brand-gray-500">Rejection recorded.</span>';
       } catch (e) {
         document.getElementById(`ado-result-${id}`).innerHTML = `<span class="text-red-600">${escapeHtml(e.message)}</span>`;
       }
@@ -1814,14 +1911,17 @@
 
     let streamTotalTokens = 0;
     let streamTotalCost = 0;
+    let streamCostMissing = false; // some responses reported no cost; never estimated
     let lastSynthesisText = '';
 
     async function askCouncil(question) {
+      if (!requireLiveAccess('The Ops Council')) return;
       showView('council');
       addMessage('user', '', question);
       document.getElementById('send-btn').disabled = true;
       streamTotalTokens = 0;
       streamTotalCost = 0;
+      streamCostMissing = false;
 
       const panel = document.getElementById('agent-perspectives');
       panel.innerHTML = '';
@@ -1848,6 +1948,7 @@
     }
 
     async function runDemo(scenarioId) {
+      if (!requireLiveAccess('Council demo scenarios')) return;
       showView('council');
       const demos = {{ demos | tojson }};
       const demo = demos[scenarioId];
@@ -1855,6 +1956,7 @@
       document.getElementById('send-btn').disabled = true;
       streamTotalTokens = 0;
       streamTotalCost = 0;
+      streamCostMissing = false;
 
       const panel = document.getElementById('agent-perspectives');
       panel.innerHTML = '';
@@ -1903,14 +2005,16 @@
             return;
           }
           if (event.phase === 'done') {
-            const totalCost = streamTotalCost.toFixed(4);
+            const totalCost = streamCostMissing
+              ? (streamTotalCost > 0 ? `at least $${streamTotalCost.toFixed(4)} (some cost unavailable)` : 'cost unavailable')
+              : '~$' + streamTotalCost.toFixed(4);
             const panel = document.getElementById('agent-perspectives');
             const summaryDiv = document.createElement('div');
             summaryDiv.className = 'bg-brand-gray-100 rounded-lg p-3 mt-3 fade-in';
             summaryDiv.innerHTML = `
               <div class="flex justify-between items-center">
                 <span class="text-xs font-bold text-brand-gray-500">Total for this query</span>
-                <span class="text-xs font-bold text-green-600">${streamTotalTokens.toLocaleString()} tokens · ~$${totalCost}</span>
+                <span class="text-xs font-bold text-green-600">${streamTotalTokens.toLocaleString()} tokens · ${totalCost}</span>
               </div>`;
             panel.appendChild(summaryDiv);
             return;
@@ -1921,9 +2025,8 @@
           const colors = AGENT_COLORS[agentName] || AGENT_COLORS[ORCHESTRATOR_NAME];
           const agentTokens = (agent.usage.prompt_tokens || 0) + (agent.usage.completion_tokens || 0);
           streamTotalTokens += agentTokens;
-          streamTotalCost += typeof agent.usage.estimated_cost_usd === 'number'
-            ? agent.usage.estimated_cost_usd
-            : agentTokens * 0.000002;
+          if (typeof agent.usage.estimated_cost_usd === 'number') streamTotalCost += agent.usage.estimated_cost_usd;
+          else streamCostMissing = true;
 
           if (event.phase === 'round1') {
             addMessage('assistant', agentName, agent.response);
@@ -1953,9 +2056,9 @@
 
     function addAgentToPanel(agent, colors, agentTokens, phase) {
       const panel = document.getElementById('agent-perspectives');
-      const estCost = (typeof agent.usage.estimated_cost_usd === 'number'
-        ? agent.usage.estimated_cost_usd
-        : agentTokens * 0.000002).toFixed(4);
+      const estCost = typeof agent.usage.estimated_cost_usd === 'number'
+        ? '~$' + agent.usage.estimated_cost_usd.toFixed(4)
+        : 'cost unavailable';
       const borderClass = phase === 'round2' ? `border-2 ${colors.border} border-opacity-40` : `border ${colors.border} border-opacity-20`;
       const badge = phase === 'round2' ? '<span class="text-xs text-brand-red font-medium">REBUTTAL</span>' : '';
       const div = document.createElement('div');
@@ -1970,16 +2073,18 @@
           <span class="text-xs text-brand-gray-400 ml-auto">${agent.model}</span>
         </div>
         <div class="text-xs text-brand-gray-600 markdown-content max-h-48 overflow-y-auto">${formatMarkdown(agent.response)}</div>
-        <div class="text-xs text-brand-gray-300 mt-2 flex justify-between"><span>${agentTokens.toLocaleString()} tokens</span><span>~$${estCost}</span></div>`;
+        <div class="text-xs text-brand-gray-300 mt-2 flex justify-between"><span>${agentTokens.toLocaleString()} tokens</span><span>${estCost}</span></div>`;
       panel.appendChild(div);
     }
 
     async function runMorningBriefing() {
+      if (!requireLiveAccess('The morning briefing')) return;
       showView('council');
       addMessage('user', '', '☀️ Run the morning briefing — what did the crew find overnight?');
       document.getElementById('send-btn').disabled = true;
       streamTotalTokens = 0;
       streamTotalCost = 0;
+      streamCostMissing = false;
       const panel = document.getElementById('agent-perspectives');
       panel.innerHTML = '';
 
@@ -2013,6 +2118,7 @@
     }
 
     async function generateRemediation() {
+      if (!requireLiveAccess('Remediation generation')) return;
       const btn = document.getElementById('remediate-btn');
       if (btn) { btn.disabled = true; btn.textContent = '🔧 Generating artifacts...'; }
 
@@ -2056,6 +2162,844 @@
       if (btn) { btn.disabled = false; btn.textContent = '🔧 Generate Remediation Artifacts (Terraform + CLI + Runbook)'; }
     }
 
+    // ─── Access mode (PUBLIC_DEMO_MODE) ─────────────
+    // The server gate is authoritative; this only avoids calling endpoints it
+    // blocks and hides controls that could not work. If the mode cannot be read
+    // we fail closed (treated as public) and say so.
+    let publicDemoMode = null; // null = not known yet
+    let accessModeNote = '';
+    let accessModePromise = Promise.resolve();
+    const PUBLIC_BANNER_TEXT = 'Public demo: you are seeing fixture data and recorded Agent Activity only. Live subscriptions, scans, analysis, tools, raw ZeroOps, fault injection, SRE hand-off, proposals, approvals and decisions are disabled on this deployment.';
+    const PUBLIC_DISABLED_TEXT = 'Disabled on the public demo: this action would call live Azure, a model backend or ZeroOps.';
+
+    function isPublicDemo() { return publicDemoMode === true; }
+
+    function requireLiveAccess(label) {
+      if (publicDemoMode === false) return true;
+      announce(publicDemoMode === null
+        ? 'Still checking whether live controls are available. Try again in a moment.'
+        : `${label} is disabled on the public demo.`);
+      return false;
+    }
+
+    async function loadAccessMode() {
+      try {
+        const resp = await fetch('/api/health', { cache: 'no-store' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const health = await resp.json();
+        const flag = health && health.config ? health.config.public_demo_mode : undefined;
+        if (typeof flag !== 'boolean') throw new Error('public_demo_mode was not reported');
+        publicDemoMode = flag;
+        accessModeNote = '';
+        renderNavConfigStatus(health);
+      } catch (e) {
+        publicDemoMode = true;
+        accessModeNote = `Could not read the deployment mode from /api/health (${e.message}), so live controls are hidden.`;
+        renderNavConfigStatus(null);
+      }
+      applyAccessMode();
+    }
+
+    function renderNavConfigStatus(health) {
+      const el = document.getElementById('nav-config-status');
+      if (!el) return;
+      if (!health || !health.agents) { el.textContent = 'Agent configuration: unknown'; return; }
+      const keys = Object.keys(health.agents);
+      const withEndpoint = keys.filter(k => health.agents[k] && health.agents[k].endpoint_configured).length;
+      const backend = health.backend && health.backend.active_backend ? ` · configured backend: ${health.backend.active_backend}` : '';
+      el.textContent = `Configured: ${withEndpoint}/${keys.length} agent endpoints${backend} · availability not checked`;
+    }
+
+    function applyAccessMode() {
+      const pub = isPublicDemo();
+      const banner = document.getElementById('access-banner');
+      banner.classList.toggle('hidden', !pub);
+      banner.textContent = '';
+      if (pub) {
+        banner.appendChild(document.createTextNode(accessModeNote ? accessModeNote + ' ' : PUBLIC_BANNER_TEXT + ' '));
+        if (accessModeNote) {
+          const retry = document.createElement('button');
+          retry.type = 'button';
+          retry.className = 'underline font-medium';
+          retry.textContent = 'Retry';
+          retry.addEventListener('click', () => { accessModePromise = loadAccessMode(); });
+          banner.appendChild(retry);
+        }
+      }
+      document.querySelectorAll('[data-live-control]').forEach(el => {
+        if (el.id === 'mode-live') { el.classList.toggle('hidden', pub); return; }
+        if (pub) {
+          if ('disabled' in el) el.disabled = true;
+          el.setAttribute('aria-disabled', 'true');
+          el.setAttribute('title', PUBLIC_DISABLED_TEXT);
+          el.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+          if ('disabled' in el) el.disabled = false;
+          el.removeAttribute('aria-disabled');
+          el.removeAttribute('title');
+          el.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+      });
+      for (const id of ['tools-public-note', 'council-public-note']) {
+        const n = document.getElementById(id);
+        if (n) n.classList.toggle('hidden', !pub);
+      }
+      const zbtn = document.getElementById('tools-zeroops-btn');
+      if (zbtn) zbtn.textContent = pub ? 'Open ZeroOps explanation (controls disabled on public demo)' : '⚡ Open ZeroOps live demos';
+      if (pub) {
+        document.getElementById('sub-selector').classList.add('hidden');
+        if (currentMode === 'live') setMode('demo');
+      }
+    }
+
+    // ─── Agent Activity (GET /api/activity, GET /api/activity/<id>) ──
+    // Renders only what the API returns. Absent fields read "not recorded";
+    // nothing is inferred and no event is ever synthesized.
+    const ACTIVITY_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+    const ACTIVITY_PAGE_SIZE = 20;
+    const ACTIVITY_POLL_MS = 10000;
+    const ACTIVITY_POLL_MAX_MS = 120000;
+    const ACTIVITY_MAX_FAILURES = 5;
+    const ACTIVITY_REQUEST_TIMEOUT_MS = 8000;
+
+    const ACTIVITY_PHASES = {
+      opened: { label: 'Opened', cls: 'bg-brand-gray-100 text-brand-gray-700' },
+      in_progress: { label: 'In progress', cls: 'bg-blue-100 text-blue-800' },
+      analysis_ready: { label: 'Analysis ready', cls: 'bg-blue-100 text-blue-800' },
+      needs_review: { label: 'Needs human review', cls: 'bg-purple-100 text-purple-800' },
+      approved: { label: 'Approved — not executed', cls: 'bg-purple-100 text-purple-800' },
+      rejected: { label: 'Rejected', cls: 'bg-brand-gray-200 text-brand-gray-700' },
+      closed_unverified: { label: 'Closed without independent verification', cls: 'bg-amber-100 text-amber-800' },
+      failed: { label: 'Failed', cls: 'bg-red-600 text-white' },
+    };
+    const ACTIVITY_TERMINAL_PHASES = ['approved', 'rejected', 'closed_unverified', 'failed'];
+    const ACTIVITY_RUN_STATUSES = {
+      running: { label: 'Run in progress', cls: 'bg-blue-100 text-blue-800' },
+      completed: { label: 'Run completed', cls: 'bg-green-100 text-green-800' },
+      insufficient_evidence: { label: 'Insufficient evidence', cls: 'bg-amber-100 text-amber-800' },
+      invalid_output: { label: 'Invalid output', cls: 'bg-red-100 text-red-800' },
+      failed: { label: 'Run failed', cls: 'bg-red-600 text-white' },
+    };
+    const ACTIVITY_ORIGINS = {
+      analysis: 'Analysis request', briefing: 'Briefing request', mcp: 'MCP handoff', detector: 'Deterministic fast detector',
+      simulated: 'Simulated fixture', api: 'API request', sre_handoff: 'SRE thread request', zeroops: 'ZeroOps escalation',
+    };
+    const ACTIVITY_TRIGGERS = { analysis: 'Analysis', briefing: 'Briefing', escalation: 'Escalation' };
+    const ACTIVITY_KINDS = {
+      opened: 'Investigation opened', investigation_opened: 'Investigation opened', phase_changed: 'Phase changed',
+      run_started: 'Run started', backend_selected: 'Backend selected', evidence_observed: 'Evidence observed',
+      analysis_ready: 'Analysis ready', review_requested: 'Review requested', decision_recorded: 'Decision recorded',
+      run_completed: 'Run completed', run_failed: 'Run failed', investigation_closed: 'Closed by operator (not verification)',
+      probe_result: 'Detector probe result', sre_thread_result: 'SRE thread request result', escalation_received: 'Escalation received',
+      analysis_started: 'Analysis started', model_completed: 'Model call completed', tool_completed: 'Tool call completed',
+      analysis_finished: 'Analysis finished', analysis_failed: 'Analysis failed', proposal_created: 'Proposal created',
+    };
+    const ACTIVITY_ARTIFACT_KINDS = {
+      evidence_summary: 'Evidence summary', routing_summary: 'Routing summary', analysis_summary: 'Analysis summary',
+      recommendation: 'Recommendation', review_summary: 'Review summary', approval_receipt: 'Approval receipt (not execution)',
+      execution_receipt: 'Execution receipt', verification_receipt: 'Verification receipt', probe_receipt: 'Detector probe receipt',
+      sre_handoff_receipt: 'SRE hand-off receipt (thread request only)', run_receipt: 'Run receipt', proposal_receipt: 'Proposal receipt',
+      decision_receipt: 'Decision receipt (not execution)',
+    };
+    const ACTIVITY_PROVENANCE = {
+      observed: { label: 'Observed', cls: 'bg-blue-100 text-blue-800', help: 'Recorded by this application.' },
+      reported: { label: 'Reported', cls: 'bg-brand-gray-200 text-brand-gray-700', help: 'Stated by another system or model; this application did not verify it.' },
+      configured: { label: 'Configured', cls: 'bg-white text-brand-gray-500 border border-dashed border-brand-gray-300', help: 'A setting only; not proof that anything ran.' },
+      simulated: { label: 'Simulated', cls: 'bg-amber-100 text-amber-800', help: 'Fixture or demo data; not a live event.' },
+      approved: { label: 'Approved', cls: 'bg-purple-100 text-purple-800', help: 'A human approval was recorded. It does not mean a fix was executed.' },
+      executed: { label: 'Executed (receipt)', cls: 'bg-green-100 text-green-800', help: 'A receipt with executed provenance was returned.' },
+      verified: { label: 'Verified (receipt)', cls: 'bg-green-600 text-white', help: 'A receipt with verified provenance was returned.' },
+    };
+    const ACTIVITY_FIELD_LABELS = {
+      status: 'Status', phase: 'Phase', trigger: 'Trigger', requested_backend: 'Requested backend', actual_backend: 'Actual backend',
+      backend: 'Backend', reason_code: 'Reason code', decision: 'Decision', confidence: 'Confidence', agent_key: 'Agent',
+      source: 'Source', category: 'Category', severity: 'Severity', count: 'Count', duration_ms: 'Duration',
+      model_calls: 'Model calls', total_tokens: 'Total tokens', estimated_cost_usd: 'Estimated cost', finding_count: 'Findings cited',
+      source_count: 'Evidence sources', specialist_count: 'Specialists', schema_valid: 'Schema valid', debate: 'Debate round',
+      approval_required: 'Approval required', tool_name: 'Tool', result_count: 'Results returned', thread_id: 'SRE thread ID (thread created; triage not observed)', specialist_agents: 'Specialists', source_types: 'Source types', finding_ids: 'Finding IDs',
+      valid_evidence_ids: 'Valid evidence IDs', missing_evidence: 'Missing evidence', tool_names: 'Tools called',
+    };
+    const ACTIVITY_SUMMARY_KEYS = ['specialist_agents', 'specialist_count', 'tool_names', 'tool_name', 'result_count', 'finding_count', 'source_count', 'schema_valid', 'confidence'];
+
+    const ACT = {
+      items: [], nextCursor: null, loaded: false, olderLoaded: false, inflight: false, failures: 0, timer: null,
+      userPaused: false, errorPaused: false, lastError: '', lastCheckedAt: 0, selectedId: null,
+    };
+    const DET = {
+      id: null, investigation: null, runs: [], events: [], artifacts: [], hasMore: false, inflight: false,
+      failures: 0, notFound: false, error: '', opener: null, loaded: false, controller: null,
+    };
+    let activityDetailRequestGeneration = 0;
+
+    // Several updates can land in one poll; join them so a screen reader hears all of them, not just the last.
+    let activityAnnounceBuffer = [];
+    let activityAnnounceTimer = null;
+    function announceActivity(msg) {
+      activityAnnounceBuffer.push(msg);
+      clearTimeout(activityAnnounceTimer);
+      activityAnnounceTimer = setTimeout(() => { announce(activityAnnounceBuffer.join(' ')); activityAnnounceBuffer = []; }, 150);
+    }
+
+    function activityLabel(map, token) {
+      if (token == null || token === '') return 'not recorded';
+      const hit = map[token];
+      if (hit) return typeof hit === 'string' ? hit : hit.label;
+      return String(token).replace(/_/g, ' ') + ' (unrecognized value)';
+    }
+
+    // Backend identity comes only from recorded run/event fields, never from the configured catalog.
+    function backendInfo(token) {
+      if (token == null || token === '') return { kind: null, label: 'not recorded', short: 'backend not recorded' };
+      const t = String(token).toLowerCase();
+      if (t === 'foundry' || t === 'foundry_agent_service') return { kind: 'foundry', label: 'Foundry Agent Service', short: 'Foundry' };
+      if (t === 'direct' || t === 'direct_azure_openai' || t === 'azure_openai') return { kind: 'direct', label: 'Azure OpenAI direct', short: 'Azure OpenAI direct' };
+      if (t === 'none') return { kind: 'none', label: 'No model backend used', short: 'no model backend' };
+      if (t === 'simulated' || t === 'fixture') return { kind: 'simulated', label: 'Simulated fixture', short: 'simulated' };
+      return { kind: 'unknown', label: `${token} (unrecognized backend)`, short: 'unrecognized backend' };
+    }
+
+    function activityChip(text, cls, title) {
+      return `<span class="text-xs px-2 py-0.5 rounded ${cls}"${title ? ` title="${escapeHtml(title)}"` : ''}>${escapeHtml(text)}</span>`;
+    }
+    function activityPhaseChip(phase) {
+      const p = ACTIVITY_PHASES[phase];
+      return activityChip('Phase: ' + (p ? p.label : activityLabel({}, phase)), p ? p.cls : 'bg-brand-gray-100 text-brand-gray-600');
+    }
+    function activityRunChip(status) {
+      const r = ACTIVITY_RUN_STATUSES[status];
+      return activityChip(r ? r.label : activityLabel({}, status), r ? r.cls : 'bg-brand-gray-100 text-brand-gray-600');
+    }
+    function activityProvenanceChip(provenance) {
+      const p = ACTIVITY_PROVENANCE[provenance];
+      if (!p) return `<span class="text-xs px-2 py-0.5 rounded bg-brand-gray-100 text-brand-gray-600"><span class="sr-only">Provenance: </span>${escapeHtml(activityLabel({}, provenance))}</span>`;
+      return `<span class="text-xs px-2 py-0.5 rounded ${p.cls}" title="${escapeHtml(p.help)}"><span class="sr-only">Provenance: </span>${escapeHtml(p.label)}</span>`;
+    }
+    function activityTime(iso) {
+      if (!iso) return 'unavailable';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return `<time datetime="${escapeHtml(iso)}">${escapeHtml(iso)}</time>`;
+      const text = d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' });
+      return `<time datetime="${escapeHtml(d.toISOString())}">${escapeHtml(text)}</time>`;
+    }
+    function activityLatest(...values) {
+      let best = null;
+      for (const v of values) {
+        const t = v ? new Date(v).getTime() : NaN;
+        if (!isNaN(t) && (best === null || t > best.t)) best = { t, v };
+      }
+      return best ? best.v : null;
+    }
+    function activityFormatMs(ms) {
+      if (ms < 1000) return Math.round(ms) + ' ms';
+      return (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + ' s';
+    }
+    function activityValueText(key, v) {
+      if (typeof v === 'boolean') return v ? 'yes' : 'no';
+      if (typeof v === 'number') {
+        if (key === 'estimated_cost_usd') return '$' + v.toFixed(v < 1 ? 4 : 2) + ' (estimate, caller-maintained pricing)';
+        if (key === 'duration_ms') return activityFormatMs(v);
+        return v.toLocaleString();
+      }
+      if (Array.isArray(v)) {
+        if (!v.length) return 'none recorded';
+        const shown = v.slice(0, 20).map(x => (x !== null && typeof x === 'object') ? '[structured value]' : String(x));
+        return shown.join(', ') + (v.length > 20 ? ` … (+${v.length - 20} more)` : '');
+      }
+      if (v !== null && typeof v === 'object') return '[structured value not displayed]';
+      if (key === 'backend' || key === 'actual_backend' || key === 'requested_backend') return backendInfo(v).label;
+      return String(v);
+    }
+    // [label, text] pairs for every returned field; unknown keys show under their own name.
+    function activityPairs(payload, skipKeys) {
+      if (!payload || typeof payload !== 'object') return [];
+      const skip = new Set(skipKeys || []);
+      return Object.keys(payload).filter(k => !skip.has(k)).map(k => [ACTIVITY_FIELD_LABELS[k] || k, activityValueText(k, payload[k])]);
+    }
+    function activityDl(pairs, cls) {
+      return `<dl class="${cls || 'grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-xs'}">` +
+        pairs.map(([k, v]) => `<div><dt class="inline text-brand-gray-400">${escapeHtml(k)}:</dt> <dd class="inline text-brand-gray-700">${escapeHtml(v)}</dd></div>`).join('') + '</dl>';
+    }
+
+    function activityActorLabel(ev, run, inv) {
+      const payload = ev.payload || {};
+      const kind = ev.kind;
+      const origin = inv ? inv.origin : null;
+      if (ev.provenance === 'simulated') return 'Simulated fixture';
+      if (kind === 'sre_thread_result') return 'SRE thread request';
+      if (kind === 'escalation_received' && (origin === 'mcp' || ev.actor === 'sre_agent')) return 'MCP handoff';
+      const eventBackend = payload.actual_backend || payload.backend || null;
+      const runBackend = run ? run.actual_backend : null;
+      const eventInfo = backendInfo(eventBackend);
+      const runInfo = backendInfo(runBackend);
+      const conflict = eventBackend && runBackend && eventInfo.kind !== runInfo.kind;
+      const backend = conflict ? { short: `backend conflict: event ${eventInfo.short}, run ${runInfo.short}` } : backendInfo(eventBackend || runBackend);
+      switch (ev.actor) {
+        case 'system': return 'Deterministic collector/router';
+        case 'detector': return 'Deterministic detector';
+        case 'orchestrator':
+          return ['model_completed', 'analysis_ready', 'analysis_finished'].includes(kind)
+            ? `Coordinator · ${backend.short}` : 'Deterministic collector/router';
+        case 'specialist': return `Specialist · ${backend.short}`;
+        case 'sre_agent': return 'Azure SRE Agent (reported)';
+        case 'operator': return kind === 'decision_recorded' ? 'Human decision' : 'Operator';
+        case 'reviewer': return kind === 'decision_recorded' ? 'Human decision' : 'Reviewer';
+        default: return activityLabel({}, ev.actor);
+      }
+    }
+
+    // Visible flags for failures, invalid output, insufficient evidence and gaps.
+    function activityEventFlags(ev) {
+      const p = ev.payload || {};
+      const flags = [];
+      if (ev.kind === 'run_failed' || ev.kind === 'analysis_failed') flags.push({ tone: 'red', text: 'Failure recorded' });
+      if (p.schema_valid === false) flags.push({ tone: 'red', text: 'Invalid output: schema validation failed' });
+      if (Array.isArray(p.missing_evidence) && p.missing_evidence.length) flags.push({ tone: 'amber', text: `Evidence gaps: ${p.missing_evidence.length} item(s) missing` });
+      if (p.source_count === 0) flags.push({ tone: 'amber', text: 'Source gap: no evidence sources recorded' });
+      if (typeof p.status === 'string' && /fail|error|invalid|insufficient|timeout|denied|unavailable/i.test(p.status)) {
+        flags.push({ tone: /insufficient|unavailable/i.test(p.status) ? 'amber' : 'red', text: 'Status: ' + p.status.replace(/_/g, ' ') });
+      }
+      if (p.reason_code) flags.push({ tone: 'gray', text: 'Reason code: ' + p.reason_code });
+      return flags;
+    }
+    const ACTIVITY_TONES = { red: 'bg-red-50 text-red-800 border-red-200', amber: 'bg-amber-50 text-amber-800 border-amber-200', gray: 'bg-brand-gray-50 text-brand-gray-600 border-brand-gray-200', blue: 'bg-blue-50 text-blue-800 border-blue-200' };
+    function activityFlagHtml(f) {
+      return `<li class="text-xs border rounded px-2 py-1 ${ACTIVITY_TONES[f.tone] || ACTIVITY_TONES.gray}"><strong>${f.tone === 'red' ? 'Problem' : f.tone === 'amber' ? 'Gap' : 'Note'}:</strong> ${escapeHtml(f.text)}</li>`;
+    }
+
+    function activityHasClosureEvidence(events) {
+      return (events || []).some(ev => {
+        const payload = ev.payload || {};
+        if (ev.kind === 'investigation_closed') return true;
+        if (ev.kind === 'phase_changed' && payload.phase === 'closed_unverified') return true;
+        return ev.kind === 'decision_recorded'
+          && payload.phase === 'closed_unverified'
+          && typeof payload.decision === 'string'
+          && payload.decision.toLowerCase() === 'resolve';
+      });
+    }
+    function activityDecisionNote(ev, inv) {
+      const p = ev.payload || {};
+      const decision = typeof p.decision === 'string' ? p.decision : '';
+      if (ev.provenance === 'approved' || (ev.kind === 'decision_recorded' && /approv/i.test(decision))) {
+        return 'Approval recorded. This is a human decision record; it does not mean a fix was executed or verified.';
+      }
+      if (ev.kind === 'decision_recorded' && /reject/i.test(decision)) return 'Rejection recorded. Nothing was executed.';
+      const closureRecorded = ev.kind === 'investigation_closed'
+        || (ev.kind === 'decision_recorded' && p.phase === 'closed_unverified' && /^resolve$/i.test(decision))
+        || (inv && inv.phase === 'closed_unverified' && ev.kind === 'phase_changed' && p.phase === 'closed_unverified');
+      if (closureRecorded) {
+        return 'Operator closure recorded. This is not SRE verification.';
+      }
+      return '';
+    }
+
+    function activityExecutionState(events, artifacts, hasMore) {
+      const receipts = [];
+      for (const e of events) if (e.provenance === 'executed' || e.provenance === 'verified') receipts.push({ what: activityLabel(ACTIVITY_KINDS, e.kind), prov: e.provenance, at: e.occurred_at });
+      for (const a of artifacts) {
+        if (a.provenance === 'executed' || a.provenance === 'verified' || a.kind === 'execution_receipt' || a.kind === 'verification_receipt') {
+          receipts.push({ what: activityLabel(ACTIVITY_ARTIFACT_KINDS, a.kind), prov: a.provenance, at: a.created_at });
+        }
+      }
+      return { receipts, scope: `${events.length} loaded event(s) and ${artifacts.length} artifact(s)${hasMore ? '; more events exist that are not loaded' : ''}` };
+    }
+
+    function activityItemHtml(item) {
+      const run = item.latest_run || null;
+      const usage = run && run.usage ? run.usage : null;
+      const requested = run ? backendInfo(run.requested_backend) : null;
+      const actual = run ? backendInfo(run.actual_backend) : null;
+      const lastObserved = activityLatest(item.updated_at, run && run.started_at, run && run.updated_at, run && run.completed_at);
+      const chips = [
+        activityChip('Origin: ' + activityLabel(ACTIVITY_ORIGINS, item.origin), item.origin === 'simulated' ? 'bg-amber-100 text-amber-800' : 'bg-brand-gray-100 text-brand-gray-700'),
+        activityPhaseChip(item.phase),
+        run ? activityRunChip(run.status) : activityChip('No run recorded', 'bg-brand-gray-100 text-brand-gray-500'),
+      ];
+      if (item.origin === 'simulated') chips.push(activityChip('Simulated fixture — not a live event', 'bg-amber-100 text-amber-800'));
+      const flags = [];
+      if (run && usage && usage.schema_valid === false) flags.push({ tone: 'red', text: 'Invalid output: schema validation failed' });
+      if (run && usage && Array.isArray(usage.missing_evidence) && usage.missing_evidence.length) flags.push({ tone: 'amber', text: `Evidence gaps: ${usage.missing_evidence.length} item(s) missing` });
+      if (run && usage && usage.source_count === 0) flags.push({ tone: 'amber', text: 'Source gap: no evidence sources recorded' });
+      if (run && (run.status === 'insufficient_evidence' || run.status === 'invalid_output' || run.status === 'failed')) {
+        flags.push({ tone: run.status === 'insufficient_evidence' ? 'amber' : 'red', text: (ACTIVITY_RUN_STATUSES[run.status] || {}).label + ' (latest run)' });
+      }
+      if (item.phase === 'failed') flags.push({ tone: 'red', text: 'Investigation failed' });
+      if (item.run_count === 0 && item.event_count === 0) flags.push({ tone: 'gray', text: 'No runs or events recorded yet' });
+
+      const summaryPairs = usage ? activityPairs(usage, []).filter(([k]) => !['Status', 'Phase'].includes(k)) : [];
+      const usagePairs = [];
+      if (!run) usagePairs.push(['Measured usage', 'no run recorded']);
+      else if (!usage) usagePairs.push(['Measured usage', 'not recorded; cost unavailable']);
+      else {
+        for (const [k, label] of [['model_calls', 'Model calls'], ['total_tokens', 'Total tokens'], ['duration_ms', 'Duration']]) {
+          usagePairs.push([label, typeof usage[k] === 'number' ? activityValueText(k, usage[k]) : 'not recorded']);
+        }
+        usagePairs.push(['Estimated cost', typeof usage.estimated_cost_usd === 'number' ? activityValueText('estimated_cost_usd', usage.estimated_cost_usd) : 'unavailable (not recorded)']);
+      }
+      const resultPairs = usage ? summaryPairs.filter(([k]) => ACTIVITY_SUMMARY_KEYS.map(x => ACTIVITY_FIELD_LABELS[x]).includes(k)) : [];
+      const selected = ACT.selectedId === item.id;
+      const phaseLabel = (ACTIVITY_PHASES[item.phase] || {}).label || item.phase;
+      return `
+        <div class="flex flex-wrap items-center gap-1.5">${chips.join('')}</div>
+        <div class="mt-2 flex flex-wrap items-baseline justify-between gap-2">
+          <div class="text-sm font-semibold">Investigation <code class="text-xs">${escapeHtml(item.id)}</code>${item.scenario_id ? ` <span class="text-xs font-normal text-brand-gray-500">scenario ${escapeHtml(item.scenario_id)}</span>` : ''}</div>
+          <button type="button" data-activity-open="${escapeHtml(item.id)}" data-focus-key="open-${escapeHtml(item.id)}" aria-controls="activity-detail" aria-expanded="${selected ? 'true' : 'false'}"
+            aria-label="${selected ? 'Timeline open' : 'Open timeline'} for investigation ${escapeHtml(item.id)}, ${escapeHtml(phaseLabel)}"
+            class="text-xs rounded px-3 py-1.5 ${selected ? 'bg-brand-gray-200 text-brand-gray-700' : 'bg-brand-black text-white hover:bg-brand-gray-700'}">${selected ? 'Timeline open' : 'Open timeline'}</button>
+        </div>
+        <dl class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+          <div><dt class="inline text-brand-gray-400">Requested backend:</dt> <dd class="inline">${escapeHtml(requested ? requested.label : 'no run recorded')}</dd></div>
+          <div><dt class="inline text-brand-gray-400">Actual backend (recorded):</dt> <dd class="inline">${escapeHtml(actual ? (run.actual_backend ? actual.label : 'not recorded yet') : 'no run recorded')}</dd></div>
+          <div><dt class="inline text-brand-gray-400">Last observed:</dt> <dd class="inline">${activityTime(lastObserved)}</dd></div>
+          <div><dt class="inline text-brand-gray-400">Recorded:</dt> <dd class="inline">${item.run_count ?? 0} run(s), ${item.event_count ?? 0} event(s), ${item.artifact_count ?? 0} artifact(s)</dd></div>
+          ${item.escalation_id ? `<div><dt class="inline text-brand-gray-400">ZeroOps escalation:</dt> <dd class="inline"><code>${escapeHtml(item.escalation_id)}</code></dd></div>` : ''}
+        </dl>
+        <div class="mt-1 text-xs"><span class="text-brand-gray-400">Measured usage:</span> ${escapeHtml(usagePairs.map(([k, v]) => run && usage ? `${k}: ${v}` : v).join(' · '))}</div>
+        <div class="mt-1 text-xs"><span class="text-brand-gray-400">Specialist / tool / result summary:</span> ${resultPairs.length ? escapeHtml(resultPairs.map(([k, v]) => `${k}: ${v}`).join(' · ')) : 'not recorded in the list summary; open the timeline for per-event records'}</div>
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          ${activityChip('No execution or verification observed', 'bg-brand-gray-100 text-brand-gray-600 border border-brand-gray-200', 'No executed or verified receipt is present in this list summary. Open the timeline to see recorded receipts.')}
+        </div>
+        ${flags.length ? `<ul class="mt-2 space-y-1">${flags.map(activityFlagHtml).join('')}</ul>` : ''}`;
+    }
+
+    // Keyed reconcile: untouched rows keep their DOM nodes, so focus, selection and open <details> survive polling.
+    function activitySetHtml(el, html) {
+      const active = document.activeElement;
+      const focusKey = active && el.contains(active) ? active.getAttribute('data-focus-key') : null;
+      const openKeys = Array.from(el.querySelectorAll('details[data-key][open]')).map(d => d.getAttribute('data-key'));
+      el.innerHTML = html;
+      for (const k of openKeys) { const d = el.querySelector(`details[data-key="${CSS.escape(k)}"]`); if (d) d.open = true; }
+      if (focusKey) { const t = el.querySelector(`[data-focus-key="${CSS.escape(focusKey)}"]`); if (t) t.focus({ preventScroll: true }); }
+    }
+    function activityReconcile(container, items, keyFn, htmlFn, liClass) {
+      const sigs = container._sigs || (container._sigs = new Map());
+      const existing = new Map();
+      Array.from(container.children).forEach(li => existing.set(li.getAttribute('data-key'), li));
+      let prev = null;
+      for (const item of items) {
+        const key = String(keyFn(item));
+        const html = htmlFn(item);
+        let li = existing.get(key);
+        if (!li) { li = document.createElement('li'); li.setAttribute('data-key', key); li.className = liClass; }
+        if (sigs.get(key) !== html) { activitySetHtml(li, html); sigs.set(key, html); }
+        const ref = prev ? prev.nextSibling : container.firstChild;
+        if (li !== ref) container.insertBefore(li, ref);
+        prev = li;
+        existing.delete(key);
+      }
+      existing.forEach((li, key) => { li.remove(); sigs.delete(key); });
+    }
+    function activitySetSection(el, html) {
+      if (el._sig === html) return;
+      el._sig = html;
+      activitySetHtml(el, html);
+    }
+    function activitySetStatus(id, kind, message) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (!kind) { el.classList.add('hidden'); el.textContent = ''; return; }
+      el.className = 'mt-2 text-xs rounded border p-2 ' + (kind === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-brand-gray-50 border-brand-gray-200 text-brand-gray-600');
+      if (id === 'activity-status') el.className += ' mx-4 mt-3';
+      el.textContent = message;
+    }
+
+    function activityRunHtml(run) {
+      const requested = backendInfo(run.requested_backend);
+      const actual = backendInfo(run.actual_backend);
+      const fellBack = requested.kind && actual.kind && requested.kind !== actual.kind && actual.kind !== 'none';
+      const usage = run.usage;
+      const usagePairs = usage
+        ? activityPairs(usage, [])
+        : [['Measured usage', 'not recorded (cost unavailable)']];
+      if (usage && typeof usage.estimated_cost_usd !== 'number') usagePairs.push(['Estimated cost', 'unavailable (not recorded)']);
+      return `<details data-key="run-${escapeHtml(run.id)}" class="border border-brand-gray-200 rounded-lg px-3 py-2">
+        <summary class="cursor-pointer text-xs" data-focus-key="run-${escapeHtml(run.id)}">
+          <span class="font-semibold">Run <code>${escapeHtml(run.id)}</code></span>
+          · ${escapeHtml(activityLabel(ACTIVITY_TRIGGERS, run.trigger))} · ${activityRunChip(run.status)}
+          · actual backend: <strong>${escapeHtml(run.actual_backend ? actual.label : 'not recorded yet')}</strong>
+        </summary>
+        <div class="mt-2 space-y-1 text-xs">
+          <div>Requested backend: ${escapeHtml(requested.label)} <span class="text-brand-gray-400">(a request, not proof of a run on that backend)</span></div>
+          <div>Actual backend: ${escapeHtml(run.actual_backend ? actual.label : 'not recorded yet')}</div>
+          ${fellBack ? `<div class="border rounded px-2 py-1 ${ACTIVITY_TONES.amber}"><strong>Backend differs from request:</strong> ${escapeHtml(requested.label)} was requested; ${escapeHtml(actual.label)} was recorded.</div>` : ''}
+          <div>Started ${activityTime(run.started_at || run.created_at)}${run.completed_at ? `, completed ${activityTime(run.completed_at)}` : ', not completed (no completion time recorded)'}</div>
+          ${activityDl(usagePairs)}
+        </div>
+      </details>`;
+    }
+
+    function activityGaps(d) {
+      const gaps = [];
+      for (const run of d.runs) {
+        const name = `Run ${run.id}`;
+        if (run.status === 'running') gaps.push({ tone: 'blue', text: `${name} is still running; results are not final.` });
+        else if (run.status === 'insufficient_evidence') gaps.push({ tone: 'amber', text: `${name}: insufficient evidence for a conclusion.` });
+        else if (run.status === 'invalid_output') gaps.push({ tone: 'red', text: `${name}: invalid output (it did not pass schema validation).` });
+        else if (run.status === 'failed') gaps.push({ tone: 'red', text: `${name} failed.` });
+        if (run.status !== 'running' && !run.actual_backend) gaps.push({ tone: 'amber', text: `${name}: actual backend was not recorded.` });
+        if (run.status !== 'running' && !run.usage) gaps.push({ tone: 'gray', text: `${name}: measured usage was not recorded; cost is unavailable.` });
+      }
+      for (const ev of d.events) {
+        for (const f of activityEventFlags(ev)) {
+          if (f.tone === 'gray') continue;
+          gaps.push({ tone: f.tone, text: `Event #${ev.seq} (${activityLabel(ACTIVITY_KINDS, ev.kind)}): ${f.text}` });
+        }
+      }
+      if (d.investigation && d.investigation.phase === 'failed') gaps.push({ tone: 'red', text: 'The investigation is in the failed phase.' });
+      if (d.hasMore) gaps.push({ tone: 'gray', text: 'More events exist than are loaded. Use "Load more events" to see them.' });
+      return gaps;
+    }
+
+    function activityEventHtml(ev) {
+      const run = DET.runs.find(r => r.id === ev.run_id) || null;
+      const flags = activityEventFlags(ev);
+      const note = activityDecisionNote(ev, DET.investigation);
+      const pairs = activityPairs(ev.payload, []);
+      const fieldHtml = !pairs.length
+        ? '<p class="text-xs text-brand-gray-400">No additional fields recorded.</p>'
+        : pairs.length > 4
+          ? `<details data-key="ev-${ev.seq}" class="text-xs"><summary class="cursor-pointer text-brand-gray-600" data-focus-key="ev-${ev.seq}">Recorded fields (${pairs.length})</summary><div class="mt-1">${activityDl(pairs)}</div></details>`
+          : activityDl(pairs);
+      return `
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          <span class="text-brand-gray-400">#${ev.seq}</span>
+          ${activityTime(ev.occurred_at)}
+          <strong>${escapeHtml(activityActorLabel(ev, run, DET.investigation))}</strong>
+          <span>${escapeHtml(activityLabel(ACTIVITY_KINDS, ev.kind))}</span>
+          ${activityProvenanceChip(ev.provenance)}
+          ${ev.run_id ? `<span class="text-brand-gray-400">run <code>${escapeHtml(ev.run_id)}</code></span>` : ''}
+        </div>
+        ${note ? `<p class="mt-1 text-xs border rounded px-2 py-1 ${ACTIVITY_TONES.gray}">${escapeHtml(note)}</p>` : ''}
+        ${flags.length ? `<ul class="mt-1 space-y-1">${flags.map(activityFlagHtml).join('')}</ul>` : ''}
+        <div class="mt-1">${fieldHtml}</div>`;
+    }
+
+    function activityArtifactHtml(a) {
+      const pairs = activityPairs(a.payload, []);
+      return `<details data-key="art-${escapeHtml(a.id)}" class="border border-brand-gray-200 rounded-lg px-3 py-2">
+        <summary class="cursor-pointer text-xs" data-focus-key="art-${escapeHtml(a.id)}">
+          <span class="font-semibold">${escapeHtml(activityLabel(ACTIVITY_ARTIFACT_KINDS, a.kind))}</span>
+          ${activityProvenanceChip(a.provenance)} ${activityTime(a.created_at)}
+        </summary>
+        <div class="mt-2">${pairs.length ? activityDl(pairs) : '<p class="text-xs text-brand-gray-400">No fields recorded.</p>'}
+          <p class="mt-1 text-xs text-brand-gray-400"><code>${escapeHtml(a.id)}</code>${a.run_id ? ` · run <code>${escapeHtml(a.run_id)}</code>` : ''}</p></div>
+      </details>`;
+    }
+
+    function renderActivityDetail() {
+      const sec = document.getElementById('activity-detail');
+      if (!DET.id) { sec.classList.add('hidden'); return; }
+      sec.classList.remove('hidden');
+      document.getElementById('activity-detail-heading').textContent = `Investigation ${DET.id} — timeline`;
+      const inv = DET.investigation;
+      if (!inv) {
+        activitySetSection(document.getElementById('activity-detail-summary'), DET.error ? '' : '<p class="text-sm text-brand-gray-400">Loading recorded timeline…</p>');
+        return;
+      }
+      const exec = activityExecutionState(DET.events, DET.artifacts, DET.hasMore);
+      const operatorClosed = activityHasClosureEvidence(DET.events);
+      const runLatest = DET.runs.flatMap(r => [r.started_at, r.updated_at, r.completed_at]);
+      const last = activityLatest(inv.updated_at, ...runLatest, ...DET.events.map(e => e.occurred_at), ...DET.artifacts.map(a => a.created_at));
+      const summaryHtml = `
+        <div class="flex flex-wrap items-center gap-1.5">
+          ${activityChip('Origin: ' + activityLabel(ACTIVITY_ORIGINS, inv.origin), inv.origin === 'simulated' ? 'bg-amber-100 text-amber-800' : 'bg-brand-gray-100 text-brand-gray-700')}
+          ${activityPhaseChip(inv.phase)}
+          ${inv.origin === 'simulated' ? activityChip('Simulated fixture — not a live event', 'bg-amber-100 text-amber-800') : ''}
+        </div>
+        ${inv.phase === 'approved' ? `<p class="mt-2 text-xs border rounded px-2 py-1 ${ACTIVITY_TONES.gray}">A human approval is recorded. Approval is not execution: nothing here shows that a fix ran.</p>` : ''}
+        ${inv.phase === 'closed_unverified' ? `<p class="mt-2 text-xs border rounded px-2 py-1 ${ACTIVITY_TONES.amber}">${operatorClosed ? 'Closed by an operator without verification. Operator closure is not SRE verification.' : 'Closed without independent verification. No closure decision was returned.'}</p>` : ''}
+        ${activityDl([
+          ['Scenario', inv.scenario_id || 'none recorded'],
+          ['ZeroOps escalation', inv.escalation_id || 'none recorded'],
+        ], 'mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-xs')}
+        <div class="mt-1 text-xs text-brand-gray-600">Opened ${activityTime(inv.created_at)} · Last observed ${activityTime(last)}</div>
+        <div class="mt-2 text-xs">
+          ${exec.receipts.length
+            ? `<div class="border rounded px-2 py-1 ${ACTIVITY_TONES.blue}"><strong>Receipts returned:</strong><ul class="list-disc ml-4">${exec.receipts.map(r => `<li>${escapeHtml(r.what)} (${escapeHtml((ACTIVITY_PROVENANCE[r.prov] || {}).label || r.prov)}) at ${activityTime(r.at)}</li>`).join('')}</ul></div>`
+            : `<span class="inline-block px-2 py-1 rounded border ${ACTIVITY_TONES.gray}"><strong>No execution or verification observed</strong> among ${escapeHtml(exec.scope)}.</span>`}
+        </div>`;
+      activitySetSection(document.getElementById('activity-detail-summary'), summaryHtml);
+
+      activitySetSection(document.getElementById('activity-detail-runs'),
+        `<h4 class="text-xs font-bold text-brand-gray-400 uppercase tracking-wider mb-2">Runs (${DET.runs.length})</h4>` +
+        (DET.runs.length ? `<div class="space-y-2">${DET.runs.map(activityRunHtml).join('')}</div>` : '<p class="text-sm text-brand-gray-500 italic">No runs recorded. No model backend activity is claimed.</p>'));
+
+      const gaps = activityGaps(DET);
+      activitySetSection(document.getElementById('activity-detail-gaps'),
+        '<h4 class="text-xs font-bold text-brand-gray-400 uppercase tracking-wider mb-2">Failures, invalid output and gaps</h4>' +
+        (gaps.length ? `<ul class="space-y-1">${gaps.map(activityFlagHtml).join('')}</ul>` : '<p class="text-sm text-brand-gray-500">No gaps or failures were recorded in the returned data.</p>'));
+
+      document.getElementById('activity-detail-no-events').classList.toggle('hidden', DET.events.length > 0);
+      activityReconcile(document.getElementById('activity-timeline'), DET.events, e => e.seq, activityEventHtml, 'relative');
+      document.getElementById('activity-events-more').classList.toggle('hidden', !DET.hasMore);
+
+      activitySetSection(document.getElementById('activity-detail-artifacts'),
+        `<h4 class="text-xs font-bold text-brand-gray-400 uppercase tracking-wider mb-2">Recorded artifacts (${DET.artifacts.length})</h4>` +
+        (DET.artifacts.length ? `<div class="space-y-2">${DET.artifacts.map(activityArtifactHtml).join('')}</div>` : '<p class="text-sm text-brand-gray-500 italic">No artifacts recorded.</p>'));
+    }
+
+    function renderActivityList() {
+      const ul = document.getElementById('activity-list');
+      const empty = document.getElementById('activity-list-empty');
+      if (ACT.items.length) {
+        empty.classList.add('hidden');
+      } else {
+        empty.classList.remove('hidden');
+        empty.textContent = ACT.loaded
+          ? 'No recorded activity since activity capture was enabled.'
+          : (ACT.lastError ? 'Agent Activity could not be loaded. This is not an empty state: ' + ACT.lastError : 'Loading recorded activity…');
+      }
+      activityReconcile(ul, ACT.items, i => i.id, activityItemHtml, 'border border-brand-gray-200 rounded-lg p-3 bg-white');
+      document.getElementById('activity-load-more').classList.toggle('hidden', !ACT.nextCursor);
+      const newest = ACT.items.reduce((best, i) => activityLatest(best, i.updated_at, i.latest_run && i.latest_run.started_at, i.latest_run && i.latest_run.updated_at, i.latest_run && i.latest_run.completed_at), null);
+      setEl('nav-last-observed', newest ? new Date(newest).toLocaleString() : (ACT.loaded ? 'none recorded' : 'not loaded'));
+    }
+
+    function activityErrorText(e) {
+      if (e.timeout) return 'the request timed out';
+      if (e.status === 403) return 'blocked by the deployment security gate (HTTP 403)';
+      if (e.status === 404) return 'not found (HTTP 404)';
+      if (e.status === 503) return 'the activity store is unavailable (HTTP 503)';
+      if (e.status) return `${e.message} (HTTP ${e.status})`;
+      return 'network error: ' + e.message;
+    }
+
+    async function activityRequest(path, ctrl = new AbortController()) {
+      const timer = setTimeout(() => ctrl.abort(), ACTIVITY_REQUEST_TIMEOUT_MS);
+      try {
+        const resp = await fetch(path, { headers: { Accept: 'application/json' }, cache: 'no-store', signal: ctrl.signal });
+        let body = null;
+        try { body = await resp.json(); } catch (e) { body = null; }
+        if (!resp.ok) { const err = new Error((body && body.error) || 'request failed'); err.status = resp.status; throw err; }
+        if (!body || typeof body !== 'object') throw new Error('unexpected response from the activity API');
+        return body;
+      } catch (e) {
+        if (e.name === 'AbortError') { const err = new Error('timeout'); err.timeout = true; throw err; }
+        throw e;
+      } finally { clearTimeout(timer); }
+    }
+
+    function opsViewActive() { return !document.getElementById('view-ops').classList.contains('hidden'); }
+    function activityPollingAllowed() {
+      return !ACT.userPaused && !ACT.errorPaused && document.visibilityState === 'visible' && opsViewActive();
+    }
+    function activityPollDelay() { return Math.min(ACTIVITY_POLL_MS * Math.pow(2, ACT.failures), ACTIVITY_POLL_MAX_MS); }
+    function updateActivityPollState() {
+      const el = document.getElementById('activity-poll-state');
+      const btn = document.getElementById('activity-poll-toggle');
+      if (!el || !btn) return;
+      btn.textContent = 'Auto-refresh: ' + (ACT.userPaused ? 'off' : 'on');
+      btn.setAttribute('aria-pressed', String(!ACT.userPaused));
+      el.textContent = ACT.userPaused ? 'Paused by you'
+        : ACT.errorPaused ? 'Paused after repeated errors; use Refresh to retry'
+        : `Checks about every ${Math.round(activityPollDelay() / 1000)}s while this view is open`;
+    }
+    function scheduleActivityPoll() {
+      clearTimeout(ACT.timer);
+      ACT.timer = null;
+      updateActivityPollState();
+      if (activityPollingAllowed()) ACT.timer = setTimeout(() => refreshActivity(false), activityPollDelay());
+    }
+    function stopActivityPolling() { clearTimeout(ACT.timer); ACT.timer = null; }
+    function toggleActivityAutoRefresh() {
+      ACT.userPaused = !ACT.userPaused;
+      announceActivity(ACT.userPaused ? 'Agent Activity auto-refresh turned off.' : 'Agent Activity auto-refresh turned on.');
+      if (ACT.userPaused) { stopActivityPolling(); updateActivityPollState(); } else refreshActivity(false);
+    }
+
+    function detailNeedsPoll() {
+      if (!DET.id || DET.notFound || DET.failures >= ACTIVITY_MAX_FAILURES) return false;
+      if (!DET.investigation) return true;
+      if (DET.hasMore || DET.runs.some(r => r.status === 'running')) return true;
+      if (!ACTIVITY_TERMINAL_PHASES.includes(DET.investigation.phase)) return true;
+      const item = ACT.items.find(i => i.id === DET.id);
+      return !!item && (item.updated_at !== DET.investigation.updated_at || (item.event_count || 0) > DET.events.length);
+    }
+
+    function mergeActivityFirstPage(pageItems, nextCursor) {
+      const fresh = new Set(pageItems.map(i => i.id));
+      ACT.items = pageItems.concat(ACT.items.filter(i => !fresh.has(i.id)));
+      if (!ACT.olderLoaded) ACT.nextCursor = nextCursor || null;
+    }
+
+    async function refreshActivity(manual) {
+      if (ACT.inflight) return;
+      ACT.inflight = true;
+      if (manual) { ACT.failures = 0; ACT.errorPaused = false; }
+      const hadError = !!ACT.lastError;
+      try {
+        const data = await activityRequest('/api/activity?limit=' + ACTIVITY_PAGE_SIZE);
+        if (!Array.isArray(data.items)) throw new Error('unexpected activity list shape');
+        const knownIds = new Set(ACT.items.map(i => i.id));
+        const wasLoaded = ACT.loaded;
+        mergeActivityFirstPage(data.items, data.next_cursor);
+        ACT.loaded = true;
+        ACT.failures = 0;
+        ACT.lastError = '';
+        activitySetStatus('activity-status', null);
+        if (wasLoaded) {
+          const added = data.items.filter(i => !knownIds.has(i.id)).length;
+          if (added) announceActivity(`${added} new investigation${added === 1 ? '' : 's'} recorded in Agent Activity.`);
+        }
+        if (hadError) announceActivity('Agent Activity refresh recovered.');
+      } catch (e) {
+        ACT.failures += 1;
+        ACT.lastError = activityErrorText(e);
+        if (ACT.failures >= ACTIVITY_MAX_FAILURES) ACT.errorPaused = true;
+        activitySetStatus('activity-status', 'error',
+          `Agent Activity refresh failed: ${ACT.lastError}.${ACT.loaded ? ' Showing the last data loaded; it may be out of date.' : ''}` +
+          (ACT.errorPaused ? ' Auto-refresh is paused; use Refresh to retry.' : ''));
+        if (!hadError) announceActivity('Agent Activity refresh failed. ' + (ACT.loaded ? 'Showing the last loaded data.' : ''));
+      } finally {
+        ACT.inflight = false;
+        ACT.lastCheckedAt = Date.now();
+        const t = document.getElementById('activity-last-checked');
+        t.dateTime = new Date(ACT.lastCheckedAt).toISOString();
+        t.textContent = new Date(ACT.lastCheckedAt).toLocaleTimeString();
+      }
+      renderActivityList();
+      if (DET.id && (manual || detailNeedsPoll())) await refreshActivityDetail(false);
+      scheduleActivityPoll();
+    }
+
+    async function loadMoreActivity() {
+      if (!ACT.nextCursor || ACT.inflight) return;
+      ACT.inflight = true;
+      const btn = document.getElementById('activity-load-more');
+      try {
+        const data = await activityRequest(`/api/activity?limit=${ACTIVITY_PAGE_SIZE}&cursor=${encodeURIComponent(ACT.nextCursor)}`);
+        if (!Array.isArray(data.items)) throw new Error('unexpected activity list shape');
+        const known = new Set(ACT.items.map(i => i.id));
+        const added = data.items.filter(i => !known.has(i.id));
+        ACT.items = ACT.items.concat(added);
+        ACT.nextCursor = data.next_cursor || null;
+        ACT.olderLoaded = true;
+        activitySetStatus('activity-status', null);
+        renderActivityList();
+        announceActivity(`${added.length} older investigation${added.length === 1 ? '' : 's'} loaded.`);
+        if (btn.classList.contains('hidden') && added.length) {
+          const first = document.querySelector(`[data-focus-key="open-${CSS.escape(added[0].id)}"]`);
+          if (first) first.focus();
+        }
+      } catch (e) {
+        activitySetStatus('activity-status', 'error', `Could not load older investigations: ${activityErrorText(e)}. The list shown is unchanged.`);
+      } finally { ACT.inflight = false; }
+    }
+
+    async function refreshActivityDetail(manual) {
+      if (!DET.id) return;
+      if (manual) DET.failures = 0;
+      const id = DET.id;
+      const requestGeneration = ++activityDetailRequestGeneration;
+      if (DET.controller) DET.controller.abort();
+      const ctrl = new AbortController();
+      DET.controller = ctrl;
+      DET.inflight = true;
+      const lastSeq = DET.events.length ? DET.events[DET.events.length - 1].seq : 0;
+      try {
+        const data = await activityRequest(`/api/activity/${encodeURIComponent(id)}?limit=100&event_after=${lastSeq}`, ctrl);
+        if (DET.id !== id) return;
+        if (requestGeneration !== activityDetailRequestGeneration) return;
+        if (!data.investigation || !Array.isArray(data.runs) || !Array.isArray(data.events) || !Array.isArray(data.artifacts)) {
+          throw new Error('unexpected activity detail shape');
+        }
+        const known = new Set(DET.events.map(e => e.seq));
+        const fresh = data.events.filter(e => !known.has(e.seq));
+        const prevPhase = DET.investigation ? DET.investigation.phase : null;
+        const wasLoaded = DET.loaded;
+        DET.investigation = data.investigation;
+        DET.runs = data.runs;
+        DET.artifacts = data.artifacts;
+        DET.events = DET.events.concat(fresh).sort((a, b) => a.seq - b.seq);
+        DET.hasMore = data.next_event_cursor != null;
+        DET.loaded = true;
+        DET.failures = 0;
+        DET.error = '';
+        DET.notFound = false;
+        activitySetStatus('activity-detail-status', null);
+        renderActivityDetail();
+        if (!wasLoaded) announceActivity(`Timeline loaded: ${DET.events.length} event${DET.events.length === 1 ? '' : 's'}, ${DET.artifacts.length} artifact${DET.artifacts.length === 1 ? '' : 's'}.`);
+        else {
+          if (fresh.length) announceActivity(`${fresh.length} new event${fresh.length === 1 ? '' : 's'} recorded for the open investigation.`);
+          if (prevPhase && prevPhase !== data.investigation.phase) announceActivity('Investigation phase changed to ' + ((ACTIVITY_PHASES[data.investigation.phase] || {}).label || data.investigation.phase) + '.');
+        }
+      } catch (e) {
+        if (DET.id !== id) return;
+        if (requestGeneration !== activityDetailRequestGeneration) return;
+        DET.failures += 1;
+        DET.notFound = e.status === 404;
+        DET.error = activityErrorText(e);
+        activitySetStatus('activity-detail-status', 'error',
+          `Timeline refresh failed: ${DET.error}.${DET.loaded ? ' Showing the last data loaded; it may be out of date.' : ''}` +
+          (DET.failures >= ACTIVITY_MAX_FAILURES ? ' Automatic timeline refresh has stopped; use Refresh timeline to retry.' : ''));
+        if (DET.failures === 1) announceActivity('Timeline refresh failed. ' + (DET.loaded ? 'Showing the last loaded data.' : ''));
+        renderActivityDetail();
+      } finally {
+        if (DET.id === id && requestGeneration === activityDetailRequestGeneration) {
+          DET.inflight = false;
+          DET.controller = null;
+        }
+      }
+    }
+    function loadMoreActivityEvents() { refreshActivityDetail(true); }
+
+    async function openActivityDetail(id, opener) {
+      if (!ACTIVITY_ID_RE.test(id || '')) return;
+      if (DET.controller) DET.controller.abort();
+      activityDetailRequestGeneration += 1;
+      const layout = document.getElementById('activity-layout');
+      Object.assign(DET, { id, investigation: null, runs: [], events: [], artifacts: [], hasMore: false, inflight: false, failures: 0, notFound: false, error: '', opener: opener || document.activeElement, loaded: false, controller: null });
+      ACT.selectedId = id;
+      for (const k of ['activity-detail-summary', 'activity-detail-runs', 'activity-detail-gaps', 'activity-detail-artifacts']) {
+        const el = document.getElementById(k); el._sig = null; el.innerHTML = '';
+      }
+      const tl = document.getElementById('activity-timeline'); tl.innerHTML = ''; tl._sigs = null;
+      activitySetStatus('activity-detail-status', null);
+      layout.classList.add('lg:grid-cols-2');
+      renderActivityDetail();
+      renderActivityList();
+      document.getElementById('activity-detail-heading').focus();
+      await refreshActivityDetail(true);
+    }
+    function closeActivityDetail() {
+      const opener = DET.opener;
+      if (DET.controller) DET.controller.abort();
+      activityDetailRequestGeneration += 1;
+      DET.id = null; DET.investigation = null; DET.events = []; DET.runs = []; DET.artifacts = [];
+      DET.controller = null;
+      ACT.selectedId = null;
+      document.getElementById('activity-layout').classList.remove('lg:grid-cols-2');
+      document.getElementById('activity-detail').classList.add('hidden');
+      renderActivityList();
+      const usable = opener && document.contains(opener) && opener.offsetParent !== null ? opener : null;
+      const fallback = document.getElementById('activity-heading');
+      (usable || fallback).focus();
+    }
+
+    async function openActivityInvestigation(id, opener) {
+      if (!ACTIVITY_ID_RE.test(id || '')) return;
+      if (document.getElementById('view-ops').classList.contains('hidden')) showView('ops');
+      await openActivityDetail(id, opener);
+    }
+    function openActivityPanel() {
+      showView('ops');
+      const h = document.getElementById('activity-heading');
+      h.tabIndex = -1;
+      h.focus();
+    }
+
+    document.addEventListener('click', (e) => {
+      const t = e.target.closest ? e.target.closest('[data-activity-open]') : null;
+      if (t) openActivityInvestigation(t.getAttribute('data-activity-open'), t);
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') { stopActivityPolling(); return; }
+      if (opsViewActive() && !ACT.userPaused && !ACT.errorPaused) {
+        if (Date.now() - ACT.lastCheckedAt >= 5000) refreshActivity(false); else scheduleActivityPoll();
+      }
+    });
+
+
     // ─── Global accessibility: keyboard/focus + click-outside ───
     document.addEventListener('click', (e) => {
       const menu = document.getElementById('nav-more-menu');
@@ -2084,7 +3028,9 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       populateQueueFilterOptions();
+      accessModePromise = loadAccessMode();
       loadExecutiveBrief();
+      refreshActivity(false);
     });
   </script>
 </body>
