@@ -56,6 +56,9 @@ param operationsSettings object = {}
 @allowed(['Enabled', 'Disabled'])
 param publicNetworkAccess string = 'Disabled'
 
+@description('Enables PUBLIC_DEMO_MODE: a server-enforced, exact-path read-only allowlist for anonymous demo traffic (see docs/PUBLIC_DEMO_SECURITY.md). All other /api/* routes return JSON 403. This is NOT operator authentication or RBAC. Default false keeps trusted behavior unchanged.')
+param publicDemoMode bool = false
+
 var webAppName = '${prefix}-app-${take(uniqueString(resourceGroup().id), 6)}'
 
 // Base application settings — always present, unchanged from prior releases
@@ -74,6 +77,7 @@ var baseAppSettings = [
   { name: 'APP_PROFILE', value: appProfile }
   { name: 'AGENT_DEFINITION_VERSION', value: agentDefinitionVersion }
   { name: 'AGENT_BACKEND', value: agentBackend }
+  { name: 'PUBLIC_DEMO_MODE', value: publicDemoMode ? 'true' : 'false' }
   { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'true' }
 ]
 

@@ -80,6 +80,10 @@ param otelServiceName = ''
 // public demo deployment (weaker isolation — see DEPLOYMENT.md).
 param publicNetworkAccess = 'Disabled'
 
+// Server-enforced, read-only anonymous demo allowlist. Leave false unless
+// this environment is intentionally exposed for a public demo.
+param publicDemoMode = false
+
 // ── Azure AI Foundry runtime squad (optional — docs/FOUNDRY_ARCHITECTURE.md) ──
 // 'direct' calls Azure OpenAI; 'foundry' runs each specialist as a
 // versioned Foundry agent in the project below.

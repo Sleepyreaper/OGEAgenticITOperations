@@ -10,6 +10,8 @@ import threading
 import uuid
 from datetime import datetime, timezone
 
+from app.activity.store import ensure_activity_schema
+
 STATUSES = ("received", "analyzing", "proposed", "approved", "rejected", "resolved", "failed")
 SOURCES = ("sre-agent", "detector", "simulated", "api")
 
@@ -28,7 +30,8 @@ CREATE TABLE IF NOT EXISTS zeroops_escalations (
     result_json TEXT NOT NULL DEFAULT '{}',
     cost_json TEXT NOT NULL DEFAULT '{}',
     proposal_id TEXT NOT NULL DEFAULT '',
-    error TEXT NOT NULL DEFAULT ''
+    error TEXT NOT NULL DEFAULT '',
+    investigation_id TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_zeroops_escalations_created ON zeroops_escalations(created_at);
 """
@@ -53,6 +56,7 @@ class EscalationLedger:
                 conn.executescript(_SCHEMA)
             finally:
                 conn.close()
+        ensure_activity_schema(self.db_path)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30, isolation_level=None)
@@ -68,30 +72,37 @@ class EscalationLedger:
             item[key] = json.loads(item.pop(f"{key}_json") or "{}")
         return item
 
-    def create(self, *, source: str, question: str, incident_ref: str = "", scenario_id: str = "", sre_summary: str = "") -> dict:
+    def create(self, *, source: str, question: str, incident_ref: str = "", scenario_id: str = "",
+               sre_summary: str = "", investigation_id: str = None) -> dict:
         if source not in SOURCES:
             raise ValueError(f"source must be one of {SOURCES}")
         if not question or not question.strip():
             raise ValueError("question is required")
+        if investigation_id is not None and (not isinstance(investigation_id, str) or not investigation_id.strip()):
+            raise ValueError("investigation_id must be null or a non-empty string")
         now = _now()
         esc_id = "esc-" + uuid.uuid4().hex[:10]
         with self._lock:
             conn = self._connect()
             try:
                 conn.execute(
-                    "INSERT INTO zeroops_escalations (id, created_at, updated_at, source, incident_ref, scenario_id, question, sre_summary, status) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO zeroops_escalations (id, created_at, updated_at, source, incident_ref, scenario_id, "
+                    "question, sre_summary, status, investigation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (esc_id, now, now, source, (incident_ref or "")[:200], (scenario_id or "")[:64],
-                     question.strip()[:4000], (sre_summary or "")[:4000], "received"),
+                     question.strip()[:4000], (sre_summary or "")[:4000], "received",
+                     investigation_id.strip()[:64] if investigation_id else None),
                 )
             finally:
                 conn.close()
         return self.get(esc_id)
 
     def update(self, esc_id: str, *, status: str = None, routing: dict = None, result: dict = None,
-               cost: dict = None, proposal_id: str = None, error: str = None) -> dict:
+               cost: dict = None, proposal_id: str = None, error: str = None,
+               investigation_id: str = None) -> dict:
         if status is not None and status not in STATUSES:
             raise ValueError(f"status must be one of {STATUSES}")
+        if investigation_id is not None and (not isinstance(investigation_id, str) or not investigation_id.strip()):
+            raise ValueError("investigation_id must be null or a non-empty string")
         sets, values = ["updated_at = ?"], [_now()]
         for column, value in (("status", status), ("proposal_id", proposal_id), ("error", error)):
             if value is not None:
@@ -101,6 +112,9 @@ class EscalationLedger:
             if value is not None:
                 sets.append(f"{column} = ?")
                 values.append(json.dumps(value, default=str))
+        if investigation_id is not None:
+            sets.append("investigation_id = ?")
+            values.append(investigation_id.strip()[:64])
         values.append(esc_id)
         with self._lock:
             conn = self._connect()

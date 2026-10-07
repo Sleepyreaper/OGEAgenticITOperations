@@ -32,6 +32,60 @@ Routing (`app/agents/routing.py`), evidence selection
 the transport of a routing decision — it never decides routing, scope,
 or execution.
 
+The backend is selected once by the operator through `AGENT_BACKEND`.
+`direct` is an explicit alternative runtime, **not** an automatic
+post-failure fallback for `foundry`. Authentication, service, rate-limit,
+or runtime failures from the selected backend remain failures and are
+recorded as such. The direct backend's structured-output retry is narrower:
+it retries the same Azure OpenAI deployment without `response_format` only
+when that deployment explicitly rejects JSON-schema response format; it
+does not switch model backends.
+
+## Durable execution proof
+
+Every synchronous analysis or briefing opens an Activity investigation and
+starts a run before model work. The existing response shape is preserved and
+adds:
+
+```json
+"activity": {
+  "investigation_id": "inv-...",
+  "run_id": "run-..."
+}
+```
+
+Callers such as ZeroOps can pass an existing `investigation_id` to
+`analyze_operations()` so multiple filter-ladder attempts remain separate
+runs under one investigation. HTTP analysis opens a new investigation with
+the closed `api` / `analysis` origin-trigger pair; briefings use
+`briefing` / `briefing`.
+
+The Activity run records only bounded proof:
+
+| Proof | Direct Azure OpenAI | Foundry Agent Service |
+|---|---|---|
+| `actual_backend` | `direct_azure_openai` after an observed completion | `foundry_agent_service` after an observed completion |
+| Provider response IDs | Not recorded | Every available Responses API response ID |
+| Model | Direct deployment/model metadata | Actual `response.model` when returned, otherwise the agent definition deployment |
+| Local tools | None | One receipt per locally executed registry tool: agent key, tool round, tool name, status, duration, result count |
+| Finish evidence | Chat completion finish reason | Responses status, plus explicit `tool_round_limit` termination |
+
+Tool receipts never include arguments, server-bound subscription scope,
+tool output, resource IDs, URLs, or secrets. Run receipts contain agent and
+round outcomes, schema validity, finish statuses, measured usage when the
+provider returned it, and citation metadata only for finding IDs that passed
+bundle validation. Raw provider/model payloads and `raw_text_snippet` are
+never persisted.
+
+Activity persistence is part of the operation, not best-effort telemetry.
+If proof cannot be written, the request fails instead of returning an
+unrecorded success. Zero matching evidence finishes as
+`insufficient_evidence` with `actual_backend: none` and null durable usage;
+the compatibility `usage_summary` in the synchronous response remains
+present, but it is not persisted as invented zero-cost execution. Invalid
+coordinator output finishes as `invalid_output`; provider or orchestration
+exceptions finish as `failed`.
+
 ## How the Foundry backend works
 
 ```
@@ -82,6 +136,8 @@ function tools. Safety properties:
 * Tool output is truncated to `FOUNDRY_MAX_TOOL_OUTPUT_CHARS`.
 * The loop is bounded by `FOUNDRY_MAX_TOOL_ROUNDS`; hitting the limit
   returns `finish_reason = "tool_round_limit"` (never an unbounded loop).
+  Calls present on the limit response are not executed and do not receive
+  tool receipts.
 * `FOUNDRY_ENABLE_TOOLS=false` publishes agents with no tools.
 * There is deliberately **no generic ARM/KQL/shell/HTTP tool**.
 
