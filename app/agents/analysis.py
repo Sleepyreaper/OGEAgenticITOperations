@@ -15,15 +15,22 @@ A genuinely empty evidence bundle (zero findings matched the request)
 short-circuits to a deterministic "insufficient evidence" answer with
 ZERO model calls -- there is nothing grounded to reason over, so this
 module never fabricates a confident-sounding answer in that case.
+
+Every accepted request also records a durable Activity investigation/run
+with bounded backend, model, tool, validation, usage, and citation proof.
+Activity persistence is required: an unrecorded success is never returned.
 """
 
 import concurrent.futures
 import contextvars
 import json as _json
 import os
+import re
+import threading
 from typing import Optional
 
 from app import telemetry
+from app.activity import store as activity_store_module
 from app.agents import backend as backend_module
 from app.agents import evaluation as evaluation_module
 from app.agents import routing as routing_module
@@ -76,7 +83,25 @@ class SpecialistOutcome:
     when parsing succeeded, or an explicit schema_error when it didn't
     (never a fabricated result)."""
 
-    def __init__(self, *, agent_key, agent_name, role, model, structured_output_used, schema_valid, result, raw_text, usage, schema_error=None):
+    def __init__(
+        self,
+        *,
+        agent_key,
+        agent_name,
+        role,
+        model,
+        structured_output_used,
+        schema_valid,
+        result,
+        raw_text,
+        usage,
+        schema_error=None,
+        backend_name="",
+        provider_response_ids=(),
+        tool_receipts=(),
+        finish_reason=None,
+        round_limit_reached=False,
+    ):
         self.agent_key = agent_key
         self.agent_name = agent_name
         self.role = role
@@ -87,6 +112,11 @@ class SpecialistOutcome:
         self.raw_text = raw_text
         self.usage = usage
         self.schema_error = schema_error
+        self.backend_name = backend_name
+        self.provider_response_ids = tuple(provider_response_ids or ())
+        self.tool_receipts = tuple(tool_receipts or ())
+        self.finish_reason = finish_reason
+        self.round_limit_reached = bool(round_limit_reached)
 
     def to_dict(self) -> dict:
         return {
@@ -104,7 +134,14 @@ class SpecialistOutcome:
 
 
 def _call_specialist(
-    agent_key: str, *, question: str, bundle: EvidenceBundle, backend, extra_instruction: str = "", tool_context=None,
+    agent_key: str,
+    *,
+    question: str,
+    bundle: EvidenceBundle,
+    backend,
+    extra_instruction: str = "",
+    tool_context=None,
+    on_completion=None,
 ) -> SpecialistOutcome:
     agent_cfg = settings.agents[agent_key]
     messages = _build_messages(agent_cfg, question=question, bundle=bundle, extra_instruction=extra_instruction)
@@ -120,11 +157,20 @@ def _call_specialist(
     except schema_module.AnalysisSchemaError as exc:
         result, schema_valid, schema_error = None, False, str(exc)
 
-    return SpecialistOutcome(
-        agent_key=agent_key, agent_name=agent_cfg.name, role=agent_cfg.role, model=agent_cfg.deployment,
+    outcome = SpecialistOutcome(
+        agent_key=agent_key, agent_name=agent_cfg.name, role=agent_cfg.role,
+        model=getattr(completion, "model", None) or agent_cfg.deployment,
         structured_output_used=completion.structured_output_used, schema_valid=schema_valid, result=result,
         raw_text=completion.raw_text, usage=completion.usage, schema_error=schema_error,
+        backend_name=getattr(completion, "backend_name", "") or getattr(backend, "name", "unknown"),
+        provider_response_ids=getattr(completion, "provider_response_ids", ()),
+        tool_receipts=getattr(completion, "tool_receipts", ()),
+        finish_reason=getattr(completion, "finish_reason", None),
+        round_limit_reached=getattr(completion, "round_limit_reached", False),
     )
+    if on_completion is not None:
+        on_completion(outcome)
+    return outcome
 
 
 def _max_parallel_specialists() -> int:
@@ -244,6 +290,328 @@ def _model_metadata(backend_obj) -> dict:
     }
 
 
+_SAFE_RECEIPT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+_EVENT_KIND_FALLBACKS = {
+    "opened": "investigation_opened",
+    "analysis_started": "run_started",
+    "model_completed": "backend_selected",
+    "tool_completed": "evidence_observed",
+    "analysis_finished": "run_completed",
+    "analysis_failed": "run_failed",
+}
+_ARTIFACT_KIND_FALLBACKS = {"run_receipt": "analysis_summary"}
+_MEASURED_USAGE_FIELDS = (
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "estimated_cost_usd",
+    "tool_calls",
+)
+
+
+def _activity_event_kind(preferred: str) -> str:
+    if preferred in activity_store_module.EVENT_KINDS:
+        return preferred
+    fallback = _EVENT_KIND_FALLBACKS[preferred]
+    if fallback in activity_store_module.EVENT_KINDS:
+        return fallback
+    raise RuntimeError(f"activity store cannot persist event kind {preferred!r}")
+
+
+def _activity_artifact_kind(preferred: str) -> str:
+    if preferred in activity_store_module.ARTIFACT_KINDS:
+        return preferred
+    fallback = _ARTIFACT_KIND_FALLBACKS[preferred]
+    if fallback in activity_store_module.ARTIFACT_KINDS:
+        return fallback
+    raise RuntimeError(f"activity store cannot persist artifact kind {preferred!r}")
+
+
+def _requested_backend_name(backend) -> str:
+    if backend is not None:
+        return str(getattr(backend, "name", "unknown") or "unknown")
+    selected = (os.environ.get("AGENT_BACKEND", "direct").strip().lower() or "direct")
+    if selected in ("direct", "direct_azure_openai"):
+        return "direct"
+    if selected in ("foundry", "foundry_agent_service"):
+        return "foundry"
+    return selected
+
+
+def _start_activity(*, investigation_id: Optional[str], origin: str, trigger: str, requested_backend: str):
+    store = activity_store_module.get_activity_store()
+    opened = investigation_id is None
+    if opened:
+        investigation = store.open_investigation(origin=origin)
+        investigation_id = investigation["id"]
+        store.append_event(
+            investigation_id,
+            actor="system",
+            kind=_activity_event_kind("opened"),
+            provenance="observed",
+            payload={"origin": origin},
+        )
+    run = store.start_run(investigation_id, trigger=trigger, requested_backend=requested_backend)
+    store.append_event(
+        investigation_id,
+        run_id=run["id"],
+        actor="orchestrator",
+        kind=_activity_event_kind("analysis_started"),
+        provenance="observed",
+        payload={
+            "status": "running",
+            "trigger": trigger,
+            "requested_backend": requested_backend,
+        },
+    )
+    store.update_investigation(investigation_id, phase="in_progress")
+    return store, investigation_id, run["id"]
+
+
+def _safe_provider_response_ids(values) -> list:
+    safe = []
+    for value in values or ():
+        text = str(value)
+        if _SAFE_RECEIPT_ID_RE.fullmatch(text):
+            safe.append(text)
+    return safe[:50]
+
+
+def _measured_usage(observed_outcomes: list) -> Optional[dict]:
+    measured = {}
+    for field in _MEASURED_USAGE_FIELDS:
+        values = [
+            outcome.usage[field]
+            for _, outcome in observed_outcomes
+            if isinstance(outcome.usage, dict)
+            and field in outcome.usage
+            and isinstance(outcome.usage[field], (int, float))
+            and not isinstance(outcome.usage[field], bool)
+        ]
+        if values:
+            measured[field] = sum(values)
+    if "estimated_cost_usd" in measured:
+        measured["estimated_cost_usd"] = round(measured["estimated_cost_usd"], 6)
+    if observed_outcomes:
+        measured["model_calls"] = sum(
+            1 + int((outcome.usage or {}).get("tool_rounds") or 0)
+            for _, outcome in observed_outcomes
+        )
+    return measured or None
+
+
+def _outcome_receipt(round_name: str, outcome: SpecialistOutcome) -> dict:
+    usage = {
+        field: outcome.usage[field]
+        for field in _MEASURED_USAGE_FIELDS
+        if isinstance(outcome.usage, dict)
+        and field in outcome.usage
+        and isinstance(outcome.usage[field], (int, float))
+        and not isinstance(outcome.usage[field], bool)
+    }
+    return {
+        "analysis_round": round_name,
+        "agent_key": outcome.agent_key,
+        "backend": outcome.backend_name,
+        "model": outcome.model,
+        "schema_valid": outcome.schema_valid,
+        "finish_reason": outcome.finish_reason,
+        "round_limit_reached": outcome.round_limit_reached,
+        "provider_response_ids": _safe_provider_response_ids(outcome.provider_response_ids),
+        "tool_receipts": [dict(receipt) for receipt in outcome.tool_receipts[:50]],
+        "usage": usage or None,
+    }
+
+
+def _citation_receipts(bundle: EvidenceBundle, valid_ids: list) -> list:
+    by_id = {item.id: item for item in bundle.items}
+    receipts = []
+    for finding_id in valid_ids[:25]:
+        item = by_id.get(finding_id)
+        if item is None:
+            continue
+        references = [
+            {
+                "source": reference.get("source"),
+                "observed_at": reference.get("observed_at"),
+            }
+            for reference in item.evidence[:3]
+            if reference.get("source") or reference.get("observed_at")
+        ]
+        receipts.append({
+            "finding_id": finding_id,
+            "category": item.category,
+            "severity": item.severity,
+            "references": references,
+        })
+    return receipts
+
+
+def _append_completion_activity(
+    *,
+    store,
+    investigation_id: str,
+    run_id: str,
+    round_name: str,
+    outcome: SpecialistOutcome,
+) -> None:
+    for receipt in outcome.tool_receipts:
+        store.append_event(
+            investigation_id,
+            run_id=run_id,
+            actor="specialist",
+            kind=_activity_event_kind("tool_completed"),
+            provenance="observed",
+            payload=dict(receipt),
+        )
+    usage = outcome.usage if isinstance(outcome.usage, dict) else {}
+    payload = {
+        "status": (
+            "tool_round_limit"
+            if outcome.round_limit_reached
+            else ("completed" if outcome.schema_valid else "invalid_output")
+        ),
+        "agent_key": outcome.agent_key,
+        "round": round_name,
+        "backend": outcome.backend_name,
+        "schema_valid": outcome.schema_valid,
+        "finish_reason": outcome.finish_reason,
+    }
+    if isinstance(usage.get("total_tokens"), (int, float)) and not isinstance(usage.get("total_tokens"), bool):
+        payload["total_tokens"] = usage["total_tokens"]
+    store.append_event(
+        investigation_id,
+        run_id=run_id,
+        actor="orchestrator" if outcome.agent_key == routing_module.COORDINATOR_KEY else "specialist",
+        kind=_activity_event_kind("model_completed"),
+        provenance="observed",
+        payload=payload,
+    )
+
+
+def _actual_backend(observed_outcomes: list) -> str:
+    names = [outcome.backend_name for _, outcome in observed_outcomes if outcome.backend_name]
+    return names[-1] if names else "none"
+
+
+def _append_run_receipt(
+    *,
+    store,
+    investigation_id: str,
+    run_id: str,
+    status: str,
+    actual_backend: str,
+    observed_outcomes: list,
+    schema_valid,
+    citations: list,
+) -> None:
+    store.append_artifact(
+        investigation_id,
+        run_id=run_id,
+        kind=_activity_artifact_kind("run_receipt"),
+        provenance="observed",
+        payload={
+            "status": status,
+            "backend": actual_backend,
+            "actual_backend": actual_backend,
+            "schema_valid": schema_valid,
+            "agent_calls": [
+                _outcome_receipt(round_name, outcome)
+                for round_name, outcome in observed_outcomes[:50]
+            ],
+            "usage": _measured_usage(observed_outcomes),
+            "citations": citations,
+        },
+    )
+
+
+def _finish_activity(
+    *,
+    store,
+    investigation_id: str,
+    run_id: str,
+    status: str,
+    actual_backend: str,
+    observed_outcomes: list,
+    schema_valid,
+    citations: list,
+) -> None:
+    _append_run_receipt(
+        store=store,
+        investigation_id=investigation_id,
+        run_id=run_id,
+        status=status,
+        actual_backend=actual_backend,
+        observed_outcomes=observed_outcomes,
+        schema_valid=schema_valid,
+        citations=citations,
+    )
+    failed = status in ("invalid_output", "failed")
+    store.append_event(
+        investigation_id,
+        run_id=run_id,
+        actor="orchestrator",
+        kind=_activity_event_kind("analysis_failed" if failed else "analysis_finished"),
+        provenance="observed",
+        payload={
+            "status": status,
+            "actual_backend": actual_backend,
+            "schema_valid": schema_valid,
+            "finding_count": len(citations),
+        },
+    )
+    store.update_investigation(investigation_id, phase="failed" if failed else "analysis_ready")
+    store.finish_run(
+        run_id,
+        status=status,
+        actual_backend=actual_backend,
+        usage=None if status == "insufficient_evidence" else _measured_usage(observed_outcomes),
+    )
+
+
+def _fail_activity(
+    *,
+    store,
+    investigation_id: str,
+    run_id: str,
+    observed_outcomes: list,
+    exc: Exception,
+    attempted_backend: str = "",
+) -> None:
+    actual_backend = _actual_backend(observed_outcomes)
+    if actual_backend == "none" and attempted_backend:
+        actual_backend = attempted_backend
+    _append_run_receipt(
+        store=store,
+        investigation_id=investigation_id,
+        run_id=run_id,
+        status="failed",
+        actual_backend=actual_backend,
+        observed_outcomes=observed_outcomes,
+        schema_valid=None,
+        citations=[],
+    )
+    store.append_event(
+        investigation_id,
+        run_id=run_id,
+        actor="orchestrator",
+        kind=_activity_event_kind("analysis_failed"),
+        provenance="observed",
+        payload={
+            "status": "failed",
+            "actual_backend": actual_backend,
+            "reason_code": type(exc).__name__.lower()[:64],
+        },
+    )
+    store.update_investigation(investigation_id, phase="failed")
+    store.finish_run(
+        run_id,
+        status="failed",
+        actual_backend=actual_backend,
+        usage=_measured_usage(observed_outcomes),
+    )
+
+
 def _insufficient_evidence_response(*, question: str, bundle: EvidenceBundle, snapshot: OperationsSnapshot, now) -> dict:
     result = schema_module.AgentAnalysisResult(
         conclusion="No matching evidence found for this request.",
@@ -306,6 +674,9 @@ def analyze_operations(
     config: Optional[OperationsConfig] = None,
     snapshot: Optional[OperationsSnapshot] = None,
     now=None,
+    investigation_id: str = None,
+    origin: str = "analysis",
+    trigger: str = "analysis",
 ) -> dict:
     """Build a bounded evidence bundle from the current operations
     snapshot, route it to the right specialist(s) (+ debate/coordinator
@@ -329,86 +700,189 @@ def analyze_operations(
                 f"(the coordinator, {routing_module.COORDINATOR_KEY!r}, is added automatically when needed)"
             )
 
-    now = now or utc_now()
-    snapshot = snapshot if snapshot is not None else get_snapshot(subscription_ids, config=config, force_refresh=force_refresh)
-    bundle_kwargs = {"category": category, "severity": severity, "status": status, "finding_id": finding_id}
-    if max_items is not None:
-        bundle_kwargs["max_items"] = max_items
-    bundle = build_evidence_bundle(snapshot, **bundle_kwargs)
-
-    if not bundle.items:
-        return _insufficient_evidence_response(question=question, bundle=bundle, snapshot=snapshot, now=now)
-
-    routing_decision = routing_module.route(bundle, requested_agents=requested_agents, force_debate=force_debate)
-    telemetry.record_routing_decision(
-        debate=routing_decision.debate, specialist_count=len(routing_decision.specialist_agents),
-        coordinator_included=routing_decision.coordinator_included,
+    requested_backend = _requested_backend_name(backend)
+    store, investigation_id, run_id = _start_activity(
+        investigation_id=investigation_id,
+        origin=origin,
+        trigger=trigger,
+        requested_backend=requested_backend,
     )
+    observed_outcomes = []
+    observed_lock = threading.Lock()
+    backend_obj = None
 
-    backend_obj = backend or backend_module.get_backend()
-    tool_context = backend_module.ToolContext(subscription_ids=tuple(snapshot.subscription_ids), config=config)
+    def completion_recorder(round_name: str):
+        def record(outcome: SpecialistOutcome) -> None:
+            _append_completion_activity(
+                store=store,
+                investigation_id=investigation_id,
+                run_id=run_id,
+                round_name=round_name,
+                outcome=outcome,
+            )
+            with observed_lock:
+                observed_outcomes.append((round_name, outcome))
+        return record
 
-    specialist_outcomes = _fan_out(
-        routing_decision.specialist_agents,
-        lambda agent_key: _call_specialist(
-            agent_key, question=question, bundle=bundle, backend=backend_obj, tool_context=tool_context,
-        ),
-    )
+    try:
+        now = now or utc_now()
+        snapshot = snapshot if snapshot is not None else get_snapshot(
+            subscription_ids, config=config, force_refresh=force_refresh,
+        )
+        bundle_kwargs = {"category": category, "severity": severity, "status": status, "finding_id": finding_id}
+        if max_items is not None:
+            bundle_kwargs["max_items"] = max_items
+        bundle = build_evidence_bundle(snapshot, **bundle_kwargs)
 
-    rebuttal_outcomes = None
-    if routing_decision.debate and len(specialist_outcomes) >= 2:
-        round1_summary = _summarize_outcomes(specialist_outcomes)
-        rebuttal_outcomes = _fan_out(
+        if not bundle.items:
+            response = _insufficient_evidence_response(
+                question=question, bundle=bundle, snapshot=snapshot, now=now,
+            )
+            _finish_activity(
+                store=store,
+                investigation_id=investigation_id,
+                run_id=run_id,
+                status="insufficient_evidence",
+                actual_backend="none",
+                observed_outcomes=observed_outcomes,
+                schema_valid=None,
+                citations=[],
+            )
+            response["activity"] = {"investigation_id": investigation_id, "run_id": run_id}
+            return response
+
+        routing_decision = routing_module.route(
+            bundle, requested_agents=requested_agents, force_debate=force_debate,
+        )
+        telemetry.record_routing_decision(
+            debate=routing_decision.debate,
+            specialist_count=len(routing_decision.specialist_agents),
+            coordinator_included=routing_decision.coordinator_included,
+        )
+
+        backend_obj = backend or backend_module.get_backend()
+        tool_context = backend_module.ToolContext(
+            subscription_ids=tuple(snapshot.subscription_ids), config=config,
+        )
+
+        specialist_outcomes = _fan_out(
             routing_decision.specialist_agents,
             lambda agent_key: _call_specialist(
-                agent_key, question=question, bundle=bundle, backend=backend_obj,
-                extra_instruction=_rebuttal_instruction(round1_summary), tool_context=tool_context,
+                agent_key,
+                question=question,
+                bundle=bundle,
+                backend=backend_obj,
+                tool_context=tool_context,
+                on_completion=completion_recorder("specialists"),
             ),
         )
 
-    if routing_decision.coordinator_included:
-        synthesis_extra = _synthesis_instruction(specialist_outcomes, rebuttal_outcomes)
-        final_outcome = _call_specialist(
-            routing_module.COORDINATOR_KEY, question=question, bundle=bundle, backend=backend_obj,
-            extra_instruction=synthesis_extra, tool_context=tool_context,
+        rebuttal_outcomes = None
+        if routing_decision.debate and len(specialist_outcomes) >= 2:
+            round1_summary = _summarize_outcomes(specialist_outcomes)
+            rebuttal_outcomes = _fan_out(
+                routing_decision.specialist_agents,
+                lambda agent_key: _call_specialist(
+                    agent_key,
+                    question=question,
+                    bundle=bundle,
+                    backend=backend_obj,
+                    extra_instruction=_rebuttal_instruction(round1_summary),
+                    tool_context=tool_context,
+                    on_completion=completion_recorder("rebuttals"),
+                ),
+            )
+
+        if routing_decision.coordinator_included:
+            synthesis_extra = _synthesis_instruction(specialist_outcomes, rebuttal_outcomes)
+            final_outcome = _call_specialist(
+                routing_module.COORDINATOR_KEY,
+                question=question,
+                bundle=bundle,
+                backend=backend_obj,
+                extra_instruction=synthesis_extra,
+                tool_context=tool_context,
+                on_completion=completion_recorder("synthesis"),
+            )
+        else:
+            final_outcome = specialist_outcomes[routing_decision.specialist_agents[0]]
+
+        known_ids = bundle.known_ids()
+        if final_outcome.schema_valid:
+            valid_ids, unsupported_ids = schema_module.validate_evidence_ids(
+                final_outcome.result.evidence_ids, known_ids,
+            )
+            action_metadata = [
+                analysis_action_metadata(action.description)
+                for action in final_outcome.result.recommended_actions
+            ]
+        else:
+            valid_ids, unsupported_ids, action_metadata = [], [], []
+
+        evaluation_result = evaluation_module.evaluate(
+            result=final_outcome.result,
+            schema_valid=final_outcome.schema_valid,
+            bundle_known_ids=known_ids,
+            action_metadata=action_metadata,
+            debate_used=bool(rebuttal_outcomes),
+            agents_consulted=len(specialist_outcomes),
         )
-    else:
-        final_outcome = specialist_outcomes[routing_decision.specialist_agents[0]]
+        evaluation_module.record_evaluation(evaluation_result)
 
-    known_ids = bundle.known_ids()
-    if final_outcome.schema_valid:
-        valid_ids, unsupported_ids = schema_module.validate_evidence_ids(final_outcome.result.evidence_ids, known_ids)
-        action_metadata = [analysis_action_metadata(action.description) for action in final_outcome.result.recommended_actions]
-    else:
-        valid_ids, unsupported_ids, action_metadata = [], [], []
+        usage_rounds = {"specialists": specialist_outcomes}
+        if rebuttal_outcomes:
+            usage_rounds["rebuttals"] = rebuttal_outcomes
+        if routing_decision.coordinator_included:
+            usage_rounds["synthesis"] = {routing_module.COORDINATOR_KEY: final_outcome}
+        final_payload = _final_result_payload(
+            final_outcome,
+            valid_ids=valid_ids,
+            unsupported_ids=unsupported_ids,
+            action_metadata=action_metadata,
+        )
+        final_payload["usage"] = final_outcome.usage
 
-    evaluation_result = evaluation_module.evaluate(
-        result=final_outcome.result, schema_valid=final_outcome.schema_valid, bundle_known_ids=known_ids,
-        action_metadata=action_metadata, debate_used=bool(rebuttal_outcomes), agents_consulted=len(specialist_outcomes),
-    )
-    evaluation_module.record_evaluation(evaluation_result)
-
-    usage_rounds = {"specialists": specialist_outcomes}
-    if rebuttal_outcomes:
-        usage_rounds["rebuttals"] = rebuttal_outcomes
-    if routing_decision.coordinator_included:
-        usage_rounds["synthesis"] = {routing_module.COORDINATOR_KEY: final_outcome}
-    final_payload = _final_result_payload(final_outcome, valid_ids=valid_ids, unsupported_ids=unsupported_ids, action_metadata=action_metadata)
-    final_payload["usage"] = final_outcome.usage
-
-    return {
-        "question": question,
-        "generated_at": format_utc_iso(now),
-        "snapshot_id": snapshot.id,
-        "routing": routing_decision.to_dict(),
-        "evidence_bundle": bundle.to_dict(),
-        "specialists": {key: outcome.to_dict() for key, outcome in specialist_outcomes.items()},
-        "rebuttals": {key: outcome.to_dict() for key, outcome in rebuttal_outcomes.items()} if rebuttal_outcomes else None,
-        "final": final_payload,
-        "evaluation": evaluation_result.to_dict(),
-        "model_metadata": _model_metadata(backend_obj),
-        "usage_summary": _usage_summary(usage_rounds, cited_finding_count=len(valid_ids)),
-    }
+        response = {
+            "question": question,
+            "generated_at": format_utc_iso(now),
+            "snapshot_id": snapshot.id,
+            "routing": routing_decision.to_dict(),
+            "evidence_bundle": bundle.to_dict(),
+            "specialists": {key: outcome.to_dict() for key, outcome in specialist_outcomes.items()},
+            "rebuttals": (
+                {key: outcome.to_dict() for key, outcome in rebuttal_outcomes.items()}
+                if rebuttal_outcomes
+                else None
+            ),
+            "final": final_payload,
+            "evaluation": evaluation_result.to_dict(),
+            "model_metadata": _model_metadata(backend_obj),
+            "usage_summary": _usage_summary(usage_rounds, cited_finding_count=len(valid_ids)),
+            "activity": {"investigation_id": investigation_id, "run_id": run_id},
+        }
+        run_status = "completed" if final_outcome.schema_valid else "invalid_output"
+        actual_backend = _actual_backend(observed_outcomes)
+        _finish_activity(
+            store=store,
+            investigation_id=investigation_id,
+            run_id=run_id,
+            status=run_status,
+            actual_backend=actual_backend,
+            observed_outcomes=observed_outcomes,
+            schema_valid=final_outcome.schema_valid,
+            citations=_citation_receipts(bundle, valid_ids),
+        )
+        return response
+    except Exception as exc:
+        _fail_activity(
+            store=store,
+            investigation_id=investigation_id,
+            run_id=run_id,
+            observed_outcomes=observed_outcomes,
+            exc=exc,
+            attempted_backend=getattr(backend_obj, "name", "") if backend_obj is not None else "",
+        )
+        raise
 
 
 _BRIEFING_QUESTION = (
@@ -429,6 +903,9 @@ def build_briefing(
     config: Optional[OperationsConfig] = None,
     snapshot: Optional[OperationsSnapshot] = None,
     now=None,
+    investigation_id: str = None,
+    origin: str = "briefing",
+    trigger: str = "briefing",
 ) -> dict:
     """A thinner reshaping of analyze_operations() emphasizing ONE
     coordinator voice (see docs/AGENT_INTELLIGENCE.md's routing policy:
@@ -440,6 +917,7 @@ def build_briefing(
         question=_BRIEFING_QUESTION, subscription_ids=subscription_ids, category=category, severity=severity,
         status=status, requested_agents=None, force_debate=force_debate, force_refresh=force_refresh,
         backend=backend, config=config, snapshot=snapshot, now=now,
+        investigation_id=investigation_id, origin=origin, trigger=trigger,
     )
     supporting_analysis = []
     for agent_key, outcome in full["specialists"].items():
@@ -460,4 +938,5 @@ def build_briefing(
         "evaluation": full["evaluation"],
         "model_metadata": full["model_metadata"],
         "usage_summary": full.get("usage_summary"),
+        "activity": full["activity"],
     }

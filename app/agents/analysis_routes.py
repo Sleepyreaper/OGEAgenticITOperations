@@ -100,6 +100,7 @@ def analyze():
             question=question, subscription_ids=subscription_ids, category=category, severity=severity,
             status=status, finding_id=finding_id, requested_agents=requested_agents,
             force_debate=force_debate, force_refresh=force_refresh,
+            origin="api", trigger="analysis",
         )
         return jsonify(result)
     except analysis_service.AnalysisError as exc:
@@ -111,9 +112,9 @@ def analyze():
         return jsonify({"error": str(exc)}), 502
     except NotImplementedError as exc:
         return jsonify({"error": str(exc)}), 501
-    except Exception as exc:  # noqa: BLE001 -- last-resort route boundary, same convention as app/operations/routes.py
+    except Exception:  # noqa: BLE001 -- last-resort route boundary, same convention as app/operations/routes.py
         traceback.print_exc()
-        return jsonify({"error": "failed to analyze operations evidence", "detail": str(exc)}), 500
+        return jsonify({"error": "failed to analyze operations evidence"}), 500
 
 
 @agent_analysis_bp.route("/briefing", methods=["GET", "POST"])
@@ -140,6 +141,7 @@ def briefing():
         result = analysis_service.build_briefing(
             subscription_ids=subscription_ids, category=category, severity=severity, status=status,
             force_debate=force_debate, force_refresh=force_refresh,
+            origin="briefing", trigger="briefing",
         )
         return jsonify(result)
     except analysis_service.AnalysisError as exc:
@@ -151,9 +153,9 @@ def briefing():
         return jsonify({"error": str(exc)}), 502
     except NotImplementedError as exc:
         return jsonify({"error": str(exc)}), 501
-    except Exception as exc:  # noqa: BLE001 -- last-resort route boundary
+    except Exception:  # noqa: BLE001 -- last-resort route boundary
         traceback.print_exc()
-        return jsonify({"error": "failed to build executive briefing", "detail": str(exc)}), 500
+        return jsonify({"error": "failed to build executive briefing"}), 500
 
 
 @agent_analysis_bp.route("/tools", methods=["GET"])

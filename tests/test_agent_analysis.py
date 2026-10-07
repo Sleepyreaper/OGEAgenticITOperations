@@ -239,6 +239,127 @@ test("briefing exposes exactly one 'coordinator' answer", result6["coordinator"]
 test("supporting_analysis entries are bounded to agent/role/confidence/conclusion (no narrative/raw text)", all(set(item) == {"agent_key", "agent", "role", "schema_valid", "confidence", "conclusion"} for item in result6["supporting_analysis"]))
 
 
+def _activity_ids(result):
+    activity = result.get("activity") if isinstance(result, dict) else None
+    if not isinstance(activity, dict):
+        return None
+    if not activity.get("investigation_id") or not activity.get("run_id"):
+        return None
+    return activity
+
+
+print("\n\U0001f9ea Test 10: synchronous analysis keeps its shape and records activity proof")
+os.environ["OPERATIONS_STATE_DB"] = DB_PATH + ".activity"
+try:
+    import app.activity.store as activity_store_mod
+    activity_store_mod._STORE = None
+except ModuleNotFoundError:
+    activity_store_mod = None
+
+kept = {"question", "routing", "evidence_bundle", "specialists", "final", "evaluation", "model_metadata", "usage_summary"}
+direct = analysis_mod.analyze_operations(
+    question="what should we do?", subscription_ids=["sub-test-1"], backend=backend1, snapshot=snapshot1,
+)
+test("direct analyze keeps the synchronous keys", kept.issubset(direct))
+direct_activity = _activity_ids(direct)
+test("direct analyze adds activity investigation_id and run_id", direct_activity is not None)
+test("direct activity does not replace usage_summary", "usage_summary" in direct and isinstance(direct["usage_summary"], dict))
+
+empty_snapshot = build_snapshot([], db_path=DB_PATH + ".activity")
+zero = analysis_mod.analyze_operations(
+    question="anything?", subscription_ids=["sub-test-1"], backend=backend1, snapshot=empty_snapshot,
+)
+test("zero-evidence response keeps usage_summary and final", "usage_summary" in zero and zero["final"]["schema_valid"] is True)
+zero_activity = _activity_ids(zero)
+test("zero-evidence path still records activity", zero_activity is not None)
+if activity_store_mod and zero_activity:
+    row = activity_store_mod.get_activity_store().get_public_investigation(zero_activity["investigation_id"])
+    runs = (row or {}).get("runs") or []
+    match = next((item for item in runs if item.get("id") == zero_activity["run_id"]), None)
+    test("zero-evidence run actual_backend is none", bool(match) and match.get("actual_backend") == "none")
+    test("zero-evidence run usage is null, not invented zeros", bool(match) and match.get("usage") is None)
+    test("zero-evidence run status is insufficient_evidence", bool(match) and match.get("status") == "insufficient_evidence")
+    test("zero-evidence investigation stays analysis_ready, not operator closure", bool(row) and row["investigation"]["phase"] == "analysis_ready")
+    event_kinds = {event.get("kind") for event in (row or {}).get("events") or []}
+    test("zero-evidence run cannot be proposed", "proposal_created" not in event_kinds and "decision_recorded" not in event_kinds)
+else:
+    test("zero-evidence run actual_backend is none", False)
+    test("zero-evidence run usage is null, not invented zeros", False)
+    test("zero-evidence run status is insufficient_evidence", False)
+    test("zero-evidence investigation stays analysis_ready, not operator closure", False)
+    test("zero-evidence run cannot be proposed", False)
+
+invalid = analysis_mod.analyze_operations(
+    question="q", subscription_ids=["sub-test-1"], backend=BrokenBackend(), snapshot=snapshot1,
+)
+test("invalid schema stays schema_valid false", invalid["final"]["schema_valid"] is False)
+invalid_activity = _activity_ids(invalid)
+test("invalid schema still records activity", invalid_activity is not None)
+if activity_store_mod and invalid_activity:
+    row = activity_store_mod.get_activity_store().get_public_investigation(invalid_activity["investigation_id"])
+    runs = (row or {}).get("runs") or []
+    match = next((item for item in runs if item.get("id") == invalid_activity["run_id"]), None)
+    test("invalid schema run status is invalid_output", bool(match) and match.get("status") == "invalid_output")
+    kinds = {event.get("kind") for event in (row or {}).get("events") or []}
+    test("invalid schema is not promoted to analysis_finished-only success", "analysis_failed" in kinds or (match and match.get("status") == "invalid_output"))
+    test("invalid schema does not emit executed or verified", not any(
+        event.get("provenance") in ("executed", "verified") for event in (row or {}).get("events") or []
+    ))
+else:
+    test("invalid schema run status is invalid_output", False)
+    test("invalid schema is not promoted to analysis_finished-only success", False)
+    test("invalid schema does not emit executed or verified", False)
+
+brief = analysis_mod.build_briefing(subscription_ids=["sub-test-1"], backend=backend2, snapshot=snapshot2)
+test("briefing keeps coordinator and usage_summary", "coordinator" in brief and "usage_summary" in brief)
+test("briefing adds activity ids", _activity_ids(brief) is not None)
+
+
+class ToolProofBackend:
+    name = "foundry_agent_service"
+
+    def complete(self, agent_config, messages, *, json_schema=None, schema_name="", tool_context=None):
+        completion = FakeCompletion(json.dumps({
+            "conclusion": f"{agent_config.key} conclusion", "business_impact": "impact", "confidence": "high",
+            "evidence_ids": [backend1.evidence_id], "missing_evidence": [],
+            "recommended_actions": [
+                {"description": "Review only", "owner": "sre", "urgency": "monitor", "approval_required": True},
+            ],
+            "narrative": "grounded",
+        }))
+        completion.backend_name = "foundry_agent_service"
+        completion.provider_response_ids = ["resp-fake-1"]
+        completion.tool_receipts = [{
+            "agent_key": agent_config.key, "round": 1, "tool_name": "get_capacity_watch",
+            "status": "ok", "duration_ms": 3, "result_count": 1,
+        }]
+        return completion
+
+
+tooled = analysis_mod.analyze_operations(
+    question="quota?", subscription_ids=["sub-test-1"], backend=ToolProofBackend(), snapshot=snapshot1,
+)
+tooled_activity = _activity_ids(tooled)
+test("Foundry tool proof is recorded on the analysis activity", tooled_activity is not None)
+if activity_store_mod and tooled_activity:
+    row = activity_store_mod.get_activity_store().get_public_investigation(tooled_activity["investigation_id"])
+    events = (row or {}).get("events") or []
+    tool_events = [event for event in events if event.get("kind") == "tool_completed"]
+    test("successful tool becomes a tool_completed receipt", bool(tool_events))
+    model_events = [event for event in events if event.get("kind") == "model_completed"]
+    test("model_completed event is recorded", bool(model_events))
+    test("model_completed provenance is observed", bool(model_events) and all(event.get("provenance") == "observed" for event in model_events))
+    blob = json.dumps(tool_events)
+    test("recorded tool receipt has no arguments or output", "arguments" not in blob and "subscription_ids" not in blob)
+    test("recorded tool receipt names the tool", "get_capacity_watch" in blob)
+else:
+    test("successful tool becomes a tool_completed receipt", False)
+    test("model_completed event is recorded", False)
+    test("model_completed provenance is observed", False)
+    test("recorded tool receipt has no arguments or output", False)
+    test("recorded tool receipt names the tool", False)
+
+_cleanup_db(DB_PATH + ".activity")
 _cleanup_db()
 _cleanup_db(DB_PATH + ".2")
 evaluation_mod.reset_for_tests()

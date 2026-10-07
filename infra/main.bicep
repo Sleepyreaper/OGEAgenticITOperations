@@ -184,6 +184,9 @@ param operationsSettings object = {}
 @allowed(['Enabled', 'Disabled'])
 param publicNetworkAccess string = 'Disabled'
 
+@description('Enables the server-enforced, read-only anonymous demo allowlist. This is not authentication or RBAC. Default false preserves trusted behavior; set true only for an explicitly public demo environment.')
+param publicDemoMode bool = false
+
 @description('Object ID of the deploying user (for Key Vault admin). Leave empty to skip.')
 param deployerPrincipalId string = ''
 
@@ -289,6 +292,7 @@ module webApp 'modules/web-app.bicep' = {
     additionalOpenAiAccounts: additionalOpenAiAccounts
     agentOverrides: agentOverrides
     publicNetworkAccess: publicNetworkAccess
+    publicDemoMode: publicDemoMode
     otelServiceName: otelServiceName
     operationsSettings: operationsSettings
     agentDefinitionVersion: agentDefinitionVersion

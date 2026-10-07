@@ -52,10 +52,11 @@ TOOL_DEFINITIONS = [
         "Escalate an incident the SRE Agent cannot safely resolve to the OGE agent squad. The squad routes it to "
         "specialists (cost, reliability, security, policy, resilience), optionally debates, and returns a grounded "
         "root cause, business impact, recommended actions and token cost. Returns an escalation_id; if status is "
-        "'received' or 'analyzing', poll get_escalation. Never changes Azure resources.",
+        "'received' or 'analyzing', poll get_escalation. Authentication proves only that the report came from a "
+        "configured API-key holder; it does not attest to Azure SRE Agent identity. Never changes Azure resources.",
         {
             "question": {"type": "string", "description": "What the squad should decide or explain. Optional when scenario_id is set."},
-            "sre_summary": {"type": "string", "description": "Your triage so far: signals, evidence, what you ruled out and why you are escalating."},
+            "sre_summary": {"type": "string", "description": "Reporter-provided triage: signals, evidence, exclusions and escalation rationale. Stored as a reported claim, not provider history."},
             "incident_ref": {"type": "string", "description": "Alert/incident id or URL."},
             "scenario_id": {"type": "string", "description": "Known demo scenario id, if this incident matches one (see list_scenarios)."},
             "severity": {"type": "string", "enum": _SEVERITIES},
@@ -161,6 +162,7 @@ def _escalation_view(record: dict) -> dict:
     result = record.get("result") or {}
     view = {
         "escalation_id": record["id"], "status": record["status"], "scenario_id": record.get("scenario_id"),
+        "investigation_id": record.get("investigation_id"),
         "incident_ref": record.get("incident_ref"), "created_at": record["created_at"], "updated_at": record["updated_at"],
         "conclusion": result.get("conclusion"), "business_impact": result.get("business_impact"),
         "confidence": result.get("confidence"), "recommended_actions": result.get("recommended_actions"),

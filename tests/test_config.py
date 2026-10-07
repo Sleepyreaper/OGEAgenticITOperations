@@ -658,6 +658,22 @@ except wizard.ConfigureError:
     test("cloning into an existing profile id is rejected", True)
 
 
+print("\n\U0001f9ea PUBLIC_DEMO_MODE is an explicit boolean, default false")
+from app.security.public_access import parse_public_demo_mode  # noqa: E402
+
+with temp_env(PUBLIC_DEMO_MODE=None):
+    test("unset PUBLIC_DEMO_MODE parses false", parse_public_demo_mode(os.environ.get("PUBLIC_DEMO_MODE")) is False)
+test("false parses false", parse_public_demo_mode("false") is False)
+test("true parses true", parse_public_demo_mode("true") is True)
+try:
+    parse_public_demo_mode("banana")
+    test("non-boolean PUBLIC_DEMO_MODE is rejected", False)
+except ValueError:
+    test("non-boolean PUBLIC_DEMO_MODE is rejected", True)
+example = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+test(".env.example documents PUBLIC_DEMO_MODE=false", "PUBLIC_DEMO_MODE=false" in example)
+
+
 # ─── Summary ────────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
 print(f"  Results: {PASS} passed, {FAIL} failed")

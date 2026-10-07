@@ -182,6 +182,39 @@ test("evidence/findings routes are registered on the Flask app", any(
     r.startswith("/api/operations/evidence/") for r in registered_rules
 ) and any(r.startswith("/api/operations/findings/") for r in registered_rules))
 
+print("\n\U0001f9ea Test 11b: Agent Activity is a public proof view, not a claim of execution")
+test("Agent Activity surface is present", "Agent Activity" in html)
+test("activity view loads /api/activity", "/api/activity" in html)
+test("/api/activity is registered", "/api/activity" in registered_rules)
+test("empty activity copy does not say all clear", "No recorded activity since activity capture was enabled" in html)
+test("activity states that execution and verification were not observed", "No execution or verification observed" in html)
+test("activity renders actual backend from the payload", "actual_backend" in html)
+test("activity renders provenance from the payload", "provenance" in html)
+for forbidden in (
+    "Mark resolved (SRE Agent verified)",
+    "SRE Agent verified",
+    "oge_ops_escalation",
+    "Foundry agents:",
+    "Squad (Foundry):",
+    "approval means executed",
+    "chain-of-thought",
+    "chain of thought",
+):
+    test(f"public UI does not claim {forbidden!r}", forbidden not in html)
+test("template embeds no MCP or bearer credential", "Bearer ey" not in html and "MCP_API_KEY=" not in html)
+
+print("\n\U0001f9ea Test 11c: activity detail uses abort/generation gating so stale responses cannot apply")
+test("activity detail fetch uses AbortController", "const ctrl = new AbortController();" in html and "signal: ctrl.signal" in html and "ctrl.abort()" in html)
+test("activity detail captures the active generation before fetching", "const id = DET.id;" in html and "const requestGeneration = ++activityDetailRequestGeneration;" in html)
+test("activity detail compares the active generation before mutating state", "if (DET.id !== id) return;" in html and "if (requestGeneration !== activityDetailRequestGeneration) return;" in html)
+test("activity detail loads deltas using event_after", "event_after=" in html and "lastSeq" in html)
+
+print("\n\U0001f9ea Test 11d: operator closure copy is gated by supporting decision/closure events")
+test("operator closure note helper is present", "function activityDecisionNote(ev, inv)" in html)
+test("operator closure note is gated by decision or closure events", "ev.kind === 'decision_recorded' && /approv/i.test(decision)" in html and "ev.kind === 'decision_recorded' && /reject/i.test(decision)" in html and "ev.kind === 'investigation_closed'" in html and "inv.phase === 'closed_unverified' && ev.kind === 'phase_changed' && p.phase === 'closed_unverified'" in html and "Operator closure recorded. This is not SRE verification." in html)
+test("closed_unverified banner remains phase-gated", "inv.phase === 'closed_unverified'" in html and "Closed by an operator without verification. Operator closure is not SRE verification." in html)
+test("operator closure copy appears only in the gated helpers", html.count("Operator closure recorded. This is not SRE verification.") == 1 and html.count("Closed by an operator without verification. Operator closure is not SRE verification.") == 1)
+
 print("\n\U0001f9ea Test 12: pre-existing routes are preserved unchanged")
 for route in ("/api/health", "/api/demos", "/api/ask", "/api/ask/stream", "/api/scan/overview",
               "/api/ado/proposals", "/api/ado/inspect-and-propose"):

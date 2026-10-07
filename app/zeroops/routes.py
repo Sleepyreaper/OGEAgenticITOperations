@@ -66,11 +66,16 @@ def scenario_handoff(scenario_id):
                    f"assess blast radius, and propose the fix for human approval. "
                    f"Escalate to the OGE squad (ogeops MCP) only if it is not runbook-shaped.")
         try:
-            result = sre_agent.start_thread(message)
+            result = sre_agent.start_thread(message, scenario_id=scenario_id)
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         except sre_agent.SreAgentError as exc:
-            return jsonify({"route": "sre-agent", "status": "error", "error": str(exc)}), 502
+            return jsonify({
+                "route": "sre-agent",
+                "status": "error",
+                "error": str(exc),
+                "investigation_id": exc.investigation_id,
+            }), 502
         if result["status"] == "not_configured":
             result["hint"] += "; the Activity Log alert will still reach the SRE Agent in ~5 minutes"
         return jsonify({"route": "sre-agent", **result})
@@ -81,7 +86,12 @@ def scenario_handoff(scenario_id):
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
-    return jsonify({"route": "squad", "status": "ok", "escalation_id": record["id"]}), 202
+    return jsonify({
+        "route": "squad",
+        "status": "ok",
+        "escalation_id": record["id"],
+        "investigation_id": record.get("investigation_id"),
+    }), 202
 
 
 @zeroops_bp.route("/scenarios/<scenario_id>/<action>", methods=["POST"])

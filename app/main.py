@@ -22,6 +22,24 @@ from app.agents import evaluation as agent_evaluation
 from app.agents.catalog import build_agent_catalog
 from app.zeroops.mcp_server import mcp_bp
 from app.zeroops.routes import zeroops_bp
+from app.security.public_access import (
+    install_public_demo_gate,
+    public_demo_mode_enabled,
+)
+
+# The activity Blueprint is built by a parallel stream. Tolerate ONLY the
+# known module being absent (never swallow other import errors). Flip to True
+# at integration so a missing app/activity/routes.py fails loudly; public
+# demo mode already requires it.
+_ACTIVITY_MODULE_REQUIRED = False
+_ACTIVITY_MODULES = ("app.activity", "app.activity.routes")
+
+try:
+    from app.activity.routes import activity_bp
+except ModuleNotFoundError as _exc:
+    if _exc.name not in _ACTIVITY_MODULES:
+        raise
+    activity_bp = None
 
 
 def create_app():
@@ -56,6 +74,18 @@ def create_app():
     # docs/ZEROOPS_SRE_AGENT.md.
     app.register_blueprint(mcp_bp)
     app.register_blueprint(zeroops_bp)
+
+    if activity_bp is not None:
+        app.register_blueprint(activity_bp)
+    elif _ACTIVITY_MODULE_REQUIRED or public_demo_mode_enabled():
+        raise RuntimeError(
+            "app/activity/routes.py (activity_bp) is required but missing; "
+            "the activity view cannot be served."
+        )
+
+    # Central PUBLIC_DEMO_MODE allowlist (default off). Installed after all
+    # blueprints so it gates every /api/* route, including future ones.
+    install_public_demo_gate(app)
 
     # ─── Pages ──────────────────────────────────────────────
 
@@ -471,6 +501,7 @@ These artifacts should be ready for a human to review, not auto-execute. The ops
                 "key_vault_configured": bool(settings.key_vault_uri),
                 "log_analytics_configured": bool(settings.log_analytics_workspace_id),
                 "telemetry_enabled": telemetry.is_enabled(),
+                "public_demo_mode": public_demo_mode_enabled(),
             },
             # Agent-intelligence layer (see docs/AGENT_INTELLIGENCE.md and
             # docs/FOUNDRY_ARCHITECTURE.md): backend reports which model
